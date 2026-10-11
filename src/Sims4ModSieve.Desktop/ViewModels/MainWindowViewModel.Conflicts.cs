@@ -20,7 +20,7 @@ public sealed partial class MainWindowViewModel
     private int visibleConflictParentCount;
     public Task ConflictRowsRefreshTask { get; private set; } = Task.CompletedTask;
     private string conflictSection = "overview";
-    private string conflictView = "resources";
+    private string conflictView = "all";
     private string conflictFilter = "all";
     private string conflictStatus = "尚未扫描";
     private string conflictPhase = string.Empty;
@@ -51,12 +51,21 @@ public sealed partial class MainWindowViewModel
     };
     public string ConflictView => conflictView;
     public string ConflictFilter => conflictFilter;
+    public bool IncludeAllConflictStates { get => conflictFilter == "all"; set => SelectConflictFilter(value ? "all" : string.Empty); }
+    public bool IncludeAllConflictTypes { get => conflictView == "all"; set => SelectConflictView(value ? "all" : "none"); }
+    public bool IncludeConflictResources { get => conflictView is "all" or "resources"; set => SelectConflictView(value ? (IncludeConflictScripts ? "all" : "resources") : (IncludeConflictScripts ? "scripts" : "none")); }
+    public bool IncludeConflictScripts { get => conflictView is "all" or "scripts"; set => SelectConflictView(value ? (IncludeConflictResources ? "all" : "scripts") : (IncludeConflictResources ? "resources" : "none")); }
+    public bool IncludeConflictNeedsReview { get => HasConflictFilter("different"); set => SetConflictFilterChoice("different", value); }
+    public bool IncludeConflictCanOrganize { get => HasConflictFilter("same"); set => SetConflictFilterChoice("same", value); }
+    public bool IncludeConflictIncomplete { get => HasConflictFilter("incomplete"); set => SetConflictFilterChoice("incomplete", value); }
+    public bool HasActiveConflictFilter => conflictView != "all" || conflictFilter != "all";
     public bool IsResourceViewSelected => conflictView == "resources";
     public bool IsScriptViewSelected => conflictView == "scripts";
     public bool IsProblemViewSelected => conflictView == "problems";
     public bool IsAllFilterSelected => conflictFilter == "all";
     public bool IsDifferentFilterSelected => conflictFilter == "different";
     public bool IsSameFilterSelected => conflictFilter == "same";
+    public bool IsIncompleteFilterSelected => conflictFilter == "incomplete";
     public string ConflictStatus => conflictStatus;
     public string ConflictPhase => conflictPhase;
     public string ConflictProgressText => conflictProgressTotal is { } total && total > 0 ? $"{conflictCompleted} / {total}" : string.Empty;
@@ -76,7 +85,7 @@ public sealed partial class MainWindowViewModel
     public IReadOnlyList<ConflictResultRow> ConflictRows => conflictRows;
     public int VisibleConflictParentCount => visibleConflictParentCount;
     public bool ShowEmptyConflictRows => IsConflictBasic && IsConflictComplete && visibleConflictParentCount == 0;
-    public string EmptyConflictText => conflictView == "problems" ? "没有未完成项" : "没有符合筛选条件的文件对";
+    public string EmptyConflictText => HasActiveConflictFilter ? "没有符合筛选条件的结果" : "已分析范围未发现冲突";
     public bool ShowConflictResources => IsConflictBasic && conflictView == "resources";
     public bool ShowConflictScripts => IsConflictBasic && conflictView == "scripts";
     public bool ShowConflictProblems => IsConflictBasic && conflictView == "problems";
@@ -138,22 +147,42 @@ public sealed partial class MainWindowViewModel
 
     private void SelectConflictView(string? view)
     {
-        if (view is not ("resources" or "scripts" or "problems")) return;
+        if (view is not ("all" or "resources" or "scripts" or "problems" or "none")) return;
         conflictView = view;
         if (IsConflictComplete) QueueConflictRowsRefresh();
         OnPropertyChanged(nameof(ConflictView));
+        RefreshConflictFilterChoices();
         RefreshConflictVisibility();
     }
 
     private void SelectConflictFilter(string? filter)
     {
-        if (filter is not ("all" or "different" or "same")) return;
+        if (filter is null) return;
         conflictFilter = filter;
         OnPropertyChanged(nameof(ConflictFilter));
         OnPropertyChanged(nameof(IsAllFilterSelected));
         OnPropertyChanged(nameof(IsDifferentFilterSelected));
         OnPropertyChanged(nameof(IsSameFilterSelected));
+        OnPropertyChanged(nameof(IsIncompleteFilterSelected));
+        RefreshConflictFilterChoices();
         if (IsConflictComplete) QueueConflictRowsRefresh();
+    }
+
+    private bool HasConflictFilter(string choice) => conflictFilter == "all" || conflictFilter.Split(',').Contains(choice, StringComparer.Ordinal);
+
+    private void SetConflictFilterChoice(string choice, bool included)
+    {
+        var choices = new[] { "different", "same", "incomplete" }.Where(item => item == choice ? included : HasConflictFilter(item)).ToArray();
+        SelectConflictFilter(choices.Length == 3 ? "all" : string.Join(',', choices));
+    }
+
+    private void RefreshConflictFilterChoices()
+    {
+        foreach (var name in new[] { nameof(IncludeConflictResources), nameof(IncludeConflictScripts),
+            nameof(IncludeConflictNeedsReview), nameof(IncludeConflictCanOrganize), nameof(IncludeConflictIncomplete),
+            nameof(IncludeAllConflictStates), nameof(IncludeAllConflictTypes),
+            nameof(HasActiveConflictFilter) }) OnPropertyChanged(name);
+        OnPropertyChanged(nameof(EmptyConflictText));
     }
 
     private void QueueConflictRowsRefresh() => ConflictRowsRefreshTask = RefreshConflictRowsAsync();
@@ -210,7 +239,7 @@ public sealed partial class MainWindowViewModel
         // 正在投影的旧会话保持只读，清空来源或重扫直接替换身份。
         conflictSession = new();
         PublishConflictRows([], 0);
-        conflictView = "resources";
+        conflictView = "all";
         conflictFilter = "all";
         conflictRunState = "initial";
         conflictStatus = "尚未扫描";
@@ -224,6 +253,8 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(IsAllFilterSelected));
         OnPropertyChanged(nameof(IsDifferentFilterSelected));
         OnPropertyChanged(nameof(IsSameFilterSelected));
+        OnPropertyChanged(nameof(IsIncompleteFilterSelected));
+        RefreshConflictFilterChoices();
         RefreshConflictVisibility();
         RefreshConflictResults();
     }
@@ -331,8 +362,7 @@ public sealed partial class MainWindowViewModel
                 var mapped = new ConflictResultSession();
                 mapped.Replace(packages, contents, scripts, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
-                var view = mapped.Resources.Count == 0 && mapped.Scripts.Count == 0
-                    && (mapped.Problems.Count > 0 || mapped.RangeProblems.Count > 0) ? "problems" : initialView;
+                var view = initialView;
                 var rows = mapped.BuildVisibleRows(view, initialFilter, mapped.GetExpandedKeysSnapshot(), cancellation.Token);
                 return (Session: mapped, Rows: rows, ParentCount: rows.Count(row => row.Depth == 0), View: view);
             }, cancellation.Token);

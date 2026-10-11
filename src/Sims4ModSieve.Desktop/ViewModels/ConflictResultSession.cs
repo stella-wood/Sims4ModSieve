@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
@@ -11,7 +11,8 @@ public enum ConflictRowKind { PackagePair, ScriptPair, Resource, Module, Content
 public sealed record ConflictResultRow(
     string Key, ConflictRowKind Kind, int Depth, string Title,
     string Detail = "", string Tooltip = "", string SecondTitle = "", string SecondTooltip = "",
-    ConflictPairPriority? Priority = null, bool IsExpandable = false, bool IsExpanded = false)
+    ConflictPairPriority? Priority = null, bool IsExpandable = false, bool IsExpanded = false, bool IsCardEnd = false,
+    int GroupIndex = 0)
 {
     public string StateText => Priority switch
     {
@@ -23,6 +24,9 @@ public sealed record ConflictResultRow(
     public bool HasState => Priority is not null;
     public bool HasSecondTitle => SecondTitle.Length > 0;
     public bool HasDetail => Detail.Length > 0;
+    public bool IsCardStart => Depth == 0;
+    public bool IsTechnicalToggle => Kind == ConflictRowKind.Technical && IsExpandable;
+    public string GroupLabel => GroupIndex > 0 ? $"第 {GroupIndex} 组" : string.Empty;
     public string ExpandName => (IsExpanded ? "收起 " : "展开 ") + Title;
 }
 
@@ -50,7 +54,7 @@ public sealed record ConflictProblemRow(
         ? "整个文件未分析 · " + EntryNamesText : CountText + (EntryNamesText.Length > 0 ? " · " + EntryNamesText : "");
 }
 
-public sealed record ConflictRangeProblem(string Path, string Summary, string Code, string? Detail);
+public sealed record ConflictRangeProblem(string Path, string Summary, string Code, string? Detail, bool IsScript = false);
 
 public sealed class ConflictResultSession
 {
@@ -137,7 +141,7 @@ public sealed class ConflictResultSession
             var category = Classify(issue.Code, scriptStage: issue.Stage);
             if (issue.Stage is ScriptArchiveIssueStage.SourceValidation or ScriptArchiveIssueStage.Discovery
                 || issue.Code is "entry-metadata-failed" or "source-metadata-failed")
-                ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Detail));
+                ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Detail, IsScript: true));
             else Add(issue.Path, issue.EntryName is null, issue.EntryName is null ? null : "script:" + issue.EntryName,
                 new(issue.Code, issue.EntryName, issue.Detail, category));
         }
@@ -171,6 +175,7 @@ public sealed class ConflictResultSession
         IReadOnlySet<string> expanded, CancellationToken cancellationToken = default)
     {
         var rows = new List<ConflictResultRow>();
+        var cards = new List<(ConflictPairPriority Priority, string Key, Action Build)>();
         bool Add(ConflictResultRow row)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -178,155 +183,167 @@ public sealed class ConflictResultSession
             rows.Add(row with { IsExpanded = open });
             return open;
         }
-        void Technical(string key, int depth, string text) =>
-            Add(new(key, ConflictRowKind.Technical, depth, text, Tooltip: text));
-        void Detail(string key, int depth, Func<IEnumerable<string>> values)
+        void Technical(string key, string text) =>
+            Add(new(key, ConflictRowKind.Technical, 1, text, Tooltip: text));
+        void Detail(string key, Func<IEnumerable<string>> values)
         {
-            if (!Add(new(key + "/technical", ConflictRowKind.Technical, depth, TechnicalDetailTitle, IsExpandable: true))) return;
+            if (!Add(new(key + "/technical", ConflictRowKind.Technical, 1, TechnicalDetailTitle, IsExpandable: true))) return;
             var index = 0;
-            foreach (var value in values()) Technical(key + "/technical" + index++, depth + 1, value);
+            foreach (var value in values()) Technical(key + "/technical" + index++, value);
         }
-        void File(string owner, string path, Func<string> technical)
+        void File(string owner, string path, FileStamp? stamp, string? issue = null)
         {
-            var key = owner + "/file" + Identity(path.ToUpperInvariant());
-            if (Add(new(key, ConflictRowKind.File, 4, Path.GetFileName(path), Tooltip: path, IsExpandable: true)))
-            {
-                Technical(key + "/path", 5, path);
-                Technical(key + "/entry", 5, technical());
-            }
+            var metadata = stamp is { } value
+                ? $"{value.LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm} · {DuplicateGroupViewModel.FormatBytes(value.Length)}"
+                : "修改时间未知 · 大小未知";
+            Add(new(owner + "/file" + Identity(path.ToUpperInvariant()), ConflictRowKind.File, 1,
+                Path.GetFileName(path), Path.GetDirectoryName(path) + "\n" + metadata + (issue is null ? "" : "\n" + issue), Tooltip: path));
         }
-        void Unfinished(string owner, string path, string typeName, string? entryTitle, string? identity, string? code, string? detail,
-            ConflictProblemCategory category, int index)
-        {
-            // 未完成条目按下标区分；同一资源的多个失败条目共用展开键会串状态。
-            var key = owner + "/unfinished" + index;
-            if (!Add(new(key, ConflictRowKind.Content, 2, Path.GetFileName(path),
-                "1 个文件 · " + ProblemEntryText(category, entryTitle is null ? typeName : entryTitle),
-                Tooltip: path, Priority: ConflictPairPriority.Incomplete, IsExpandable: true))) return;
-            Detail(key, 3, () => [typeName + " · " + (identity ?? "资源未知"), ProblemTechnical(code, detail, category)]);
-        }
-        void ResourceContents(string owner, ResourceContentComparison comparison)
-        {
-            Detail(owner, 2, () => ["TGI " + comparison.Key.Tgi]);
-            for (var index = 0; index < comparison.ContentGroups.Count; index++)
-            {
-                var group = comparison.ContentGroups[index];
-                var key = owner + "/content" + Identity(group.Sha256);
-                if (!Add(new(key, ConflictRowKind.Content, 2, $"内容分组 {index + 1}", $"{group.Occurrences.Count} 个文件", IsExpandable: true))) continue;
-                Detail(key, 3, () => new[] { "SHA256 " + group.Sha256 }.Concat(group.Occurrences.Select(
-                    occurrence => $"{occurrence.PackagePath} · 解压大小 {occurrence.DecompressedLength} 字节")));
-                foreach (var occurrence in group.Occurrences)
-                    File(key, occurrence.PackagePath, () => $"解压大小 {occurrence.DecompressedLength} 字节");
-            }
-            for (var index = 0; index < comparison.Uncompared.Count; index++)
-            {
-                var occurrence = comparison.Uncompared[index];
-                var issue = occurrence.Issue;
-                Unfinished(owner, occurrence.PackagePath, GetResourceTypeDisplayName(comparison.Key.Type), null, comparison.Key.Tgi,
-                    issue?.Code, issue?.Detail, Classify(issue?.Code, resourceStage: issue?.Stage), index);
-            }
-        }
-        void ModuleContents(string owner, ScriptModuleCollision collision)
-        {
-            for (var index = 0; index < collision.ContentGroups.Count; index++)
-            {
-                var group = collision.ContentGroups[index];
-                var key = owner + "/content" + Identity(group.Sha256);
-                if (!Add(new(key, ConflictRowKind.Content, 2, $"内容分组 {index + 1}", $"{group.Occurrences.Count} 个文件", IsExpandable: true))) continue;
-                Detail(key, 3, () => new[] { "SHA256 " + group.Sha256 }.Concat(group.Occurrences.Select(
-                    occurrence => occurrence.ArchivePath + " · " + occurrence.EntryName)));
-                foreach (var occurrence in group.Occurrences) File(key, occurrence.ArchivePath, () => occurrence.EntryName);
-            }
-            for (var index = 0; index < collision.Uncompared.Count; index++)
-            {
-                var occurrence = collision.Uncompared[index];
-                Unfinished(owner, occurrence.ArchivePath, "脚本模块", occurrence.EntryName, occurrence.EntryName,
-                    occurrence.Issue?.Code, occurrence.Issue?.Detail,
-                    Classify(occurrence.Issue?.Code, scriptStage: occurrence.Issue?.Stage), index);
-            }
-        }
+        void Explanation(string owner, string text) => Add(new(owner + "/explanation", ConflictRowKind.Explanation, 1, text));
+        void Card(ConflictPairPriority priority, string key, Action build) => cards.Add((priority, key, build));
 
-        if (view == "resources")
-            foreach (var pair in Resources)
+        var resourceGroups = Resources.SelectMany(pair => pair.Resources).GroupBy(match => match.Key).ToArray();
+        var moduleGroups = Scripts.SelectMany(pair => pair.Modules).GroupBy(match => match.ModuleName, StringComparer.Ordinal).ToArray();
+        if (view is "all" or "resources")
+            foreach (var matches in resourceGroups)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!Matches(filter, pair.HasConfirmedDifference, pair.HasConfirmedIdentical)) continue;
-                var key = "package" + Identity(pair.FirstPath.ToUpperInvariant()) + Identity(pair.SecondPath.ToUpperInvariant());
-                var supplement = pair.FirstContainedInSecond && pair.SecondContainedInFirst ? "两份文件的资源完全一致"
-                    : pair.FirstContainedInSecond ? $"{Path.GetFileName(pair.FirstPath)} 已被 {Path.GetFileName(pair.SecondPath)} 完全包含，删除 {Path.GetFileName(pair.FirstPath)} 不会丢失内容"
-                    : pair.SecondContainedInFirst ? $"{Path.GetFileName(pair.SecondPath)} 已被 {Path.GetFileName(pair.FirstPath)} 完全包含，删除 {Path.GetFileName(pair.SecondPath)} 不会丢失内容" : "";
-                var detail = PairStatistics(pair.DifferentResourceCount, pair.IdenticalResourceCount, pair.IncompleteResourceCount, "资源", pair.IsSuspectedModVersionPair);
-                if (supplement.Length > 0) detail += "\n" + supplement;
-                if (!Add(new(key, ConflictRowKind.PackagePair, 0, Path.GetFileName(pair.FirstPath), detail, pair.FirstPath,
-                    Path.GetFileName(pair.SecondPath), pair.SecondPath, pair.Priority, true))) continue;
-                foreach (var match in pair.Resources)
+                var comparison = matches.First().Comparison;
+                var priority = matches.Min(match => match.Priority);
+                var key = "resource" + Identity(comparison.Key.Tgi);
+                Card(priority, key, () =>
                 {
-                    var resourceKey = key + "/resource" + Identity(match.Key.Tgi);
-                    if (!Add(new(resourceKey, ConflictRowKind.Resource, 1, GetResourceTypeDisplayName(match.Key.Type),
-                        match.HasIncomplete ? "未完成 1 项" : "", Priority: match.Priority, IsExpandable: true))) continue;
-                    if (match.HasConfirmedDifference) Add(new(resourceKey + "/explanation", ConflictRowKind.Explanation, 2,
-                        "这两个 mod 改了同一样东西，游戏只会用其中一个。"));
-                    ResourceContents(resourceKey, match.Comparison);
-                }
+                    if (!Add(new(key, ConflictRowKind.Resource, 0, GetResourceTypeDisplayName(comparison.Key.Type),
+                        Priority: priority, IsExpandable: true))) return;
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var fileCount = comparison.ContentGroups.SelectMany(group => group.Occurrences).Concat(comparison.Uncompared)
+                        .Select(occurrence => occurrence.PackagePath).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+                    var showGroups = fileCount >= 3 && comparison.ContentGroups.Count >= 2;
+                    for (var index = 0; index < comparison.ContentGroups.Count; index++)
+                    {
+                        var group = comparison.ContentGroups[index];
+                        var files = group.Occurrences.Where(occurrence => seen.Add(occurrence.PackagePath)).ToArray();
+                        if (showGroups && files.Length > 1)
+                            Add(new(key + "/content" + index, ConflictRowKind.Content, 1, $"以下 {files.Length} 个内容相同"));
+                        foreach (var occurrence in files) File(key, occurrence.PackagePath, occurrence.PackageStamp);
+                    }
+                    foreach (var occurrence in comparison.Uncompared)
+                        if (seen.Add(occurrence.PackagePath))
+                            File(key, occurrence.PackagePath, occurrence.PackageStamp, GetProblemSummary(Classify(occurrence.Issue?.Code, resourceStage: occurrence.Issue?.Stage)));
+                    Explanation(key, comparison.HasConfirmedDifference
+                        ? "这几个 mod 改了同一样东西，游戏只会用其中一个"
+                        : comparison.IsComplete ? "这些文件里的这项资源内容相同"
+                        : "部分资源未完成比较，暂时无法确认全部内容是否相同");
+                    Detail(key, () => new[] { "TGI " + comparison.Key.Tgi }
+                        .Concat(comparison.ContentGroups.SelectMany(group => group.Occurrences.Select(occurrence =>
+                            $"{occurrence.PackagePath}\nSHA256 {group.Sha256} · 解压大小 {occurrence.DecompressedLength} 字节")))
+                        .Concat(comparison.Uncompared.Select(occurrence => occurrence.PackagePath + "\n" +
+                            ProblemTechnical(occurrence.Issue?.Code, occurrence.Issue?.Detail, Classify(occurrence.Issue?.Code, resourceStage: occurrence.Issue?.Stage)))));
+                });
             }
-        else if (view == "scripts")
-            foreach (var pair in Scripts)
+        if (view is "all" or "scripts")
+            foreach (var matches in moduleGroups)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!Matches(filter, pair.HasConfirmedDifference, pair.HasConfirmedIdentical)) continue;
-                var key = "script" + Identity(pair.FirstPath.ToUpperInvariant()) + Identity(pair.SecondPath.ToUpperInvariant());
-                if (!Add(new(key, ConflictRowKind.ScriptPair, 0, Path.GetFileName(pair.FirstPath),
-                    PairStatistics(pair.DifferentModuleCount, pair.IdenticalModuleCount, pair.IncompleteModuleCount, "模块", pair.IsSuspectedModVersionPair),
-                    pair.FirstPath, Path.GetFileName(pair.SecondPath), pair.SecondPath, pair.Priority, true))) continue;
-                foreach (var match in pair.Modules)
+                var collision = matches.First().Collision;
+                var priority = matches.Min(match => match.Priority);
+                var key = "module" + Identity(collision.ModuleName);
+                Card(priority, key, () =>
                 {
-                    var moduleKey = key + "/module" + Identity(match.ModuleName);
-                    if (!Add(new(moduleKey, ConflictRowKind.Module, 1, match.ModuleName, match.HasIncomplete ? "未完成 1 项" : "",
-                        Priority: match.Priority, IsExpandable: true))) continue;
-                    if (match.HasConfirmedDifference) Add(new(moduleKey + "/explanation", ConflictRowKind.Explanation, 2,
-                        "这两个 mod 带了同名脚本，游戏只会加载其中一份。"));
-                    ModuleContents(moduleKey, match.Collision);
-                }
+                    if (!Add(new(key, ConflictRowKind.Module, 0, collision.ModuleName, Priority: priority, IsExpandable: true))) return;
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var showGroups = collision.ArchiveCount >= 3 && collision.ContentGroups.Count >= 2;
+                    for (var index = 0; index < collision.ContentGroups.Count; index++)
+                    {
+                        var group = collision.ContentGroups[index];
+                        var files = group.Occurrences.Where(occurrence => seen.Add(occurrence.ArchivePath)).ToArray();
+                        if (showGroups && files.Length > 1)
+                            Add(new(key + "/content" + index, ConflictRowKind.Content, 1, $"以下 {files.Length} 个内容相同"));
+                        foreach (var occurrence in files) File(key, occurrence.ArchivePath, occurrence.ArchiveStamp);
+                    }
+                    foreach (var occurrence in collision.Uncompared)
+                        if (seen.Add(occurrence.ArchivePath))
+                            File(key, occurrence.ArchivePath, occurrence.ArchiveStamp, GetProblemSummary(Classify(occurrence.Issue?.Code, scriptStage: occurrence.Issue?.Stage)));
+                    Explanation(key, collision.HasConfirmedDifference
+                        ? "这几个 mod 带了同名脚本，游戏只会加载其中一份"
+                        : collision.IsComplete ? "这些文件带的这个脚本模块内容相同"
+                        : "部分脚本未完成比较，暂时无法确认全部内容是否相同");
+                    Detail(key, () => collision.ContentGroups.SelectMany(group => group.Occurrences.Select(occurrence =>
+                            $"{occurrence.ArchivePath}\n{occurrence.EntryName}\nSHA256 {group.Sha256} · 解压大小 {occurrence.ContentLength} 字节"))
+                        .Concat(collision.Uncompared.Select(occurrence => occurrence.ArchivePath + "\n" + occurrence.EntryName + "\n" +
+                            ProblemTechnical(occurrence.Issue?.Code, occurrence.Issue?.Detail, Classify(occurrence.Issue?.Code, scriptStage: occurrence.Issue?.Stage)))));
+                });
             }
-        else if (view == "problems")
+
+        // 已出现在资源／模块卡里的失败条目，不再复制为未完成文件卡；未碰撞的失败仍保留。
+        var represented = new Dictionary<string, HashSet<(string Entry, string Code)>>(StringComparer.OrdinalIgnoreCase);
+        void Represent(string path, string entry, string code)
         {
-            foreach (var problem in Problems)
+            if (!represented.TryGetValue(path, out var entries)) represented[path] = entries = [];
+            entries.Add((entry, code));
+        }
+        foreach (var matches in resourceGroups)
+            foreach (var occurrence in matches.First().Comparison.Uncompared) Represent(occurrence.PackagePath, occurrence.Key.Tgi, occurrence.Issue?.Code ?? "resource-read-unknown");
+        foreach (var matches in moduleGroups)
+            foreach (var occurrence in matches.First().Collision.Uncompared) Represent(occurrence.ArchivePath, occurrence.EntryName, occurrence.Issue?.Code ?? "script-read-unknown");
+        foreach (var problem in Problems)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var isScript = Path.GetExtension(problem.Path).Equals(".ts4script", StringComparison.OrdinalIgnoreCase);
+            if (view != "problems" && view != "all" && view != (isScript ? "scripts" : "resources")) continue;
+            var reasons = problem.Reasons.Where(reason => reason.EntryName is null
+                || !represented.TryGetValue(problem.Path, out var entries) || !entries.Contains((reason.EntryName, reason.Code))).ToArray();
+            if (reasons.Length == 0) continue;
+            var key = "problem" + Identity(problem.Path.ToUpperInvariant());
+            Card(ConflictPairPriority.Incomplete, key, () =>
             {
-                var key = "problem" + Identity(problem.Path.ToUpperInvariant());
-                if (!Add(new(key, ConflictRowKind.Problem, 0, problem.Name, problem.CountText + " · " + problem.Summary,
-                    problem.Path, Priority: ConflictPairPriority.Incomplete, IsExpandable: true))) continue;
-                for (var index = 0; index < problem.Reasons.Count; index++)
+                if (!Add(new(key, ConflictRowKind.Problem, 0, problem.Name, Tooltip: problem.Path,
+                    Priority: ConflictPairPriority.Incomplete, IsExpandable: true))) return;
+                File(key, problem.Path, PackageReport?.ResourceInventories.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, problem.Path))?.ScannedStamp);
+                foreach (var (reason, index) in reasons.Select((reason, index) => (reason, index)))
                 {
-                    var reason = problem.Reasons[index];
                     var subject = reason.ResourceType is { } type ? GetResourceTypeDisplayName(type) : reason.EntryName;
                     Add(new(key + "/reason" + index, ConflictRowKind.Explanation, 1, ProblemEntryText(reason.Category, subject)));
                 }
-                Detail(key, 1, () => new[] { problem.Path }.Concat(problem.Reasons.Select(reason =>
+                Detail(key, () => new[] { problem.Path }.Concat(reasons.Select(reason =>
                     ProblemReasonText(reason.Code, reason.Detail, reason.Category, reason.ResourceType, reason.EntryName))));
-            }
+            });
+        }
+        if (view != "none")
             for (var index = 0; index < RangeProblems.Count; index++)
             {
                 var problem = RangeProblems[index];
+                if (view != "all" && view != "problems" && view != (problem.IsScript ? "scripts" : "resources")) continue;
                 var key = "range" + Identity(problem.Path.ToUpperInvariant()) + index;
-                if (!Add(new(key, ConflictRowKind.RangeProblem, 0, "检查范围问题", problem.Summary, problem.Path,
-                    Priority: ConflictPairPriority.Incomplete, IsExpandable: true))) continue;
-                Detail(key, 1, () => [problem.Path, problem.Code + " · " + problem.Detail]);
+                Card(ConflictPairPriority.Incomplete, key, () =>
+                {
+                    if (!Add(new(key, ConflictRowKind.RangeProblem, 0, "检查范围问题", Tooltip: problem.Path,
+                        Priority: ConflictPairPriority.Incomplete, IsExpandable: true))) return;
+                    Explanation(key, problem.Summary);
+                    Detail(key, () => [problem.Path, problem.Code + " · " + problem.Detail]);
+                });
             }
+        var groupIndex = 0;
+        foreach (var card in cards.OrderBy(card => card.Priority).ThenBy(card => card.Key, StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Matches(filter, card.Priority)) continue;
+            var firstRow = rows.Count;
+            card.Build();
+            rows[firstRow] = rows[firstRow] with { GroupIndex = ++groupIndex };
+            rows[^1] = rows[^1] with { IsCardEnd = true };
         }
-        cancellationToken.ThrowIfCancellationRequested();
         return rows.AsReadOnly();
     }
 
-    private static bool Matches(string filter, bool different, bool identical) => filter switch
-    {
-        "different" => different,
-        "same" => identical,
-        _ => true,
-    };
+    private static bool Matches(string filter, ConflictPairPriority priority) => filter == "all"
+        || filter.Split(',').Contains(priority switch
+        {
+            ConflictPairPriority.NeedsReview => "different",
+            ConflictPairPriority.CanOrganize => "same",
+            _ => "incomplete",
+        }, StringComparer.Ordinal);
     private static string Identity(string text) => $"/{text.Length}:{text}";
-    private static string PairStatistics(int different, int identical, int incomplete, string unit, bool suspected) =>
-        $"{unit} · 需查看 {different} · 可整理 {identical}" + (incomplete > 0 ? $" · 未完成 {incomplete}" : "")
-        + (suspected ? "\n疑似同一 mod 的两个版本" : "");
     private static string ProblemTechnical(string? code, string? detail, ConflictProblemCategory category) =>
         GetProblemSummary(category) + " · " + code + (detail is null ? "" : " · " + detail);
 
@@ -384,12 +401,12 @@ public sealed class ConflictResultSession
     {
         // 离线核对 LlamaLogic.Packages 3.8.2 ResourceType 常量及随包 XML。
         0x034AEECB => "捏人部件",
-        0x03B33DDF => "调校数据",
+        0x03B33DDF => "调参",
         0x545AC67A => "模拟数据",
         0xC0DB5AE7 => "物件定义",
         0x319E4F1D => "物件目录",
         0x00B2D882 or 0x2BC04EDF or 0x3453CF95 or 0xBA856C78 or 0x2F7D0004 or 0x2F7D0006 => "图像",
         0x220557DA => "文本表",
-        _ => "其他资源",
+        _ => "未识别资源",
     };
 }

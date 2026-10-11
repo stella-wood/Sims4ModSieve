@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Conflicts;
@@ -36,7 +36,7 @@ public sealed class ConflictPageVirtualizationTests
         await CheckScrollAsync(window, list, "未完成父行");
         model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
         await model.ConflictRowsRefreshTask;
-        Assert.AreEqual(11002, model.ConflictRows.Count);
+        Assert.AreEqual(11003, model.ConflictRows.Count);
         AssertOrdinaryRows(model.ConflictRows);
         await CheckScrollAsync(window, list, "未完成展开");
         Assert.IsTrue(model.ConflictRows[0].IsExpanded);
@@ -44,26 +44,22 @@ public sealed class ConflictPageVirtualizationTests
         var range = model.ConflictRows.First(row => row.Kind == ConflictRowKind.RangeProblem);
         model.ToggleConflictExpandedCommand.Execute(range);
         await model.ConflictRowsRefreshTask;
-        Assert.AreEqual(11003, model.ConflictRows.Count);
+        Assert.AreEqual(11005, model.ConflictRows.Count);
         await CheckScrollAsync(window, list, "范围问题");
         var sources = Descendants<ListBox>(window).Single(list => list.Name == "ConflictSourcesList");
         Assert.AreEqual(501, sources.Items.Count);
         await CheckScrollAsync(window, sources, "来源");
         model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
         await model.ConflictRowsRefreshTask;
-        Assert.AreEqual(1001, model.ConflictRows.Count);
+        Assert.AreEqual(1002, model.ConflictRows.Count);
         await CheckScrollAsync(window, list, "收起后");
     });
 
     [TestMethod]
-    public Task ExpandedResourceAndScriptDetailsUseTheSameVirtualizedContainers() => WpfTestHost.RunAsync(async () =>
+    public Task ResourceAndScriptCardsStayVirtualizedAcrossThousandsOfGroups() => WpfTestHost.RunAsync(async () =>
     {
-        var resources = Enumerable.Range(0, 10000).Select(index => Resource((ulong)index, (A, "a"), (B, "b")))
-            .Concat(Enumerable.Range(0, 500).Select(index => Resource((ulong)index + 20000,
-                ($@"C:\Mods\first-{index:D4}.package", "a"), ($@"C:\Mods\second-{index:D4}.package", "b")))).ToArray();
-        var modules = Enumerable.Range(0, 10000).Select(index => Collision($"library.module{index:D5}", (A + ".ts4script", "a"), (B + ".ts4script", "b")))
-            .Concat(Enumerable.Range(0, 500).Select(index => Collision($"other.module{index:D4}",
-                ($@"C:\Mods\first-{index:D4}.ts4script", "a"), ($@"C:\Mods\second-{index:D4}.ts4script", "b")))).ToArray();
+        var resources = Enumerable.Range(0, 10500).Select(index => Resource((ulong)index, (A, "a"), (B, "b"))).ToArray();
+        var modules = Enumerable.Range(0, 10500).Select(index => Collision($"library.module{index:D5}", (A + ".ts4script", "a"), (B + ".ts4script", "b"))).ToArray();
         var session = Session(resources, scripts: Scripts(modules));
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
@@ -75,28 +71,21 @@ public sealed class ConflictPageVirtualizationTests
         {
             model.SelectConflictViewCommand.Execute(view);
             await model.ConflictRowsRefreshTask;
-            Assert.AreEqual(501, model.ConflictRows.Count);
-            await CheckScrollAsync(window, list, view + "父行");
-            var parent = model.ConflictRows[0];
-            model.ToggleConflictExpandedCommand.Execute(parent);
+            Assert.AreEqual(10500, model.ConflictRows.Count);
+            await CheckScrollAsync(window, list, view + "收起");
+            var card = model.ConflictRows[0];
+            model.ToggleConflictExpandedCommand.Execute(card);
             await model.ConflictRowsRefreshTask;
-            Assert.AreEqual(10501, model.ConflictRows.Count);
-            Assert.AreEqual(501, model.VisibleConflictParentCount);
-            var child = model.ConflictRows[1];
-            model.ToggleConflictExpandedCommand.Execute(child);
-            await model.ConflictRowsRefreshTask;
-            await ExpandAsync(model, ConflictRowKind.Content);
+            Assert.AreEqual(10504, model.ConflictRows.Count);
+            Assert.AreEqual(10500, model.VisibleConflictParentCount);
+            Assert.IsTrue(model.ConflictRows.All(row => row.Depth <= 1));
             await ExpandAsync(model, ConflictRowKind.Technical);
-            var file = model.ConflictRows.First(row => row.Kind == ConflictRowKind.File);
-            model.ToggleConflictExpandedCommand.Execute(file);
-            await model.ConflictRowsRefreshTask;
-            Assert.IsTrue(model.ConflictRows.Any(row => row.Kind == ConflictRowKind.Technical && row.Depth >= 4));
-            await CheckScrollAsync(window, list, view + "展开");
+            Assert.IsTrue(model.ConflictRows.Any(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable));
+            await CheckScrollAsync(window, list, view + "展开技术详情");
             Assert.IsTrue(model.ConflictRows[0].IsExpanded);
-            Assert.IsTrue(model.ConflictRows[1].IsExpanded);
-            model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
+            model.ToggleConflictExpandedCommand.Execute(card);
             await model.ConflictRowsRefreshTask;
-            Assert.AreEqual(501, model.ConflictRows.Count);
+            Assert.AreEqual(10500, model.ConflictRows.Count);
         }
     });
 
@@ -111,15 +100,10 @@ public sealed class ConflictPageVirtualizationTests
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
         await SetSessionAsync(model, session);
-        Assert.AreEqual(10000, model.ConflictRows.Count);
+        Assert.AreEqual(1, model.ConflictRows.Count);
         model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
         await model.ConflictRowsRefreshTask;
-        model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[1]);
-        await model.ConflictRowsRefreshTask;
-        var content = model.ConflictRows.First(row => row.Kind == ConflictRowKind.Content);
-        model.ToggleConflictExpandedCommand.Execute(content);
-        await model.ConflictRowsRefreshTask;
-        Assert.AreEqual(10000, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
+        Assert.AreEqual(10001, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
         var list = Descendants<ListBox>(window).Single(list => list.Name == "ConflictRowsList");
         await CheckScrollAsync(window, list, "完整内容组文件");
     });
@@ -139,19 +123,7 @@ public sealed class ConflictPageVirtualizationTests
         await SetSessionAsync(model, session);
         var list = Descendants<ListBox>(window).Single(list => list.Name == "ConflictRowsList");
         Assert.AreEqual(200, model.ConflictRows.Count);
-        model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
-        await model.ConflictRowsRefreshTask;
-        foreach (var pair in model.ConflictRows.Where(row => row.Kind == ConflictRowKind.PackagePair).ToArray())
-        {
-            if (!pair.IsExpanded)
-            {
-                model.ToggleConflictExpandedCommand.Execute(pair);
-                await model.ConflictRowsRefreshTask;
-            }
-            foreach (var resource in model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Resource && !row.IsExpanded).ToArray())
-                model.ToggleConflictExpandedCommand.Execute(resource);
-            await model.ConflictRowsRefreshTask;
-        }
+        await ExpandAsync(model, ConflictRowKind.Resource);
         Assert.IsTrue(model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Resource).All(row => row.IsExpanded));
         var details = model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && row.Title == "技术详情").ToArray();
         Assert.AreEqual(200, details.Length);
@@ -161,12 +133,7 @@ public sealed class ConflictPageVirtualizationTests
         await ExpandAsync(model, ConflictRowKind.Technical);
         Assert.IsTrue(model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && row.Title == "技术详情").All(row => row.IsExpanded));
         await CheckScrollAsync(window, list, "技术详情展开");
-        await ExpandAsync(model, ConflictRowKind.Content);
-        await ExpandAsync(model, ConflictRowKind.Technical);
-        await CheckScrollAsync(window, list, "内容组技术详情展开");
         Assert.IsTrue(model.ConflictRows.Any(row => row.Kind == ConflictRowKind.File));
-        await ExpandAsync(model, ConflictRowKind.File);
-        await CheckScrollAsync(window, list, "文件技术详情展开");
         foreach (var row in model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && row.Title == "技术详情").ToArray())
             model.ToggleConflictExpandedCommand.Execute(row);
         await model.ConflictRowsRefreshTask;
@@ -182,12 +149,10 @@ public sealed class ConflictPageVirtualizationTests
             Enumerable.Range(0, 1000).Select(index => new Sims4ModSieve.Core.Scripts.ScriptArchiveIssue(
                 Sims4ModSieve.Core.Scripts.ScriptArchiveIssueCode.EntryCorrupt,
                 Sims4ModSieve.Core.Scripts.ScriptArchiveIssueStage.Entry, A, "raw detail", EntryName: $"pkg/{index}.pyc")).ToArray()));
-        var pair = Rows(session).First();
+        var pair = Rows(session).First(row => row.Kind == ConflictRowKind.Resource);
         session.ToggleExpanded(pair.Key);
-        session.ToggleExpanded(Rows(session).Single(row => row.Kind == ConflictRowKind.Resource).Key);
-        session.ToggleExpanded(Rows(session).First(row => row.Kind == ConflictRowKind.Content).Key);
         AssertOrdinaryRows(Rows(session));
-        Assert.AreEqual(1000, Rows(session).Count(row => row.Kind == ConflictRowKind.File));
+        Assert.AreEqual(1001, Rows(session).Count(row => row.Kind == ConflictRowKind.File));
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");

@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
@@ -19,7 +19,7 @@ public sealed class ConflictResultSessionTests
     internal static readonly Regex TechnicalText = new(@"[0-9A-Fa-f]{8}[:/-][0-9A-Fa-f]{8}|\b[0-9A-Fa-f]{32,}\b", RegexOptions.Compiled);
 
     [TestMethod]
-    public void ThreeFilesKeepPairFactsAndOriginalContentGroups()
+    public void ThreeFilesUseOneCardAndInlineIdenticalFilesWithoutChangingPairFacts()
     {
         var comparison = Resource(1, (A, "same"), (B, "same"), (C, "other"));
         var session = Session([comparison], [(A, 1), (B, 1), (C, 1)]);
@@ -28,22 +28,23 @@ public sealed class ConflictResultSessionTests
         Assert.AreEqual(ConflictPairPriority.CanOrganize, pair.Priority);
         Assert.IsFalse(pair.HasConfirmedDifference || pair.HasIncomplete);
         Assert.AreSame(comparison, pair.Resources.Single().Comparison);
-        Assert.AreSame(comparison.ContentGroups, pair.Resources.Single().Comparison.ContentGroups);
-        var parent = Rows(session).Single(row => row.Tooltip == A && row.SecondTooltip == B);
-        Assert.AreEqual(ConflictPairPriority.CanOrganize, parent.Priority);
-        StringAssert.Contains(parent.Detail, "两份文件的资源完全一致");
-        session.ToggleExpanded(parent.Key);
-        var child = Rows(session).Single(row => row.Key.StartsWith(parent.Key + "/resource", StringComparison.Ordinal));
-        Assert.AreEqual(ConflictPairPriority.CanOrganize, child.Priority);
-        Assert.AreEqual("捏人部件", child.Title);
-        session.ToggleExpanded(child.Key);
-        var groups = Rows(session).Where(row => row.Key.StartsWith(child.Key) && row.Kind == ConflictRowKind.Content).ToArray();
-        Assert.AreEqual(2, groups.Length);
-        Assert.IsTrue(Rows(session).Any(row => row.Key == child.Key + "/technical"));
-        Assert.IsFalse(Rows(session).Any(row => row.Kind == ConflictRowKind.Technical && row.Title.Contains("TGI", StringComparison.Ordinal)));
-        session.ToggleExpanded(groups[0].Key);
-        Assert.AreEqual(2, Rows(session).Count(row => row.Kind == ConflictRowKind.File));
-        Assert.IsFalse(Rows(session).Any(row => row.Kind == ConflictRowKind.Technical && row.Title.Contains("SHA256", StringComparison.Ordinal)));
+        var card = Rows(session).Single();
+        Assert.AreEqual(ConflictPairPriority.NeedsReview, card.Priority);
+        Assert.AreEqual("捏人部件", card.Title);
+        Assert.IsFalse(card.IsExpanded);
+        Assert.IsTrue(card.IsCardEnd);
+        session.ToggleExpanded(card.Key);
+        var rows = Rows(session);
+        Assert.AreEqual(3, rows.Count(row => row.Kind == ConflictRowKind.File));
+        Assert.AreEqual(1, rows.Count(row => row.Kind == ConflictRowKind.Content));
+        var label = rows.Single(row => row.Kind == ConflictRowKind.Content);
+        Assert.AreEqual("以下 2 个内容相同", label.Title);
+        Assert.IsFalse(label.IsExpandable);
+        CollectionAssert.AreEqual(new[] { A, B, C }, rows.Where(row => row.Kind == ConflictRowKind.File).Select(row => row.Tooltip).ToArray());
+        Assert.IsTrue(rows.All(row => row.Depth <= 1));
+        Assert.AreEqual(1, rows.Count(row => row.HasState));
+        Assert.AreEqual(1, rows.Count(row => row.IsCardEnd));
+        AssertOrdinaryRows(rows);
     }
 
     [TestMethod]
@@ -58,55 +59,53 @@ public sealed class ConflictResultSessionTests
     }
 
     [TestMethod]
-    public void MixedPairsMatchBothFiltersAndKeepEveryDetailInCorePriorityOrder()
+    public void ResourceCardsSortByPriorityAndCheckboxFiltersSelectWholeCards()
     {
         var session = Session([Resource(3, (A, "x"), (B, "x")), Resource(2, (A, "x"), (B, "y")), Resource(1, (A, "x"), (B, null))]);
-        var parent = Rows(session).Single();
-        Assert.AreEqual(ConflictPairPriority.NeedsReview, parent.Priority);
-        StringAssert.Contains(parent.Detail, "未完成 1");
-        StringAssert.Contains(parent.Detail, "疑似同一 mod 的两个版本");
+        var rows = Rows(session);
+        CollectionAssert.AreEqual(new[] { ConflictPairPriority.NeedsReview, ConflictPairPriority.CanOrganize, ConflictPairPriority.Incomplete }, rows.Select(row => row.Priority!.Value).ToArray());
+        CollectionAssert.AreEqual(new[] { "第 1 组", "第 2 组", "第 3 组" }, rows.Select(row => row.GroupLabel).ToArray());
         Assert.AreEqual(1, Rows(session, filter: "different").Count);
         Assert.AreEqual(1, Rows(session, filter: "same").Count);
-        session.ToggleExpanded(parent.Key);
-        var children = Rows(session, filter: "same").Where(row => row.Kind == ConflictRowKind.Resource).ToArray();
-        Assert.AreEqual(3, children.Length);
-        CollectionAssert.AreEqual(new[] { ConflictPairPriority.NeedsReview, ConflictPairPriority.CanOrganize, ConflictPairPriority.Incomplete }, children.Select(row => row.Priority!.Value).ToArray());
-        Assert.AreEqual(3, Rows(session, filter: "different").Count(row => row.Kind == ConflictRowKind.Resource));
+        Assert.AreEqual("第 1 组", Rows(session, filter: "same").Single().GroupLabel);
+        Assert.AreEqual(1, Rows(session, filter: "incomplete").Count);
+        Assert.AreEqual(2, Rows(session, filter: "different,incomplete").Count);
+        Assert.AreEqual(0, Rows(session, filter: "").Count);
+        session.ToggleExpanded(rows[0].Key);
+        Assert.AreEqual(2, Rows(session, filter: "different").Count(row => row.Kind == ConflictRowKind.File));
+        Assert.IsTrue(Rows(session).Where(row => row.Depth > 0).All(row => row.GroupLabel.Length == 0));
+        Assert.IsTrue(Rows(session, filter: "same").All(row => row.Depth == 0));
     }
 
     [TestMethod]
-    public void ContainmentUsesInventoryAndStableVersionEvidenceInBothDirections()
+    public void ContainmentEligibilityStillUsesCoreInventoryAndStableVersions()
     {
         foreach (var counts in new[] { (1, 2), (2, 1), (1, 1) })
         {
             var session = Session([Resource(1, (A, "x"), (B, "x"))], [(A, counts.Item1), (B, counts.Item2)]);
-            Assert.IsNotNull(session.PackageReport);
-            Assert.AreEqual(2, session.PackageReport.ResourceInventories.Count);
-            Assert.IsTrue(session.ContentReport!.Packages.All(version => version.IsStable && version.ScannedStamp == Stamp && version.StampAfterRead == Stamp));
-            var text = Rows(session).Single().Detail;
-            StringAssert.Contains(text, counts == (1, 1) ? "两份文件的资源完全一致"
-                : counts == (1, 2) ? "a.package 已被 b.package 完全包含，删除 a.package 不会丢失内容"
-                : "b.package 已被 a.package 完全包含，删除 b.package 不会丢失内容");
+            var pair = session.Resources.Single();
+            Assert.AreEqual(counts.Item1 == 1, pair.FirstContainedInSecond);
+            Assert.AreEqual(counts.Item2 == 1, pair.SecondContainedInFirst);
+            Assert.AreEqual(ConflictPairPriority.CanOrganize, Rows(session).Single().Priority);
         }
-        Assert.AreEqual(0, Session([Resource(1, (A, "x"), (B, "x"))]).Resources.Count);
+        Assert.AreEqual(0, Rows(Session([Resource(1, (A, "x"), (B, "x"))])).Count);
     }
 
     [TestMethod]
-    public void ScriptPairsKeepModulesAndFullContextWithoutArchiveContainment()
+    public void ScriptsUseModuleCardsAndKeepFullContentContext()
     {
         var collisions = new[] { Collision("pkg.a", (A, "x"), (B, "y"), (C, "x")), Collision("pkg.b", (A, "x"), (B, "x")) };
         var session = Session([], scripts: Scripts(collisions));
         Assert.AreEqual(2, session.Scripts.Count);
-        var parent = Rows(session, "scripts").Single(row => row.Tooltip == A && row.SecondTooltip == B);
-        StringAssert.Contains(parent.Detail, "疑似同一 mod 的两个版本");
-        Assert.IsFalse(parent.Detail.Contains("包含", StringComparison.Ordinal));
-        session.ToggleExpanded(parent.Key);
-        var modules = Rows(session, "scripts", "same").Where(row => row.Kind == ConflictRowKind.Module).ToArray();
-        Assert.AreEqual(2, modules.Length);
-        session.ToggleExpanded(modules[0].Key);
-        var group = Rows(session, "scripts").First(row => row.Kind == ConflictRowKind.Content);
-        session.ToggleExpanded(group.Key);
-        Assert.AreEqual(2, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.File));
+        var cards = Rows(session, "scripts");
+        Assert.AreEqual(2, cards.Count);
+        Assert.AreEqual("pkg.a", cards[0].Title);
+        Assert.AreEqual(ConflictPairPriority.NeedsReview, cards[0].Priority);
+        Assert.AreEqual(ConflictPairPriority.CanOrganize, cards[1].Priority);
+        session.ToggleExpanded(cards[0].Key);
+        Assert.AreEqual(3, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.File));
+        Assert.AreEqual("以下 2 个内容相同", Rows(session, "scripts").Single(row => row.Kind == ConflictRowKind.Content).Title);
+        Assert.AreEqual(1, Rows(session, "scripts", "same").Count);
         Assert.AreSame(collisions[0], session.Scripts.Single(pair => pair.FirstPath == A && pair.SecondPath == B).Modules[0].Collision);
     }
 
@@ -156,12 +155,12 @@ public sealed class ConflictResultSessionTests
         Assert.AreEqual(1, session.RangeProblems.Count);
         Assert.AreEqual(2, Rows(session, "problems").Count);
         var problemRow = Rows(session, "problems")[0];
-        Assert.AreEqual("数量未知 · 文件损坏，建议重新下载", problemRow.Detail);
+        Assert.AreEqual("", problemRow.Detail);
         Assert.IsFalse(problemRow.Detail.Contains("one.pyc", StringComparison.Ordinal));
         session.ToggleExpanded(problemRow.Key);
-        Assert.AreEqual(8, Rows(session, "problems").Count);
+        Assert.AreEqual(9, Rows(session, "problems").Count);
         session.ToggleExpanded(Rows(session, "problems").Single(row => row.Title == "技术详情").Key);
-        Assert.AreEqual(14, Rows(session, "problems").Count);
+        Assert.AreEqual(15, Rows(session, "problems").Count);
     }
 
     [TestMethod]
@@ -184,19 +183,17 @@ public sealed class ConflictResultSessionTests
     }
 
     [TestMethod]
-    public void CollapsedRowsAreParentsOnlyAndExpansionDoesNotCrossPairs()
+    public void CardsStartClosedAndExpansionIsIndependentAcrossResources()
     {
-        var session = Session([Resource(1, (A, "a"), (B, "b"), (C, "c"))]);
-        Assert.AreEqual(3, Rows(session).Count);
-        Assert.IsTrue(Rows(session).All(row => row.Depth == 0));
-        var parent = Rows(session)[0];
-        session.ToggleExpanded(parent.Key);
-        var resource = Rows(session).Single(row => row.Kind == ConflictRowKind.Resource);
-        session.ToggleExpanded(resource.Key);
-        Assert.AreEqual(3, Rows(session).Count(row => row.Kind == ConflictRowKind.Content));
-        Assert.AreEqual(1, Rows(session).Count(row => row.Kind == ConflictRowKind.Resource));
-        session.ToggleExpanded(parent.Key);
-        Assert.AreEqual(3, Rows(session).Count);
+        var session = Session([Resource(1, (A, "a"), (B, "b"), (C, "c")), Resource(2, (A, "a"), (B, "b"))]);
+        var cards = Rows(session);
+        Assert.AreEqual(2, cards.Count);
+        Assert.IsTrue(cards.All(row => row.Depth == 0 && !row.IsExpanded));
+        session.ToggleExpanded(cards[0].Key);
+        Assert.AreEqual(3, Rows(session).Count(row => row.Kind == ConflictRowKind.File));
+        Assert.IsFalse(Rows(session).Single(row => row.Key == cards[1].Key).IsExpanded);
+        session.ToggleExpanded(cards[0].Key);
+        Assert.AreEqual(2, Rows(session).Count);
         session.Reset();
         Assert.AreEqual(0, session.GetExpandedKeysSnapshot().Count);
         Assert.AreEqual(0, Rows(session).Count);
@@ -204,125 +201,82 @@ public sealed class ConflictResultSessionTests
     }
 
     [TestMethod]
-    public void ResourceContentsHideTechnicalValuesUntilTheDetailIsExpanded()
+    public void TwoFilesHaveMetadataAndOneTechnicalEntryWithoutContentGrouping()
     {
-        var session = Session([Resource(1, (A, "alpha"), (B, "beta")), Resource(2, (A, "same"), (B, "same"))], [(A, 2), (B, 2)]);
-        session.ToggleExpanded(Rows(session).Single().Key);
-        var resources = Rows(session).Where(row => row.Kind == ConflictRowKind.Resource).ToArray();
-        Assert.AreEqual(2, resources.Length);
-        Assert.IsTrue(resources.All(row => row.Title == "捏人部件"));
-        foreach (var resource in resources) session.ToggleExpanded(resource.Key);
+        var session = Session([Resource(1, (A, "alpha"), (B, "beta"))]);
+        var card = Rows(session).Single();
+        session.ToggleExpanded(card.Key);
         var rows = Rows(session);
-        Assert.IsFalse(visibleTechnical(rows));
-        var content = rows.Where(row => row.Kind == ConflictRowKind.Content).ToArray();
-        Assert.IsTrue(content.All(row => !row.Detail.Contains("SHA256", StringComparison.Ordinal)));
-        var technical = rows.Where(row => row.Kind == ConflictRowKind.Technical && row.Title == "技术详情").ToArray();
-        Assert.IsTrue(technical.Length >= 1);
-        Assert.IsTrue(technical.All(row => !row.IsExpanded));
-        Assert.AreEqual("", technical[0].Tooltip);
+        Assert.AreEqual(0, rows.Count(row => row.Kind == ConflictRowKind.Content));
+        var files = rows.Where(row => row.Kind == ConflictRowKind.File).ToArray();
+        Assert.AreEqual(2, files.Length);
+        Assert.IsTrue(files.All(row => !row.IsExpandable && row.Detail.Contains(@"C:\Mods", StringComparison.Ordinal)));
+        Assert.IsTrue(files.All(row => row.Detail.Contains(Stamp.LastWriteTimeUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), StringComparison.Ordinal) && row.Detail.Contains("10 B", StringComparison.Ordinal)));
         AssertOrdinaryRows(rows);
-        session.ToggleExpanded(technical[0].Key);
-        var opened = Rows(session);
-        Assert.IsTrue(opened.Single(row => row.Key == technical[0].Key).IsExpanded);
-        var value = opened.Single(row => row.Key == technical[0].Key + "0");
-        Assert.IsTrue(value.Title.StartsWith("TGI", StringComparison.Ordinal));
-        Assert.AreEqual(value.Title, value.Tooltip);
-        session.ToggleExpanded(technical[0].Key);
-        var closed = Rows(session);
-        Assert.IsFalse(closed.Single(row => row.Key == technical[0].Key).IsExpanded);
-        Assert.IsFalse(closed.Any(row => row.Kind == ConflictRowKind.Technical && row.Title != "技术详情"));
-        Assert.IsFalse(closed.Any(row => row.Key.StartsWith(technical[0].Key, StringComparison.Ordinal) && row.Key != technical[0].Key));
-
-        static bool visibleTechnical(IReadOnlyList<ConflictResultRow> rows) => rows.Where(row => row.Kind != ConflictRowKind.Technical)
-            .Any(row => TechnicalText.IsMatch(row.Title) || TechnicalText.IsMatch(row.Detail) || TechnicalText.IsMatch(row.SecondTitle));
+        var detail = rows.Single(row => row.IsTechnicalToggle);
+        Assert.AreEqual("", detail.Tooltip);
+        Assert.IsFalse(detail.IsExpanded);
+        Assert.IsTrue(detail.IsCardEnd);
+        session.ToggleExpanded(detail.Key);
+        var technical = Rows(session).Where(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable).ToArray();
+        Assert.AreEqual(3, technical.Length);
+        Assert.IsTrue(technical[0].Title.StartsWith("TGI", StringComparison.Ordinal));
+        Assert.IsTrue(technical.Any(row => row.Title.Contains(A, StringComparison.Ordinal) && row.Title.Contains("SHA256 alpha", StringComparison.Ordinal) && row.Title.Contains("解压大小 1 字节", StringComparison.Ordinal)));
+        Assert.IsTrue(technical.All(row => row.Title == row.Tooltip && row.Depth == 1));
+        session.ToggleExpanded(detail.Key);
+        Assert.IsFalse(Rows(session).Any(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable));
     }
 
     [TestMethod]
-    public void ModuleContentsHideTechnicalValuesUntilTheDetailIsExpanded()
+    public void ScriptTechnicalValuesRequireAnExplicitClick()
     {
         var session = Session([], scripts: Scripts([Collision("pkg.mod", (A + ".ts4script", "x"), (B + ".ts4script", "y"))]));
-        var pair = Rows(session, "scripts").Single();
-        session.ToggleExpanded(pair.Key);
-        var module = Rows(session, "scripts").Single(row => row.Kind == ConflictRowKind.Module);
-        Assert.AreEqual("pkg.mod", module.Title);
-        session.ToggleExpanded(module.Key);
-        var content = Rows(session, "scripts").Single(row => row.Kind == ConflictRowKind.Content && row.Title == "内容分组 1");
-        Assert.AreEqual("1 个文件", content.Detail);
-        Assert.IsFalse(content.Detail.Contains("SHA256", StringComparison.Ordinal));
-        Assert.IsFalse(Rows(session, "scripts").Where(row => row.Kind != ConflictRowKind.Technical)
-            .Any(row => TechnicalText.IsMatch(row.Title) || TechnicalText.IsMatch(row.Detail)));
-        session.ToggleExpanded(content.Key);
-        var technical = Rows(session, "scripts").Single(row => row.Kind == ConflictRowKind.Technical && row.Title == "技术详情");
-        Assert.IsFalse(technical.IsExpanded);
-        Assert.AreEqual("", technical.Tooltip);
+        var card = Rows(session, "scripts").Single();
+        session.ToggleExpanded(card.Key);
         AssertOrdinaryRows(Rows(session, "scripts"));
-        session.ToggleExpanded(technical.Key);
-        var value = Rows(session, "scripts").Single(row => row.Key == technical.Key + "0");
-        Assert.IsTrue(value.Title.StartsWith("SHA256", StringComparison.Ordinal));
-        Assert.AreEqual(value.Title, value.Tooltip);
-        session.ToggleExpanded(technical.Key);
-        Assert.IsFalse(Rows(session, "scripts").Any(row => row.Kind == ConflictRowKind.Technical && row.Title != "技术详情"));
-    }
-
-    [TestMethod]
-    public void UnfinishedDetailKeepsResourceIdentityOutOfTheOrdinaryExpansion()
-    {
-        var session = Session([Resource(1, (A, "alpha"), (B, "beta")), Resource(2, (A, null), (B, null))], [(A, 1), (B, 1)]);
-        foreach (var pair in Rows(session)) session.ToggleExpanded(pair.Key);
-        var resource = Rows(session).Single(row => row.Kind == ConflictRowKind.Resource && row.Key.Contains("00000002", StringComparison.Ordinal));
-        session.ToggleExpanded(resource.Key);
-        var unfinished = Rows(session).Single(row => row.Key == resource.Key + "/unfinished0");
-        Assert.AreEqual("a.package", unfinished.Title);
-        Assert.AreEqual(A, unfinished.Tooltip);
-        var other = Rows(session).Single(row => row.Key == resource.Key + "/unfinished1");
-        Assert.AreEqual("b.package", other.Title);
-        Assert.AreEqual(B, other.Tooltip);
-        StringAssert.Contains(unfinished.Detail, "捏人部件 · 未知读取失败");
-        Assert.IsFalse(unfinished.Detail.Contains("034aeecb", StringComparison.OrdinalIgnoreCase));
-        var resourceDetail = Rows(session).Single(row => row.Key == resource.Key + "/technical");
-        Assert.IsFalse(resourceDetail.IsExpanded);
-        Assert.AreEqual("", resourceDetail.Tooltip);
-        session.ToggleExpanded(unfinished.Key);
-        var detail = Rows(session).Single(row => row.Key == unfinished.Key + "/technical");
-        Assert.IsFalse(detail.IsExpanded);
-        Assert.AreEqual("", detail.Tooltip);
-        AssertOrdinaryRows(Rows(session));
-        Assert.IsFalse(Rows(session).Single(row => row.Key == other.Key).IsExpanded);
-        Assert.IsFalse(visibleTechnical(Rows(session)));
+        Assert.AreEqual(0, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.Content));
+        Assert.AreEqual(2, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.File));
+        var detail = Rows(session, "scripts").Single(row => row.IsTechnicalToggle);
         session.ToggleExpanded(detail.Key);
-        Assert.IsTrue(Rows(session).Any(row => row.Title.Contains("未知读取失败", StringComparison.Ordinal)));
-        Assert.IsTrue(Rows(session).Any(row => row.Title.Contains("034aeecb", StringComparison.OrdinalIgnoreCase)));
-
-        static bool visibleTechnical(IReadOnlyList<ConflictResultRow> rows) => rows.Where(row => row.Kind != ConflictRowKind.Technical)
-            .Any(row => TechnicalText.IsMatch(row.Title) || TechnicalText.IsMatch(row.Detail) || TechnicalText.IsMatch(row.SecondTitle));
+        Assert.IsTrue(Rows(session, "scripts").Any(row => row.Title.Contains("SHA256 x", StringComparison.Ordinal) && row.Title.Contains("pkg/mod.pyc", StringComparison.Ordinal)));
+        session.ToggleExpanded(detail.Key);
+        Assert.IsFalse(Rows(session, "scripts").Any(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable));
     }
 
     [TestMethod]
-    public void TechnicalDetailsTrackTheirOwningPairResourceAndContentGroup()
+    public void IncompleteResourcesKeepFailuresInTheirCardWithoutDuplicateProblemCards()
     {
-        var session = Session([Resource(1, (A, "one"), (B, "xy")), Resource(2, (A, "three"), (B, "four"))], [(A, 2), (B, 2)]);
-        var pair = Rows(session).Single();
-        session.ToggleExpanded(pair.Key);
-        var resources = Rows(session).Where(row => row.Kind == ConflictRowKind.Resource).ToArray();
-        Assert.AreEqual(2, resources.Length);
-        foreach (var item in resources) session.ToggleExpanded(item.Key);
-        var groups = Rows(session).Where(row => row.Kind == ConflictRowKind.Content).ToArray();
-        Assert.AreEqual(4, groups.Length);
-        session.ToggleExpanded(groups[0].Key);
-        var first = Rows(session).Single(row => row.Key == resources[0].Key + "/technical");
-        var second = Rows(session).Single(row => row.Key == resources[1].Key + "/technical");
-        var content = Rows(session).Single(row => row.Key == groups[0].Key + "/technical");
-        Assert.IsTrue(new[] { first.Key, second.Key, content.Key }.Distinct(StringComparer.Ordinal).Count() == 3);
-        session.ToggleExpanded(first.Key);
-        Assert.IsTrue(Rows(session).Any(row => row.Title.StartsWith("TGI", StringComparison.Ordinal)));
-        Assert.IsFalse(Rows(session).Any(row => row.Title.StartsWith("SHA256", StringComparison.Ordinal)));
-        Assert.IsFalse(Rows(session).Single(row => row.Key == second.Key).IsExpanded);
-        Assert.IsFalse(Rows(session).Single(row => row.Key == content.Key).IsExpanded);
-        session.ToggleExpanded(content.Key);
-        Assert.IsTrue(Rows(session).Any(row => row.Title.StartsWith("SHA256", StringComparison.Ordinal)));
-        session.ToggleExpanded(first.Key);
-        Assert.IsFalse(Rows(session).Any(row => row.Title.StartsWith("TGI", StringComparison.Ordinal)));
-        Assert.IsTrue(Rows(session).Single(row => row.Key == content.Key).IsExpanded);
+        var session = Session([Resource(1, (A, "alpha"), (B, "beta")), Resource(2, (A, null), (B, null))]);
+        var cards = Rows(session);
+        Assert.AreEqual(2, cards.Count);
+        Assert.AreEqual(0, Rows(session, "problems").Count);
+        var incomplete = cards.Single(row => row.Priority == ConflictPairPriority.Incomplete);
+        session.ToggleExpanded(incomplete.Key);
+        var files = Rows(session).Where(row => row.Kind == ConflictRowKind.File).ToArray();
+        Assert.AreEqual(2, files.Length);
+        Assert.IsTrue(files.All(row => !row.HasState && row.Detail.Contains("未知读取失败", StringComparison.Ordinal)));
+        AssertOrdinaryRows(Rows(session));
+        session.ToggleExpanded(Rows(session).Single(row => row.IsTechnicalToggle).Key);
+        Assert.IsTrue(Rows(session).Any(row => row.Kind == ConflictRowKind.Technical && row.Title.Contains("034aeecb", StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(Rows(session).Any(row => row.Kind == ConflictRowKind.Technical && row.Title.Contains(ResourceContentIssueCode.UnexpectedError, StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public void TechnicalDetailsRemainIndependentAndAllViewsUseTheSameStableKeys()
+    {
+        var session = Session([Resource(1, (A, "one"), (B, "xy")), Resource(2, (A, "three"), (B, "four"))]);
+        var cards = Rows(session);
+        foreach (var card in cards) session.ToggleExpanded(card.Key);
+        var details = Rows(session).Where(row => row.IsTechnicalToggle).ToArray();
+        Assert.AreEqual(2, details.Length);
+        session.ToggleExpanded(details[0].Key);
+        Assert.IsTrue(Rows(session).Single(row => row.Key == details[0].Key).IsExpanded);
+        Assert.IsFalse(Rows(session).Single(row => row.Key == details[1].Key).IsExpanded);
+        Assert.AreEqual(Rows(session).Count, Rows(session, "all").Count);
+        session.ToggleExpanded(cards[0].Key);
+        Assert.IsFalse(Rows(session).Any(row => row.Key.StartsWith(cards[0].Key + "/", StringComparison.Ordinal)));
+        session.ToggleExpanded(cards[0].Key);
+        Assert.IsTrue(Rows(session).Single(row => row.Key == details[0].Key).IsExpanded);
     }
 
     [TestMethod]
@@ -365,13 +319,13 @@ public sealed class ConflictResultSessionTests
     public void KnownTypesFallbackAndCancellation()
     {
         Assert.AreEqual("捏人部件", ConflictResultSession.GetResourceTypeDisplayName(0x034AEECB));
-        Assert.AreEqual("调校数据", ConflictResultSession.GetResourceTypeDisplayName(0x03B33DDF));
+        Assert.AreEqual("调参", ConflictResultSession.GetResourceTypeDisplayName(0x03B33DDF));
         Assert.AreEqual("模拟数据", ConflictResultSession.GetResourceTypeDisplayName(0x545AC67A));
         Assert.AreEqual("物件定义", ConflictResultSession.GetResourceTypeDisplayName(0xC0DB5AE7));
         Assert.AreEqual("物件目录", ConflictResultSession.GetResourceTypeDisplayName(0x319E4F1D));
         Assert.AreEqual("图像", ConflictResultSession.GetResourceTypeDisplayName(0x2BC04EDF));
         Assert.AreEqual("文本表", ConflictResultSession.GetResourceTypeDisplayName(0x220557DA));
-        Assert.AreEqual("其他资源", ConflictResultSession.GetResourceTypeDisplayName(1));
+        Assert.AreEqual("未识别资源", ConflictResultSession.GetResourceTypeDisplayName(1));
         var session = Session([Resource(1, (A, "a"), (B, "b"))]);
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();

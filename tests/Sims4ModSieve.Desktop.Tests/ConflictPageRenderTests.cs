@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Windows.Automation;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,142 +19,201 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ConflictPageRenderTests
 {
     [TestMethod]
-    public Task RenderReviewStatesWithRealWindow() => WpfTestHost.RunAsync(async () =>
+    public Task ResourceCardsAndFilterPopupSupportKeyboardAndNarrowWindows() => WpfTestHost.RunAsync(async () =>
     {
         var model = CreateModel();
         var window = OpenWindow(model);
         model.OpenConflictCommand.Execute(null);
         await WpfTestHost.LayoutAsync(window);
-        var entries = Descendants<Button>(window).Where(button => Equals(button.Content, "进入排查→")).ToArray();
-        Assert.AreEqual(4, entries.Length);
-        foreach (var entry in entries)
-        {
-            Assert.IsTrue(entry.ActualWidth >= 60);
-            foreach (var point in new[] { new Point(2, 2), new Point(entry.ActualWidth - 2, entry.ActualHeight - 2) })
-                Assert.IsTrue(IsInside(entry.InputHitTest(point) as DependencyObject, entry));
-        }
+        Assert.AreEqual(4, Descendants<Button>(window).Count(button => Equals(button.Content, "进入排查→")));
         Save(window, "overview-1180x780.png");
         model.OpenConflictSectionCommand.Execute("basic");
         var first = @"C:\Mods\【装扮】长发连衣裙合集 版本 2.6 最终修订 作者小葵.package";
         var second = @"C:\Mods\【功能】更好的园艺与种植体验 版本 1.8 汉化修订版.package";
-        var session = Session([Resource(1, (first, "a"), (second, "b")), Resource(2, (first, "same"), (second, "same")),
-            Resource(3, (first, "x"), (second, null)), Resource(4, (A, "same"), (B, "same"))], [(A, 1), (B, 2)],
-            Scripts([Collision("garden.tools", (first + ".ts4script", "a"), (second + ".ts4script", "b")),
-                Collision("garden.shared", (first + ".ts4script", "same"), (second + ".ts4script", "same"))]));
-        await SetSessionAsync(model, session);
+        var session = Session([Resource(1, (first, "a"), (second, "b")), Resource(2, (A, "same"), (B, "same")),
+            Resource(3, (first, "x"), (second, null))], [(A, 1), (B, 1)],
+            Scripts([Collision("garden.tools", (first + ".ts4script", "a"), (second + ".ts4script", "b"))]));
+        await SetSessionAsync(model, session, "all");
         foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
         {
             window.Width = width;
             window.Height = height;
             await WpfTestHost.LayoutAsync(window);
-            Assert.IsTrue(Descendants<TextBlock>(window).Any(text => Equals(text.ToolTip, first)));
-            Assert.IsTrue(Descendants<TextBlock>(window).Any(text => Equals(text.ToolTip, second)));
             var list = Descendants<ListBox>(window).Single(list => list.Name == "ConflictRowsList");
             Assert.IsTrue(list.ActualHeight > 100 && list.ActualHeight < height);
-            Save(window, $"basic-pairs-{width}x{height}.png");
-            var button = Descendants<Button>(list).First(button => button.IsVisible);
+            Assert.AreEqual(4, model.VisibleConflictParentCount);
+            Assert.AreEqual(1, Descendants<TextBlock>(window).Count(text => text.IsVisible && text.Text == "扫描完成"));
+            var quickBar = Descendants<Border>(window).Single(border => border.Name == "ConflictQuickFilterBar");
+            Assert.AreEqual(32d, quickBar.ActualHeight);
+            var allFilter = Descendants<Button>(quickBar).Single(button => button.Name == "ConflictAllFilter");
+            var resultHeading = Descendants<TextBlock>(window).Single(text => text.IsVisible && text.Text == "扫描结果");
+            var allLabel = Descendants<TextBlock>(allFilter).Single();
+            var headingPoint = resultHeading.TransformToAncestor(window).Transform(new Point());
+            var allPoint = allLabel.TransformToAncestor(window).Transform(new Point());
+            var barPoint = quickBar.TransformToAncestor(window).Transform(new Point());
+            Assert.AreEqual(18d, allPoint.X - headingPoint.X, 0.01);
+            Assert.AreEqual(12d, allPoint.Y - headingPoint.Y - resultHeading.ActualHeight, 0.01);
+            var toolbarFilter = Descendants<System.Windows.Controls.Primitives.ToggleButton>(quickBar).Single(button => button.Name == "ConflictFilterButton");
+            var filterPoint = toolbarFilter.TransformToAncestor(quickBar).Transform(new Point());
+            Assert.AreEqual(quickBar.ActualWidth, filterPoint.X + toolbarFilter.ActualWidth, 0.01);
+            Console.WriteLine($"Layout {width}x{height}: headingHeight={resultHeading.ActualHeight:F2}; headingToBar={barPoint.Y - headingPoint.Y - resultHeading.ActualHeight:F2}; headingToAllText={allPoint.Y - headingPoint.Y - resultHeading.ActualHeight:F2}; headingTopToAllTop={allPoint.Y - headingPoint.Y:F2}; allTextHeight={allLabel.ActualHeight:F2}");
+            var quickFilters = Descendants<Button>(quickBar).Where(button => button != allFilter).ToArray();
+            Assert.AreEqual("all", model.ConflictFilter);
+            Assert.IsNull(allFilter.Tag);
+            Assert.IsFalse(Descendants<Border>(allFilter).Any(border => border.Name == "Underline"));
+            Assert.AreEqual(3, quickFilters.Length);
+            Assert.IsTrue(quickFilters.All(button => Equals(button.Tag, false)));
+            Assert.AreEqual(Colors.Transparent, ((SolidColorBrush)quickBar.Background).Color);
+            Assert.AreEqual(new Thickness(0, 0, 0, 1), quickBar.BorderThickness);
+            foreach (var quickFilter in quickFilters)
+                foreach (var point in new[] { new Point(2, 2), new Point(quickFilter.ActualWidth - 2, quickFilter.ActualHeight - 2) })
+                    Assert.IsTrue(IsInside(quickFilter.InputHitTest(point) as DependencyObject, quickFilter));
+            foreach (var row in model.ConflictRows)
+            {
+                list.ScrollIntoView(row);
+                await WpfTestHost.LayoutAsync(window);
+                var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(row);
+                var border = Descendants<Border>(container).Single(element => element.Name == "Row");
+                Assert.AreEqual(new Thickness(0), border.BorderThickness);
+                var title = Descendants<TextBlock>(container).Single(text => text.Name == "Title");
+                var label = Descendants<TextBlock>(container).Single(text => text.Name == "GroupLabel");
+                Assert.AreEqual(row.GroupLabel, label.Text);
+                var dot = Descendants<System.Windows.Shapes.Ellipse>(container).Single(dot => dot.Name == "StateDot");
+                Assert.AreEqual(10d, dot.ActualWidth);
+                var stateColor = row.Priority switch
+                {
+                    ConflictPairPriority.NeedsReview => "#D33C2E",
+                    ConflictPairPriority.CanOrganize => "#D99316",
+                    _ => "#948C84",
+                };
+                Assert.AreEqual((Color)ColorConverter.ConvertFromString(stateColor), ((SolidColorBrush)dot.Fill).Color);
+                Assert.IsTrue(dot.TransformToAncestor(border).Transform(new Point(dot.ActualWidth, 0)).X < label.TransformToAncestor(border).Transform(new Point()).X);
+                var separator = Descendants<System.Windows.Shapes.Line>(container).Single(line => line.Name == "GroupSeparator");
+                Assert.IsTrue(separator.IsVisible);
+                CollectionAssert.AreEqual(new[] { 2d, 4d }, separator.StrokeDashArray.ToArray());
+                Assert.AreEqual(20d, separator.Margin.Top + separator.ActualHeight + separator.Margin.Bottom + border.Margin.Top);
+                if (row == model.ConflictRows[0])
+                {
+                    var header = Descendants<Border>(container).Single(element => element.Name == "RowContent");
+                    Console.WriteLine($"Group layout: total={container.ActualHeight:F2}; header={header.ActualHeight:F2}; text={title.ActualHeight:F2}; rowTopMargin={border.Margin.Top:F2}; separatorHeight={separator.ActualHeight:F2}; separatorTopMargin={separator.Margin.Top:F2}; separatorBottomMargin={separator.Margin.Bottom:F2}");
+                }
+            }
+            list.ScrollIntoView(model.ConflictRows[0]);
+            await WpfTestHost.LayoutAsync(window);
+            Save(window, $"basic-cards-{width}x{height}.png");
+            var button = Descendants<Button>(list).First(button => button.IsVisible && button.DataContext is ConflictResultRow { Kind: ConflictRowKind.Resource });
             foreach (var point in new[] { new Point(2, 2), new Point(22, 22), new Point(12, 12) })
                 Assert.IsTrue(IsInside(button.InputHitTest(point) as DependencyObject, button), $"Expand hit {point}");
             Assert.IsTrue(Descendants<System.Windows.Shapes.Path>(button).All(path => !path.IsHitTestVisible));
-            // 路由键盘事件走 ButtonBase 的 Space 操作路径。
             button.Focus();
             Assert.IsTrue(button.IsKeyboardFocused);
             var source = PresentationSource.FromVisual(button)!;
             button.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyDownEvent });
             button.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyUpEvent });
             await model.ConflictRowsRefreshTask;
-            Assert.IsTrue(model.ConflictRows.Any(row => row.Depth == 1));
-            AssertNoTechnicalValues(window);
-            // 普通展开看不到 TGI 和 SHA256，只有显式展开技术详情后才出现。
-            await ExpandAsync(model, ConflictRowKind.Resource);
-            await ExpandAsync(model, ConflictRowKind.Content);
             await WpfTestHost.LayoutAsync(window);
+            Assert.AreEqual(2, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
+            Assert.IsTrue(Descendants<TextBlock>(list).Any(text => Equals(text.ToolTip, first)));
+            AssertNoTechnicalValues(window);
             AssertVisibleWords(window);
-            AssertNoTechnicalValues(window);
-            Assert.IsTrue(Descendants<System.Windows.Shapes.Ellipse>(list).Any(dot => dot.Fill is SolidColorBrush brush && brush.Color == (Color)ColorConverter.ConvertFromString("#A65F52")));
             Save(window, $"basic-resource-{width}x{height}.png");
-            var fileRow = model.ConflictRows.First(row => row.Kind == ConflictRowKind.File);
-            model.ToggleConflictExpandedCommand.Execute(fileRow);
+            Assert.IsTrue(Descendants<System.Windows.Shapes.Ellipse>(list).Any(dot => dot.IsVisible && dot.Fill is SolidColorBrush brush && brush.Color == (Color)ColorConverter.ConvertFromString("#D33C2E")));
+            var technical = model.ConflictRows.Single(row => row.IsTechnicalToggle);
+            var action = Descendants<Button>(list).Single(button => button.IsVisible && Equals(button.Content, "技术详情"));
+            Assert.AreEqual(HorizontalAlignment.Right, action.HorizontalAlignment);
+            action.Command!.Execute(action.CommandParameter);
             await model.ConflictRowsRefreshTask;
-            var fifth = model.ConflictRows.First(row => row.Depth == 5);
-            list.ScrollIntoView(fifth);
             await WpfTestHost.LayoutAsync(window);
-            var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(fifth);
-            var border = Descendants<Border>(container).Single(element => element.Name == "Row");
-            Assert.AreEqual(80d, border.Margin.Left);
-            model.ToggleConflictExpandedCommand.Execute(model.ConflictRows.Single(row => row.Key == fileRow.Key));
+            Save(window, $"basic-technical-{width}x{height}.png");
+            foreach (var row in model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable))
+            {
+                list.ScrollIntoView(row);
+                await WpfTestHost.LayoutAsync(window);
+                var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(row);
+                var border = Descendants<Border>(container).Single(element => element.Name == "Row");
+                Assert.AreEqual(0d, border.Margin.Left);
+                var text = Descendants<TextBlock>(container).Single(text => text.Name == "Title");
+                Assert.IsTrue(text.TransformToAncestor(border).Transform(new Point()).X >= 40);
+            }
+            model.ToggleConflictExpandedCommand.Execute(technical);
             await model.ConflictRowsRefreshTask;
             list.ScrollIntoView(model.ConflictRows[0]);
-
-            await ExpandAsync(model, ConflictRowKind.Technical);
             await WpfTestHost.LayoutAsync(window);
-            Assert.IsTrue(model.ConflictRows.Any(row => row.Kind == ConflictRowKind.Technical && row.IsExpanded));
-            Assert.IsTrue(model.ConflictRows.Any(row => row.Title.StartsWith("TGI", StringComparison.Ordinal)));
-            Assert.IsTrue(model.ConflictRows.Any(row => row.Title.Contains("SHA256", StringComparison.Ordinal)));
-            Save(window, $"basic-technical-{width}x{height}.png");
-            foreach (var detail in model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && row.IsExpanded).ToArray())
-            {
-                model.ToggleConflictExpandedCommand.Execute(detail);
-                await model.ConflictRowsRefreshTask;
-            }
-            await WpfTestHost.LayoutAsync(window);
-            Assert.IsFalse(model.ConflictRows.Any(row => row.Kind == ConflictRowKind.Technical && row.Title != "技术详情"));
             AssertNoTechnicalValues(window);
-            Save(window, $"basic-technical-collapsed-{width}x{height}.png");
-            model.SelectConflictFilterCommand.Execute("same");
-            await model.ConflictRowsRefreshTask;
-            Assert.AreEqual(2, model.VisibleConflictParentCount);
-            model.SelectConflictViewCommand.Execute("scripts");
-            await model.ConflictRowsRefreshTask;
-            await ExpandAsync(model, ConflictRowKind.ScriptPair);
-            await ExpandAsync(model, ConflictRowKind.Module);
-            await ExpandAsync(model, ConflictRowKind.Content);
+            var filter = Descendants<System.Windows.Controls.Primitives.ToggleButton>(window).Single(button => button.Name == "ConflictFilterButton");
+            foreach (var point in new[] { new Point(2, 2), new Point(22, 22) })
+                Assert.IsTrue(IsInside(filter.InputHitTest(point) as DependencyObject, filter));
+            filter.Focus();
+            filter.IsChecked = true;
             await WpfTestHost.LayoutAsync(window);
-            Assert.AreEqual(2, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.Module));
-            AssertVisibleWords(window);
-            AssertNoTechnicalValues(window);
-            Save(window, $"basic-script-{width}x{height}.png");
-            await ExpandAsync(model, ConflictRowKind.Content);
-            await ExpandAsync(model, ConflictRowKind.Technical);
-            await WpfTestHost.LayoutAsync(window);
-            Assert.IsTrue(model.ConflictRows.Any(row => row.Kind == ConflictRowKind.Technical && row.Title.StartsWith("SHA256", StringComparison.Ordinal)));
-            Save(window, $"basic-script-technical-{width}x{height}.png");
-            foreach (var detail in model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && row.IsExpanded).ToArray())
+            Assert.IsNull(filter.FocusVisualStyle);
+            var filterBorder = Descendants<Border>(filter).Single(border => border.Name == "HitArea");
+            Assert.AreEqual(Colors.Transparent, ((SolidColorBrush)filterBorder.BorderBrush).Color);
+            var popup = Descendants<System.Windows.Controls.Primitives.Popup>(window).Single();
+            Assert.IsTrue(popup.IsOpen);
+            var checks = Descendants<CheckBox>(popup.Child).ToArray();
+            CollectionAssert.AreEqual(new[] { "全部", "需查看", "可整理", "未完成", "全部", "资源", "脚本" }, checks.Select(box => (string)box.Content).ToArray());
+            var choiceGrids = Descendants<System.Windows.Controls.Primitives.UniformGrid>(popup.Child).ToArray();
+            Assert.AreEqual(2, choiceGrids.Length);
+            Assert.IsTrue(choiceGrids.All(grid => grid.Columns == 3 && grid.Rows == 0));
+            var allStates = checks.Single(box => AutomationProperties.GetName(box) == "全部状态");
+            var allTypes = checks.Single(box => AutomationProperties.GetName(box) == "全部类型");
+            Assert.AreEqual(true, allStates.IsChecked);
+            Assert.AreEqual(true, allTypes.IsChecked);
+            foreach (var quickFilter in quickFilters)
             {
-                model.ToggleConflictExpandedCommand.Execute(detail);
+                quickFilter.Command!.Execute(quickFilter.CommandParameter);
                 await model.ConflictRowsRefreshTask;
+                await WpfTestHost.LayoutAsync(window);
+                var expected = (string)quickFilter.CommandParameter == "different" ? ConflictPairPriority.NeedsReview
+                    : (string)quickFilter.CommandParameter == "same" ? ConflictPairPriority.CanOrganize : ConflictPairPriority.Incomplete;
+                Assert.IsTrue(model.ConflictRows.Count > 0);
+                Assert.IsTrue(model.ConflictRows.Where(row => row.Depth == 0).All(row => row.Priority == expected));
+                Assert.AreEqual(true, quickFilter.Tag);
+                Assert.AreEqual((Color)ColorConverter.ConvertFromString("#6F5A91"), ((SolidColorBrush)quickFilter.Foreground).Color);
+                Assert.IsTrue(Descendants<Border>(quickFilter).Single(border => border.Name == "Underline").IsVisible);
+                quickFilter.Command.Execute(quickFilter.CommandParameter);
+                await model.ConflictRowsRefreshTask;
+                Assert.AreEqual(true, quickFilter.Tag);
             }
-            model.SelectConflictViewCommand.Execute("problems");
+            allFilter.Command!.Execute(allFilter.CommandParameter);
             await model.ConflictRowsRefreshTask;
-            await ExpandAsync(model, ConflictRowKind.Problem);
             await WpfTestHost.LayoutAsync(window);
-            AssertVisibleWords(window);
-            AssertNoTechnicalValues(window);
-            Save(window, $"basic-problems-{width}x{height}.png");
-            await ExpandAsync(model, ConflictRowKind.Technical);
-            await WpfTestHost.LayoutAsync(window);
-            Assert.IsTrue(model.ConflictRows.Any(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable
-                && row.Tooltip.Contains("034aeecb", StringComparison.OrdinalIgnoreCase)));
-            Save(window, $"basic-problems-technical-{width}x{height}.png");
-            foreach (var detail in model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && row.IsExpanded).ToArray())
-            {
-                model.ToggleConflictExpandedCommand.Execute(detail);
-                await model.ConflictRowsRefreshTask;
-            }
-            model.SelectConflictFilterCommand.Execute("all");
-            model.SelectConflictViewCommand.Execute("resources");
+            Assert.AreEqual("all", model.ConflictFilter);
+            Assert.AreEqual(4, model.VisibleConflictParentCount);
+            Assert.IsNull(allFilter.Tag);
+            Assert.AreEqual(true, allStates.IsChecked);
+            Assert.AreEqual((Color)ColorConverter.ConvertFromString("#2B2927"), ((SolidColorBrush)allFilter.Foreground).Color);
+            checks.Single(box => Equals(box.Content, "需查看")).IsChecked = false;
             await model.ConflictRowsRefreshTask;
-            // 第二个尺寸从折叠状态验证键盘展开。
-            foreach (var row in model.ConflictRows.Where(row => row.Depth == 0 && row.IsExpanded).ToArray())
-            {
-                model.ToggleConflictExpandedCommand.Execute(row);
-                await model.ConflictRowsRefreshTask;
-            }
+            Assert.IsFalse(model.IncludeConflictNeedsReview);
+            Assert.AreEqual(false, allStates.IsChecked);
+            Assert.IsTrue(quickFilters.All(button => Equals(button.Tag, false)));
+            Assert.IsTrue(model.HasActiveConflictFilter);
+            checks.Single(box => Equals(box.Content, "需查看")).IsChecked = true;
+            await model.ConflictRowsRefreshTask;
+            Assert.IsFalse(model.HasActiveConflictFilter);
+            allStates.IsChecked = false;
+            await model.ConflictRowsRefreshTask;
+            Assert.AreEqual(0, model.ConflictRows.Count);
+            allStates.IsChecked = true;
+            await model.ConflictRowsRefreshTask;
+            Assert.IsTrue(model.IncludeConflictNeedsReview && model.IncludeConflictCanOrganize && model.IncludeConflictIncomplete);
+            checks.Single(box => Equals(box.Content, "资源")).IsChecked = false;
+            await model.ConflictRowsRefreshTask;
+            Assert.AreEqual(false, allTypes.IsChecked);
+            allTypes.IsChecked = true;
+            await model.ConflictRowsRefreshTask;
+            Assert.IsTrue(model.IncludeConflictResources && model.IncludeConflictScripts);
+            Assert.IsFalse(model.HasActiveConflictFilter);
+            filter.IsChecked = false;
+            foreach (var row in model.ConflictRows.Where(row => row.Depth == 0 && row.IsExpanded).ToArray()) model.ToggleConflictExpandedCommand.Execute(row);
+            await model.ConflictRowsRefreshTask;
         }
         model.ConflictBackCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         Assert.AreSame(session.Resources, model.ConflictResources);
-        await SetSessionAsync(model, new());
+        await SetSessionAsync(model, new(), "all");
         Assert.IsTrue(model.ShowConflictWarning);
         Save(window, "basic-empty-920x640.png");
         foreach (var state in new[] { "initial", "scanning", "cancelled", "failed" })
@@ -165,7 +224,6 @@ public sealed class ConflictPageRenderTests
             Refresh(model);
             await WpfTestHost.LayoutAsync(window);
             Assert.IsFalse(model.ShowConflictWarning);
-            AssertVisibleWords(window);
             if (state == "scanning") Assert.IsTrue(Descendants<CheckBox>(window).All(box => !box.IsEnabled));
             Save(window, $"basic-{state}-920x640.png");
         }
@@ -202,7 +260,7 @@ public sealed class ConflictPageRenderTests
 
     internal static async Task ExpandAsync(MainWindowViewModel model, ConflictRowKind kind)
     {
-        foreach (var row in model.ConflictRows.Where(row => row.Kind == kind && !row.IsExpanded).ToArray())
+        foreach (var row in model.ConflictRows.Where(row => row.Kind == kind && row.IsExpandable && !row.IsExpanded).ToArray())
         {
             model.ToggleConflictExpandedCommand.Execute(row);
             await model.ConflictRowsRefreshTask;
@@ -231,7 +289,7 @@ public sealed class ConflictPageRenderTests
     internal static void AssertVisibleWords(Window window)
     {
         foreach (var text in Descendants<TextBlock>(window).Where(text => text.IsVisible))
-            foreach (var forbidden in new[] { "内容相同", "内容不同", "没比完" })
+            foreach (var forbidden in new[] { "内容分组", "没比完", "资源组编号" })
             {
                 Assert.IsFalse(text.Text.Contains(forbidden, StringComparison.Ordinal), text.Text);
                 Assert.IsFalse((text.ToolTip?.ToString() ?? "").Contains(forbidden, StringComparison.Ordinal));

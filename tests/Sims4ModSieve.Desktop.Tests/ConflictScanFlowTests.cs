@@ -48,18 +48,71 @@ public sealed class ConflictScanFlowTests
 
         viewModel.SelectConflictFilterCommand.Execute("different");
         await viewModel.ConflictRowsRefreshTask;
-        Assert.AreEqual(1, viewModel.VisibleConflictParentCount);
+        Assert.AreEqual(2, viewModel.VisibleConflictParentCount);
         viewModel.SelectConflictViewCommand.Execute("scripts");
         await viewModel.ConflictRowsRefreshTask;
         var pair = viewModel.ConflictRows.Single();
         viewModel.ToggleConflictExpandedCommand.Execute(pair);
         await viewModel.ConflictRowsRefreshTask;
-        Assert.AreEqual(2, viewModel.ConflictRows.Count(row => row.Kind == ConflictRowKind.Module));
+        Assert.AreEqual(1, viewModel.ConflictRows.Count(row => row.Kind == ConflictRowKind.Module));
         viewModel.SelectConflictFilterCommand.Execute("same");
         await viewModel.ConflictRowsRefreshTask;
         Assert.AreEqual(1, viewModel.VisibleConflictParentCount);
-        Assert.AreEqual(2, viewModel.ConflictRows.Count(row => row.Kind == ConflictRowKind.Module));
+        Assert.AreEqual(1, viewModel.ConflictRows.Count(row => row.Kind == ConflictRowKind.Module));
         Assert.IsFalse(viewModel.ShowConflictWarning);
+    }
+
+    [TestMethod]
+    public async Task CheckboxFiltersCombineTypesAndStatusesAndFollowTheResultSession()
+    {
+        using var files = new TemporaryFiles();
+        var mods = files.Directory("Filters");
+        var extra = files.Directory("Extra");
+        WritePackage(mods, "a.package", 1, "first");
+        WritePackage(mods, "b.package", 1, "second");
+        WriteScript(mods, "a.ts4script", "print('first')", "print('same')");
+        WriteScript(mods, "b.ts4script", "print('second')", "print('same')");
+        var model = CreateViewModel(mods);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await model.StartConflictScanCommand.ExecuteAsync();
+        Assert.IsFalse(model.HasActiveConflictFilter);
+        Assert.IsTrue(model.IncludeConflictResources && model.IncludeConflictScripts);
+        Assert.IsTrue(model.IncludeConflictNeedsReview && model.IncludeConflictCanOrganize && model.IncludeConflictIncomplete);
+        model.IncludeConflictScripts = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.IsTrue(model.HasActiveConflictFilter);
+        Assert.IsTrue(model.ConflictRows.All(row => row.Kind == ConflictRowKind.Resource));
+        var resource = model.ConflictRows.Single();
+        model.ToggleConflictExpandedCommand.Execute(resource);
+        await model.ConflictRowsRefreshTask;
+        model.IncludeConflictNeedsReview = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.ConflictRows.Count);
+        model.IncludeConflictNeedsReview = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.IsTrue(model.ConflictRows.Single(row => row.Depth == 0).IsExpanded);
+        model.IncludeConflictResources = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.ConflictRows.Count);
+        Assert.IsFalse(model.ShowConflictWarning);
+        model.IncludeConflictScripts = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.IsTrue(model.ConflictRows.All(row => row.Kind == ConflictRowKind.Module));
+        model.GoHomeCommand.Execute(null);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        Assert.IsTrue(model.HasActiveConflictFilter);
+        model.Sources.Add(new ScanSourceViewModel(extra));
+        model.Sources.RemoveAt(model.Sources.Count - 1);
+        Assert.IsTrue(model.HasActiveConflictFilter);
+        await model.StartConflictScanCommand.ExecuteAsync();
+        Assert.IsFalse(model.HasActiveConflictFilter);
+        Assert.IsTrue(model.ConflictRows.All(row => !row.IsExpanded));
+        model.IncludeConflictIncomplete = false;
+        model.Sources.Clear();
+        Assert.IsFalse(model.HasActiveConflictFilter);
+        Assert.AreEqual(0, model.ConflictRows.Count);
     }
 
     [TestMethod]
@@ -240,7 +293,12 @@ public sealed class ConflictScanFlowTests
             if (action is "filter" or "view") Assert.AreEqual(0, model.ConflictRows.Count);
             if (action == "collapse") Assert.IsTrue(model.ConflictRows.All(row => row.Depth == 0 && !row.IsExpanded));
             if (action == "clear") Assert.AreEqual(0, model.ConflictRows.Count);
-            if (action == "rescan") StringAssert.Contains(model.ConflictRows[0].Tooltip, "new-a.package");
+            if (action == "rescan")
+            {
+                model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
+                await model.ConflictRowsRefreshTask;
+                Assert.IsTrue(model.ConflictRows.Any(row => row.Kind == ConflictRowKind.File && row.Tooltip.Contains("new-a.package", StringComparison.Ordinal)));
+            }
         }
     });
 

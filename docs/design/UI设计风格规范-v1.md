@@ -14,7 +14,7 @@
 
 - [App.xaml](../../src/Sims4ModSieve.Desktop/App.xaml)：颜色、字体、按钮、卡片、展开组件及品牌图形资源。
 - [MainWindow.xaml](../../src/Sims4ModSieve.Desktop/MainWindow.xaml)：页面结构、尺寸、局部样式与绑定。
-- [ConflictPage.xaml](../../src/Sims4ModSieve.Desktop/ConflictPage.xaml)、[ConflictResultSession.cs](../../src/Sims4ModSieve.Desktop/ViewModels/ConflictResultSession.cs)：冲突文件对、未完成分析及平铺明细。
+- [ConflictPage.xaml](../../src/Sims4ModSieve.Desktop/ConflictPage.xaml)、[ConflictResultSession.cs](../../src/Sims4ModSieve.Desktop/ViewModels/ConflictResultSession.cs)：冲突资源／模块卡片、未完成分析及平铺明细。
 - [DeleteConfirmationWindow.xaml](../../src/Sims4ModSieve.Desktop/DeleteConfirmationWindow.xaml)：紧凑确认窗。
 - [MainWindowViewModel.cs](../../src/Sims4ModSieve.Desktop/ViewModels/MainWindowViewModel.cs)、[DuplicateResultSession.cs](../../src/Sims4ModSieve.Desktop/ViewModels/DuplicateResultSession.cs)：状态、选择及结果会话。
 - [AGENTS.md](../../AGENTS.md)：此前已确认的视觉尺度、操作语义及局部改动边界。
@@ -114,8 +114,9 @@
 | 展开文件区 | `#F3F1ED` | 页面局部值 |
 | 轻量路径操作 | `#A892C5` | 「选择 / 更改」文字，用户明确指定 |
 | 不可访问提示 | `#9A6A32` | 来源、Mods 根目录的提示文字 |
-| 冲突页需查看 | `#A65F52` | `ConflictPage.xaml` 局部 `ConflictNeedReviewBrush`，仅状态圆点 |
-| 冲突页可整理 | `#B18436` | `ConflictPage.xaml` 局部 `ConflictCanOrganizeBrush`，仅状态圆点 |
+| 冲突页需查看 | `#D33C2E` | `ConflictPage.xaml` 局部 `ConflictNeedReviewBrush`，用于组标题及筛选标签圆点 |
+| 冲突页可整理 | `#D99316` | `ConflictPage.xaml` 局部 `ConflictCanOrganizeBrush`，用于组标题及筛选标签圆点 |
+| 冲突页未完成 | `#948C84` | `ConflictPage.xaml` 局部 `ConflictIncompleteBrush`，用于组标题及筛选标签圆点 |
 | 分组虚线 | `#D8D3CC` | 1 DIP，透明度 0.78，虚线数组 `2,4` |
 
 颜色的语义应保持稳定。新增页面优先复用资源；确需把已有局部色提取为资源时，保持视觉值不变。表中的局部值不代表当前已有同名全局 Token。
