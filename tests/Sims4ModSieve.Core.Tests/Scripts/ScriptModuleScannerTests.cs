@@ -269,7 +269,7 @@ public sealed class ScriptModuleScannerTests
         using var temp = new TempDirectory();
         var mods = temp.CreateDirectory("Mods");
         var path = WriteScript(temp, "Mods/a.ts4script",
-            ("broken.pyc", Pyc(new string('q', 5000) + Guid.NewGuid())),
+            ("broken.pyc", Pyc(new string('q', 5000) + "f830c0b6-f7ec-44db-a1aa-d52963322c48")),
             ("fine.pyc", Pyc("fine")));
         WriteScript(temp, "Mods/b.ts4script", ("broken.pyc", Pyc("other")), ("fine.pyc", Pyc("fine")));
 

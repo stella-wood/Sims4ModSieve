@@ -207,6 +207,46 @@ public sealed class ScriptArchiveRegressionTests
     }
 
     [TestMethod]
+    public async Task MalformedDynamicHuffmanIsEntryCorrupt()
+    {
+        using var temp = new TempDirectory();
+        var compressed = Convert.FromBase64String(
+            "7cQ7DoAgEEBBaxOOsgmyK2LrRQjgFkaAnHOYT4SsMxojRYMNJPv////////PAMltBRlrlHHcTcx6lbKVIn0PZ1QNoVl6AA==");
+        using var memory = new MemoryStream();
+        memory.Write(RawDeflateZip(new byte[5052], finalBlock: true, compressedPayload: compressed));
+        using (var archive = new ZipArchive(memory, ZipArchiveMode.Update, leaveOpen: true))
+        {
+            using var stream = archive.CreateEntry("normal.py", CompressionLevel.NoCompression).Open();
+            stream.Write("y=1"u8);
+        }
+        var path = temp.WriteBytes("a.ts4script", memory.ToArray());
+        temp.WriteBytes("b.ts4script", Zip(("m.py", "x=1"u8.ToArray()), ("normal.py", "y=1"u8.ToArray())));
+        var fs = new TrackingFs();
+
+        var report = await Scan(temp.Path, new ScriptModuleLimits(
+            MaxTotalProcessedBytes: 9, MaxDegreeOfParallelism: 1), fs);
+
+        Assert.AreEqual(2, report.AnalyzedArchiveCount,
+            string.Join(",", report.Issues.Select(issue => $"{issue.Code}/{issue.Stage}")));
+        var issue = report.Issues.Single();
+        Assert.AreEqual(ScriptArchiveIssueCode.EntryCorrupt, issue.Code);
+        Assert.AreEqual(ScriptArchiveIssueStage.Entry, issue.Stage);
+        Assert.AreEqual(path, issue.Path);
+        Assert.AreEqual("m.py", issue.EntryName);
+        CollectionAssert.DoesNotContain(report.IncompleteArchivePaths.ToArray(), path);
+        var broken = report.Collisions.Single(collision => collision.ModuleName == "m");
+        Assert.AreEqual(ScriptModuleVerdict.Incomplete, broken.Verdict);
+        Assert.IsNull(broken.Uncompared.Single().Sha256);
+        Assert.AreEqual(1, broken.ContentGroups.Single().Occurrences.Count);
+        var normal = report.Collisions.Single(collision => collision.ModuleName == "normal");
+        Assert.AreEqual(ScriptModuleVerdict.Identical, normal.Verdict);
+        Assert.AreEqual(2, normal.ContentGroups.Single().Occurrences.Count);
+        Assert.AreEqual(9L, report.ProcessedBytes);
+        Assert.AreEqual(2, fs.OpenedCount);
+        Assert.AreEqual(fs.OpenedCount, fs.DisposedCount);
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task EmptySourceEntriesSucceedEvenAfterAnotherModuleUsesTheBudget(bool compressed)

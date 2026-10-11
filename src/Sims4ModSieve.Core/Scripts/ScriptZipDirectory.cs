@@ -165,6 +165,11 @@ internal sealed class ScriptZipDirectory
                 if (granted == 0 && total < entry.Length) throw BudgetError();
                 var outputBefore = inflater.TotalOut;
                 try { read = inflater.Inflate(output, 0, granted); }
+                catch (IndexOutOfRangeException exception)
+                {
+                    // SharpZipLib can throw this while decoding a malformed dynamic Huffman table.
+                    throw Error(ScriptArchiveIssueCode.EntryCorrupt, "DEFLATE compressed data is invalid.", exception);
+                }
                 finally { reservation.Complete(checked((int)(inflater.TotalOut - outputBefore))); }
             }
             total += read;
