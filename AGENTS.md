@@ -44,11 +44,13 @@ Windows 本地离线的《模拟人生 4》Mod 整理工具，.NET 8 + WPF。
 ## 5. 当前状态
 
 - 重复文件检测：界面完整（扫描、选择、回收站删除、撤回、CLI 报告）。
-- 冲突检测：底层完成，没有界面。
+- 冲突检测：四入口总览和基础排查已接入 WPF；资源与脚本按文件对展示，未完成分析按文件汇总，展开明细保持虚拟化。
   - `Packages`：只读 DBPF 索引与结构预检
-  - `Core/Conflicts`：同一 TGI 的候选冲突，资源内容读取、解压与哈希比较（未压缩、zlib；RefPack 返回结构化失败）
-  - `Core/Scripts`：`.ts4script` 模块同名碰撞
-- 未做：冲突检测界面、报错诊断、二分排查、禁用、设置页内容、打包发布。
+  - `Core/Conflicts`：TGI 候选冲突、资源内容比较、文件对汇总及完整资源清单支持的 package 包含证明（未压缩、zlib；RefPack 返回结构化失败）
+  - `Core/Scripts`：`.ts4script` 模块同名碰撞，损坏条目不影响同归档的正常模块
+- 未做：报错日志分析、完整健康性检查、二分排查、禁用、一键体检、设置页内容、打包发布。package 包含信息尚未接入重复检测。
+
+冲突页的状态、技术详情与会话规则见 [冲突检测页面方案](docs/design/冲突检测页面方案-v1.md)。两种检测共享来源配置，各自保存当前结果；没有持久化扫描历史。
 
 首页和导航里灰色的「尚未开放」不是已完成的功能。
 
@@ -136,8 +138,8 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 ## 11. 常用命令
 
 ```powershell
-.\eng\dotnet.cmd build .\Sims4ModSieve.sln -c Release --no-restore --nologo
-.\eng\dotnet.cmd test  .\Sims4ModSieve.sln -c Release --no-restore --nologo
+.\eng\dotnet.cmd build .\Sims4ModSieve.sln -c Release --no-restore --nologo -m:1
+.\eng\dotnet.cmd test  .\Sims4ModSieve.sln -c Release --no-restore --no-build --nologo -m:1
 .\eng\dotnet.cmd run --project .\src\Sims4ModSieve.Desktop\Sims4ModSieve.Desktop.csproj -c Release
 ```
 

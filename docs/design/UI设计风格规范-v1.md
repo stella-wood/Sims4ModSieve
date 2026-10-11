@@ -14,11 +14,12 @@
 
 - [App.xaml](../../src/Sims4ModSieve.Desktop/App.xaml)：颜色、字体、按钮、卡片、展开组件及品牌图形资源。
 - [MainWindow.xaml](../../src/Sims4ModSieve.Desktop/MainWindow.xaml)：页面结构、尺寸、局部样式与绑定。
+- [ConflictPage.xaml](../../src/Sims4ModSieve.Desktop/ConflictPage.xaml)、[ConflictResultSession.cs](../../src/Sims4ModSieve.Desktop/ViewModels/ConflictResultSession.cs)：冲突文件对、未完成分析及平铺明细。
 - [DeleteConfirmationWindow.xaml](../../src/Sims4ModSieve.Desktop/DeleteConfirmationWindow.xaml)：紧凑确认窗。
 - [MainWindowViewModel.cs](../../src/Sims4ModSieve.Desktop/ViewModels/MainWindowViewModel.cs)、[DuplicateResultSession.cs](../../src/Sims4ModSieve.Desktop/ViewModels/DuplicateResultSession.cs)：状态、选择及结果会话。
 - [AGENTS.md](../../AGENTS.md)：此前已确认的视觉尺度、操作语义及局部改动边界。
 
-截图用虚构路径和样例数据离屏渲染，覆盖默认窗口 1180×780 与最小窗口 920×640，只含内容区、不含系统标题栏。未验证不同 DPI、键盘导航和系统主题。
+2026-10-09 基线截图用虚构路径和样例数据离屏渲染，覆盖默认窗口 1180×780 与最小窗口 920×640，只含内容区、不含系统标题栏。此后基础排查已验证两个窗口尺寸、150% DPI、键盘展开和矩形热区；125% DPI、其他系统主题及真实鼠标悬停尚未验证。
 
 ## 2. 整体气质
 
@@ -244,7 +245,6 @@
 | BareIconButton 与展开 ToggleButton 取消了 FocusVisualStyle | 在不改变常态视觉的前提下补键盘焦点提示与可访问名称，验证 Tab/Space/Enter |
 | 10–11 号路径和标签较密，淡紫色辅助文字对比偏弱 | 先测 125% / 150% DPI 与长路径；用户已指定的「更改」样式保持原值，调整前再确认 |
 | 移除来源按钮、复选框、滚动条和错误框仍部分依赖系统样式 | 跨 Windows 主题验证，不把本次机器的原生外观写成品牌 Token |
-| 首页冲突卡片包含尚未开放的能力描述 | 开放入口时只写已上线的子功能 |
 
 ## 10. 实现与验收清单
 

@@ -4,7 +4,7 @@
 
 Sims 4 Mod Sieve 是一个面向 Windows 的本地离线《模拟人生 4》Mod 整理工具。
 
-当前版本专注于可靠地发现并处理内容完全相同的重复文件。扫描和报告生成默认只读；只有用户明确勾选并确认后，桌面版才会把文件移入 Windows 回收站。
+当前版本提供重复文件检测与基础冲突排查。扫描和报告生成默认只读；重复检测中只有用户明确勾选并确认后，桌面版才会把文件移入 Windows 回收站。冲突页不提供删除或禁用操作。
 
 ## 当前功能
 
@@ -21,7 +21,7 @@ Sims 4 Mod Sieve 是一个面向 Windows 的本地离线《模拟人生 4》Mod 
 - 支持部分失败报告和最近一次删除撤回
 - 通过 CLI 导出 JSON 和静态 HTML 报告
 
-Mod 冲突检测已开放桌面入口。首页和顶部导航进入四功能总览；「基础排查」使用当前来源扫描 package 资源覆盖与脚本模块碰撞，资源和脚本按文件对展示需查看、可整理及未完成状态，展开查看完整内容分组；未完成文件和范围问题共用独立入口，长列表及展开明细保持虚拟化。报错日志分析、健康性检查、二分排查可进入「尚未开放」状态页，尚不执行分析或文件操作。结果与重复检测共享来源设置，各自保留扫描会话；清空来源会重置两种结果。
+Mod 冲突检测从首页或顶部导航进入四功能总览。「基础排查」比较 package 资源和脚本模块，按文件对展示结果，未完成分析按文件汇总；提供已证明的 package 包含信息，进度数字、筛选和展开明细均已接入。具体状态、技术详情和虚拟化规则见 [冲突检测页面方案](docs/design/冲突检测页面方案-v1.md)。报错日志分析、健康性检查、二分排查仍显示「尚未开放」。两种检测共享来源设置，各自保留当前扫描会话；清空来源会重置两种结果，当前没有持久化扫描历史。
 
 ## 系统要求
 
@@ -36,8 +36,8 @@ Mod 冲突检测已开放桌面入口。首页和顶部导航进入四功能总�
 
 ```powershell
 .\eng\dotnet.cmd restore .\Sims4ModSieve.sln --locked-mode
-.\eng\dotnet.cmd build .\Sims4ModSieve.sln -c Release --no-restore --nologo
-.\eng\dotnet.cmd test .\Sims4ModSieve.sln -c Release --no-build --no-restore --nologo
+.\eng\dotnet.cmd build .\Sims4ModSieve.sln -c Release --no-restore --nologo -m:1
+.\eng\dotnet.cmd test .\Sims4ModSieve.sln -c Release --no-build --no-restore --nologo -m:1
 ```
 
 真实 Windows 回收站往返测试默认跳过，因为它会对自动创建的临时文件执行一次回收站删除和恢复。明确需要验证时运行：
@@ -97,8 +97,11 @@ tests/
 
 eng/
 ├─ dotnet.cmd                    统一 .NET 命令入口
-└─ generate-brand-icon.ps1       应用图标生成脚本
+├─ generate-brand-icon.ps1       应用图标生成脚本
+└─ render-conflict-review.ps1    冲突页离屏渲染
 ```
+
+本地构建、渲染截图、临时样本和验收记录放在 `artifacts/`，由 `.gitignore` 排除，不作为项目文档提交。
 
 ## 安全与隐私
 

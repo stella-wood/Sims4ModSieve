@@ -1,7 +1,7 @@
 # Sims4ModSieve.Packages
 
-只读 DBPF 索引与资源内容读取。整个解决方案里**只有这个项目**引用
-`LlamaLogic.Packages`；`Core`、`Cli`、`Desktop` 都够不到它。
+只读 DBPF 索引与资源内容读取。整个解决方案里**只有这个项目**直接引用
+`LlamaLogic.Packages`；其他项目通过 Core 接口使用读取能力，不调用第三方 package API。
 
 对外实现两个 Core 接口：
 
