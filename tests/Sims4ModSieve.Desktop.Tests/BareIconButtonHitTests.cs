@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Runtime.ExceptionServices;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Desktop.Services;
 
@@ -13,13 +12,9 @@ public sealed class BareIconButtonHitTests
     [TestMethod]
     public void BareIconHitAreaAndDeleteConfirmationRenderCorrectly()
     {
-        Exception? failure = null;
-        var thread = new Thread(() =>
+        WpfTestHost.RunAsync(() =>
         {
-            try
-            {
-                var app = new App();
-                app.InitializeComponent();
+                var app = Application.Current;
                 var button = new Button
                 {
                     Width = 24,
@@ -78,20 +73,7 @@ public sealed class BareIconButtonHitTests
                 Assert.IsTrue(confirmation.IsVisible);
                 confirmation.Close();
                 host.Close();
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            ExceptionDispatchInfo.Capture(failure).Throw();
-        }
+        }).GetAwaiter().GetResult();
     }
 
     private static bool IsInsideButton(DependencyObject current, Button button)

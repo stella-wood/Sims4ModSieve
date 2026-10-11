@@ -3,6 +3,7 @@
 **/bin/
 **/obj/
 .vs/
+# Local rendering and acceptance records, including conflict-review/verification*.md
 artifacts/
 TestResults/
 

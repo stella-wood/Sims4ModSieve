@@ -14,4 +14,8 @@
     <ProjectReference Include="..\..\src\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
     <ProjectReference Include="..\..\src\Sims4ModSieve.Desktop\Sims4ModSieve.Desktop.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\src\Sims4ModSieve.Desktop\Assets\Sims4ModSieve.ico" Link="Assets\Sims4ModSieve.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
