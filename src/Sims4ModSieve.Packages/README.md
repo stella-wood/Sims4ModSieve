@@ -1,14 +1,20 @@
 # Sims4ModSieve.Packages
 
-只读 DBPF 索引底座。整个解决方案里**只有这个项目**引用
+只读 DBPF 索引与资源内容读取。整个解决方案里**只有这个项目**引用
 `LlamaLogic.Packages`；`Core`、`Cli`、`Desktop` 都够不到它。
 
-对外只有一个入口：`Sims4ModSieve.Core.Packages.IPackageIndexReader`。
+对外实现两个 Core 接口：
+
+- `Sims4ModSieve.Core.Packages.IPackageIndexReader`：读取资源索引与元数据；
+- `Sims4ModSieve.Core.Conflicts.IResourceContentHasher`：读取指定资源、流式解压并计算 SHA-256。
 
 ## 现在支持什么
 
 - 打开 DBPF **2.1**（Sims 4 的版本），只读模式；
 - 列出全部资源键（Type / Group / Instance）与它们在索引中的序号；
+- 按索引定位指定资源，读取未压缩或 zlib 内容，计算解压后完整内容的 SHA-256；
+- 资源内容由 `DbpfResourceContentHasher` 直接读取，不调用第三方库的内容解压 API；
+- 内容读取受单条存储大小、解压输出大小与共享处理预算约束；
 - 交给第三方库之前先做结构预检，见下；
 - 结构化失败：每一种拒绝都有稳定错误码，可用于报告与测试匹配；
 - 取消可传播：`OperationCanceledException` 原样向上抛，不会被转成失败结果；
@@ -54,13 +60,12 @@
 
 ## 现在不支持什么
 
-本轮只读索引，以下都**没有**实现，也不应假装已实现：
+- RefPack/QFS（含 streamable 变体）解压：返回 `resource-unsupported-compression` 结构化失败；
+- 判断哪个 package 最终在游戏里生效；
+- 写入、合并或修改 package。
 
-- 读取或解压 payload（zlib、RefPack/QFS 一概没碰）；
-- TGI 倒排表、payload hash、任何冲突结论；
-- `.ts4script` 分析；
-- 缓存、SQLite、报告、UI、文件操作；
-- 判断哪个 package 最终在游戏里生效。
+TGI 候选分组、资源哈希比较与结论由 `Core/Conflicts` 负责；
+`.ts4script` 模块分析由 `Core/Scripts` 负责，不属于本项目。
 
 ### 两项带兜底的元数据
 
@@ -87,6 +92,8 @@
 - 太小、magic 错、版本不符、索引越界、整数回绕、截断索引、
   伪造的巨大资源数、空索引自相矛盾；
 - 取消传播、读取中途文件改动、批量中的单点失败；
+- 未压缩与 zlib 内容哈希、损坏与截断内容、解压长度与处理预算边界；
+- RefPack、未知压缩与已删除记录的结构化失败；
 - Unicode 与超过 260 字符的路径。
 
 测试用的 package 全部由 `DbpfFixtureBuilder` 在测试期间生成，

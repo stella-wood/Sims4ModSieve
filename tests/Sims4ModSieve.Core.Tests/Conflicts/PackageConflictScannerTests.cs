@@ -40,6 +40,10 @@ public sealed class PackageConflictScannerTests
         Assert.AreEqual(0, report.IncompletePackageCount);
         Assert.AreEqual(1, report.Candidates.Count);
 
+        CollectionAssert.AreEqual(new[] { first, second }, report.ResourceInventories.Select(item => item.Path).ToArray());
+        CollectionAssert.AreEqual(new[] { 2, 1 }, report.ResourceInventories.Select(item => item.ResourceCount).ToArray());
+        Assert.IsTrue(report.ResourceInventories.All(item => item.ScannedStamp == new FileStamp(1, DateTime.UnixEpoch)));
+
         var candidate = report.Candidates[0];
         Assert.AreEqual(Hair, candidate.Key);
         Assert.AreEqual(2, candidate.PackageCount);
@@ -74,6 +78,8 @@ public sealed class PackageConflictScannerTests
 
         Assert.AreEqual(2, report.AnalyzedPackageCount);
         Assert.AreEqual(0, report.Candidates.Count);
+        Assert.AreEqual(2, report.ResourceInventories.Count);
+        Assert.IsTrue(report.ResourceInventories.All(item => item.ResourceCount == 1));
     }
 
     [TestMethod]
@@ -123,6 +129,7 @@ public sealed class PackageConflictScannerTests
 
         Assert.AreEqual(2, report.DiscoveredPackageCount);
         Assert.IsTrue(reader.ReadCounts.Values.All(count => count == 1));
+        Assert.AreEqual(2, report.ResourceInventories.Count);
         Assert.AreEqual(1, report.Candidates.Count);
         Assert.AreEqual(2, report.Candidates[0].Occurrences.Count);
         CollectionAssert.AreEqual(
@@ -151,6 +158,7 @@ public sealed class PackageConflictScannerTests
         Assert.AreEqual(2, report.DiscoveredPackageCount);
         Assert.AreEqual(2, reader.ReadCounts.Count);
         Assert.IsTrue(reader.ReadCounts.Values.All(count => count == 1));
+        Assert.AreEqual(2, report.ResourceInventories.Count);
         Assert.AreEqual(1, report.Candidates.Count);
         Assert.AreEqual(2, report.Candidates[0].Occurrences.Count);
         CollectionAssert.AreEqual(
@@ -179,6 +187,8 @@ public sealed class PackageConflictScannerTests
         Assert.AreEqual(4, report.DiscoveredPackageCount);
         Assert.AreEqual(2, report.AnalyzedPackageCount);
         CollectionAssert.AreEqual(new[] { broken, crashing }, report.IncompletePackagePaths.ToArray());
+        Assert.AreEqual(2, report.ResourceInventories.Count);
+        Assert.IsFalse(report.ResourceInventories.Any(item => item.Path == broken || item.Path == crashing));
         Assert.AreEqual(1, report.Candidates.Count);
 
         var readIssues = report.Issues
@@ -421,6 +431,37 @@ public sealed class PackageConflictScannerTests
         AssertNotMutable(report.Candidates[0].Occurrences[0].SourceIds);
         AssertNotMutable(report.IncompletePackagePaths);
         AssertNotMutable(report.Issues);
+        AssertNotMutable(report.ResourceInventories);
+    }
+
+    [TestMethod]
+    public async Task InventoryUsesDiscoveryPathAndIndexStampEvenWithoutCandidates()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var path = Placeholder(temp, "Mods", "a.package");
+        var stamp = new FileStamp(1234, DateTime.UnixEpoch.AddDays(3));
+        var reader = new InventoryIndexReader(stamp);
+
+        var report = await new PackageConflictScanner(new PhysicalFileSystemAccess(), reader).ScanAsync(
+            new PackageConflictScanRequest([new ScanSource("mods", Path.Combine(mods, "."))]));
+
+        Assert.AreEqual(0, report.Candidates.Count);
+        Assert.AreEqual(new PackageResourceInventory(path, stamp, 1), report.ResourceInventories.Single());
+        Assert.AreEqual(1, reader.ReadCount);
+    }
+
+    private sealed class InventoryIndexReader(FileStamp stamp) : IPackageIndexReader
+    {
+        public int ReadCount { get; private set; }
+
+        public Task<PackageReadResult> ReadIndexAsync(string packagePath, CancellationToken cancellationToken = default)
+        {
+            ReadCount++;
+            return Task.FromResult(PackageReadResult.Success(new PackageIndexSummary(
+                "reader-path.package", 2, 1, stamp.Length, stamp,
+                [new PackageResourceEntry(Lonely, 0, 100, PackageCompression.None, "NONE")])));
+        }
     }
 
     private static void AssertNotMutable<T>(IReadOnlyList<T> list)

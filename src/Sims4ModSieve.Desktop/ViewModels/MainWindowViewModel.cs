@@ -3,12 +3,14 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Conflicts;
+using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Desktop.Infrastructure;
 using Sims4ModSieve.Desktop.Services;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
 
-public sealed class MainWindowViewModel : ObservableObject
+public sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly IDuplicateRunService duplicateRunService;
     private readonly DuplicateResultSession resultSession;
@@ -23,6 +25,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private int lastDeleteResultGeneration;
     private bool isHomeVisible = true;
     private bool isScannerVisible;
+    private bool isConflictVisible;
     private bool isBusy;
     private bool isProgressIndeterminate;
     private string? modsRoot;
@@ -43,7 +46,10 @@ public sealed class MainWindowViewModel : ObservableObject
         IFileActionService? fileActionService = null,
         IFileActionDialogService? fileActionDialogs = null,
         IUnexpectedErrorHandler? unexpectedErrorHandler = null,
-        DuplicateResultSession? resultSession = null)
+        DuplicateResultSession? resultSession = null,
+        IPackageConflictScanner? packageConflictScanner = null,
+        IResourceContentComparer? resourceContentComparer = null,
+        IScriptModuleScanner? scriptModuleScanner = null)
     {
         this.duplicateRunService = duplicateRunService;
         this.resultSession = resultSession ?? new DuplicateResultSession();
@@ -52,10 +58,16 @@ public sealed class MainWindowViewModel : ObservableObject
         this.fileActionService = fileActionService ?? new FileActionService();
         this.fileActionDialogs = fileActionDialogs ?? new FileActionDialogService();
         this.unexpectedErrorHandler = unexpectedErrorHandler ?? new UnexpectedErrorHandler();
+        this.packageConflictScanner = packageConflictScanner ?? new PackageConflictScanner(
+            new PhysicalFileSystemAccess(), Sims4ModSieve.Packages.LlamaLogicPackageIndexReader.CreateDefault());
+        this.resourceContentComparer = resourceContentComparer ?? new ResourceContentComparer(
+            Sims4ModSieve.Packages.DbpfResourceContentHasher.CreateDefault());
+        this.scriptModuleScanner = scriptModuleScanner ?? new ScriptModuleScanner(new PhysicalFileSystemAccess());
         this.resultSession.PropertyChanged += OnResultSessionPropertyChanged;
 
         Sources.CollectionChanged += OnSourcesChanged;
-        OpenDuplicateScannerCommand = new RelayCommand(_ => ShowScanner());
+        OpenDuplicateScannerCommand = new RelayCommand(_ => ShowScanner(), _ => !IsBusy);
+        OpenConflictCommand = new RelayCommand(_ => ShowConflictOverview(), _ => !IsBusy);
         GoHomeCommand = new RelayCommand(_ => ShowHome(), _ => !IsBusy);
         AddSourceCommand = new RelayCommand(_ => AddSource(), _ => !IsBusy);
         ChangeModsRootCommand = new RelayCommand(_ => ChangeModsRoot(), _ => !IsBusy);
@@ -78,6 +90,7 @@ public sealed class MainWindowViewModel : ObservableObject
             () => this.fileActionService.CanUndoLastDelete && !IsBusy);
 
         LoadSettings();
+        InitializeConflict();
     }
 
     public ObservableCollection<ScanSourceViewModel> Sources { get; } = [];
@@ -85,6 +98,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public IReadOnlyList<DuplicateGroupViewModel> Groups => resultSession.Groups;
 
     public RelayCommand OpenDuplicateScannerCommand { get; }
+    public RelayCommand OpenConflictCommand { get; }
 
     public RelayCommand GoHomeCommand { get; }
 
@@ -118,6 +132,15 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         get => isScannerVisible;
         private set => SetProperty(ref isScannerVisible, value);
+    }
+
+    public bool IsConflictVisible
+    {
+        get => isConflictVisible;
+        private set
+        {
+            if (SetProperty(ref isConflictVisible, value)) RefreshConflictVisibility();
+        }
     }
 
     public bool IsBusy
@@ -289,12 +312,14 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         RefreshAvailability();
         IsHomeVisible = false;
+        IsConflictVisible = false;
         IsScannerVisible = true;
     }
 
     private void ShowHome()
     {
         IsScannerVisible = false;
+        IsConflictVisible = false;
         IsHomeVisible = true;
     }
 
@@ -562,10 +587,12 @@ public sealed class MainWindowViewModel : ObservableObject
         if (Sources.Count == 0)
         {
             ResetResultSession();
+            ResetConflictSession();
         }
 
         OnPropertyChanged(nameof(Sources));
         StartScanCommand?.RaiseCanExecuteChanged();
+        StartConflictScanCommand?.RaiseCanExecuteChanged();
     }
 
     private void OnSourcePropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -573,6 +600,7 @@ public sealed class MainWindowViewModel : ObservableObject
         if (eventArgs.PropertyName == nameof(ScanSourceViewModel.IsEnabled))
         {
             StartScanCommand.RaiseCanExecuteChanged();
+            StartConflictScanCommand?.RaiseCanExecuteChanged();
             SaveSettings();
         }
     }
@@ -678,11 +706,17 @@ public sealed class MainWindowViewModel : ObservableObject
     private void RefreshCommands()
     {
         GoHomeCommand.RaiseCanExecuteChanged();
+        OpenDuplicateScannerCommand.RaiseCanExecuteChanged();
+        OpenConflictCommand.RaiseCanExecuteChanged();
         AddSourceCommand.RaiseCanExecuteChanged();
         ChangeModsRootCommand.RaiseCanExecuteChanged();
         RemoveSourceCommand.RaiseCanExecuteChanged();
         StartScanCommand.RaiseCanExecuteChanged();
         CancelScanCommand.RaiseCanExecuteChanged();
+        StartConflictScanCommand?.RaiseCanExecuteChanged();
+        CancelConflictScanCommand?.RaiseCanExecuteChanged();
+        ConflictBackCommand?.RaiseCanExecuteChanged();
+        OpenConflictSectionCommand?.RaiseCanExecuteChanged();
         RefreshResultCommands();
     }
 }

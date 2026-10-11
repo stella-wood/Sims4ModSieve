@@ -98,6 +98,12 @@ public static class PackageConflictScanIssueCode
     public const string UnexpectedReadError = "package-read-unexpected-error";
 }
 
+/// <summary>成功读取的完整索引规模与文件版本，不保留索引内容。</summary>
+public sealed record PackageResourceInventory(
+    string Path,
+    FileStamp ScannedStamp,
+    int ResourceCount);
+
 /// <summary>
 /// 候选冲突扫描结果。
 /// </summary>
@@ -117,6 +123,9 @@ public sealed record PackageConflictScanReport(
     IReadOnlyList<PackageConflictCandidate> Candidates,
     IReadOnlyList<PackageConflictScanIssue> Issues)
 {
+    public IReadOnlyList<PackageResourceInventory> ResourceInventories { get; init; } =
+        ReadOnlyLists.Freeze(Array.Empty<PackageResourceInventory>());
+
     public int IncompletePackageCount => IncompletePackagePaths.Count;
 }
 

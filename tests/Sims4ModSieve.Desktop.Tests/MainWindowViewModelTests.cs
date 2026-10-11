@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Desktop.Infrastructure;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Desktop.ViewModels;
@@ -9,6 +10,73 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class MainWindowViewModelTests
 {
+    [TestMethod]
+    public async Task ClearingSourcesCancelsConflictScanAndUnlocksNextSession()
+    {
+        using var temporary = new TemporaryDirectory();
+        var source = temporary.CreateDirectory("Mods");
+        var scanner = new WaitingPackageScanner();
+        var viewModel = new MainWindowViewModel(
+            new DuplicateRunService(DuplicateScanner.CreateDefault()),
+            new FakeFolderPicker(),
+            new FakeSettingsStore(new DuplicateSettings(null, [new SavedScanSource(source, true)])),
+            packageConflictScanner: scanner);
+        viewModel.OpenConflictCommand.Execute(null);
+        viewModel.OpenConflictSectionCommand.Execute("basic");
+        var scan = viewModel.StartConflictScanCommand.ExecuteAsync();
+        await scanner.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.IsTrue(viewModel.IsBusy);
+        viewModel.Sources.Clear();
+
+        Assert.AreEqual("initial", viewModel.ConflictRunState);
+        Assert.IsFalse(viewModel.StartConflictScanCommand.CanExecute(null));
+        viewModel.Sources.Add(new ScanSourceViewModel(source));
+        await scan;
+        Assert.IsFalse(viewModel.IsBusy);
+        Assert.IsTrue(viewModel.StartConflictScanCommand.CanExecute(null));
+        Assert.AreEqual("initial", viewModel.ConflictRunState);
+    }
+
+    [TestMethod]
+    public async Task LateConflictProgressCannotOverwriteCancelledSession()
+    {
+        using var temporary = new TemporaryDirectory();
+        var source = temporary.CreateDirectory("Mods");
+        var scanner = new WaitingPackageScanner();
+        var viewModel = new MainWindowViewModel(
+            new DuplicateRunService(DuplicateScanner.CreateDefault()),
+            new FakeFolderPicker(),
+            new FakeSettingsStore(new DuplicateSettings(null, [new SavedScanSource(source, true)])),
+            packageConflictScanner: scanner);
+        var scan = viewModel.StartConflictScanCommand.ExecuteAsync();
+        await scanner.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        viewModel.CancelConflictScanCommand.Execute(null);
+        await scan;
+
+        scanner.Progress!.Report(new PackageConflictScanProgress(PackageConflictScanPhase.ReadingIndexes,
+            "迟到的进度", 1, 1));
+        await Task.Delay(50);
+
+        Assert.AreEqual("cancelled", viewModel.ConflictRunState);
+        Assert.AreEqual("扫描已取消", viewModel.ConflictStatus);
+    }
+
+    private sealed class WaitingPackageScanner : IPackageConflictScanner
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public IProgress<PackageConflictScanProgress>? Progress { get; private set; }
+
+        public async Task<PackageConflictScanReport> ScanAsync(PackageConflictScanRequest request,
+            IProgress<PackageConflictScanProgress>? progress = null, CancellationToken cancellationToken = default)
+        {
+            Progress = progress;
+            Started.TrySetResult();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException();
+        }
+    }
+
     [TestMethod]
     public void SavedUnavailablePathsAreRetainedWithoutChangingTheirEnabledState()
     {

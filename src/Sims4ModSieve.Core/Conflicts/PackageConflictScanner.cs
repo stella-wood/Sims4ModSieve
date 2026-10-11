@@ -118,7 +118,12 @@ public sealed class PackageConflictScanner(
             analyzed.Count,
             ReadOnlyLists.Freeze(incomplete),
             candidates,
-            OrderIssues(issues));
+            OrderIssues(issues))
+        {
+            ResourceInventories = ReadOnlyLists.Freeze(EnumerateWithCancellation(analyzed, cancellationToken)
+                .Select(package => new PackageResourceInventory(
+                    package.Path, package.Summary.Stamp, package.Summary.ResourceCount))),
+        };
 
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(new PackageConflictScanProgress(

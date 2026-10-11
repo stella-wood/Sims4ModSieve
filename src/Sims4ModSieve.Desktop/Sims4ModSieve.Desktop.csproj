@@ -11,5 +11,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
+    <ProjectReference Include="..\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
   </ItemGroup>
 </Project>

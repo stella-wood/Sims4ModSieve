@@ -7,12 +7,16 @@ namespace Sims4ModSieve.Desktop;
 
 public partial class MainWindow : Window
 {
-    public MainWindow()
+    public MainWindow() : this(new MainWindowViewModel(
+        new DuplicateRunService(DuplicateScanner.CreateDefault()),
+        new FolderPickerService(),
+        new DuplicateSettingsStore()))
+    {
+    }
+
+    public MainWindow(MainWindowViewModel viewModel)
     {
         InitializeComponent();
-        DataContext = new MainWindowViewModel(
-            new DuplicateRunService(DuplicateScanner.CreateDefault()),
-            new FolderPickerService(),
-            new DuplicateSettingsStore());
+        DataContext = viewModel;
     }
 }
