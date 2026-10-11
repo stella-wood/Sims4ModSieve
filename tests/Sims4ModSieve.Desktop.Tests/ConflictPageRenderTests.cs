@@ -28,6 +28,17 @@ public sealed class ConflictPageRenderTests
         Assert.AreEqual(4, Descendants<Button>(window).Count(button => Equals(button.Content, "进入排查→")));
         Save(window, "overview-1180x780.png");
         model.OpenConflictSectionCommand.Execute("basic");
+        await WpfTestHost.LayoutAsync(window);
+        var sourceList = Descendants<ListBox>(window).Single(list => list.Name == "ConflictSourcesList");
+        Assert.AreSame(model.ConflictSources, sourceList.ItemsSource);
+        var sourceCheck = Descendants<CheckBox>(sourceList).Single();
+        model.Sources[0].IsEnabled = false;
+        Assert.AreEqual(true, sourceCheck.IsChecked);
+        sourceCheck.IsChecked = false;
+        Assert.IsFalse(model.ConflictSources[0].IsEnabled);
+        model.Sources[0].IsEnabled = true;
+        Assert.AreEqual(false, sourceCheck.IsChecked);
+        sourceCheck.IsChecked = true;
         var first = @"C:\Mods\【装扮】长发连衣裙合集 版本 2.6 最终修订 作者小葵.package";
         var second = @"C:\Mods\【功能】更好的园艺与种植体验 版本 1.8 汉化修订版.package";
         var session = Session([Resource(1, (first, "a"), (second, "b")), Resource(2, (A, "same"), (B, "same")),
@@ -248,7 +259,7 @@ public sealed class ConflictPageRenderTests
     });
 
     internal static MainWindowViewModel CreateModel() => new(new DuplicateRunService(DuplicateScanner.CreateDefault()),
-        new NoFolderPicker(), new InMemorySettings(new DuplicateSettings(null, [new SavedScanSource(Path.GetTempPath(), true)])));
+        new NoFolderPicker(), new InMemorySettings(new DuplicateSettings(Path.GetTempPath(), [])));
 
     internal static MainWindow OpenWindow(MainWindowViewModel model)
     {

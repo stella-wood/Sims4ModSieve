@@ -16,6 +16,46 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ConflictScanFlowTests
 {
     [TestMethod]
+    public async Task EachScannerUsesItsOwnCheckedFoldersAndClearsOnlyItsOwnResults()
+    {
+        using var files = new TemporaryFiles();
+        var mods = files.Directory("Mods");
+        var duplicates = files.Directory("Duplicates");
+        var conflicts = files.Directory("Conflicts");
+        WritePackage(duplicates, "duplicate-a.package", 1, "same");
+        WritePackage(duplicates, "duplicate-b.package", 1, "same");
+        WritePackage(conflicts, "conflict-a.package", 2, "first");
+        WritePackage(conflicts, "conflict-b.package", 2, "second");
+        var model = CreateViewModel(mods);
+        model.Sources[0].IsEnabled = false;
+        model.Sources.Add(new ScanSourceViewModel(duplicates));
+        model.ConflictSources[0].IsEnabled = false;
+        model.ConflictSources.Add(new ScanSourceViewModel(conflicts));
+
+        await model.StartScanCommand.ExecuteAsync();
+        Assert.AreEqual(1, model.DuplicateGroupCount);
+        Assert.IsTrue(model.Groups.SelectMany(group => group.Files).All(file => Path.GetDirectoryName(file.Path) == duplicates));
+        model.ApplySuggestionsCommand.Execute(null);
+        var selected = model.SelectedFileCount;
+        await model.StartConflictScanCommand.ExecuteAsync();
+        Assert.AreEqual(1, model.ConflictResources.Count);
+        Assert.IsTrue(model.ConflictResources.Single().HasConfirmedDifference);
+        Assert.AreEqual(selected, model.SelectedFileCount);
+
+        model.ConflictSources.Clear();
+        Assert.AreEqual("initial", model.ConflictRunState);
+        Assert.AreEqual(1, model.DuplicateGroupCount);
+        Assert.AreEqual(selected, model.SelectedFileCount);
+        model.ConflictSources.Add(new ScanSourceViewModel(conflicts));
+        await model.StartConflictScanCommand.ExecuteAsync();
+        model.Sources.Clear();
+        Assert.IsFalse(model.HasResults);
+        Assert.AreEqual(0, model.SelectedFileCount);
+        Assert.AreEqual("complete", model.ConflictRunState);
+        Assert.AreEqual(1, model.ConflictResources.Count);
+    }
+
+    [TestMethod]
     public async Task RealTemporaryPackagesAndScriptsReachGroupedResultsAndKeepReadFailures()
     {
         using var files = new TemporaryFiles();
@@ -103,20 +143,20 @@ public sealed class ConflictScanFlowTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         Assert.IsTrue(model.HasActiveConflictFilter);
-        model.Sources.Add(new ScanSourceViewModel(extra));
-        model.Sources.RemoveAt(model.Sources.Count - 1);
+        model.ConflictSources.Add(new ScanSourceViewModel(extra));
+        model.ConflictSources.RemoveAt(model.ConflictSources.Count - 1);
         Assert.IsTrue(model.HasActiveConflictFilter);
         await model.StartConflictScanCommand.ExecuteAsync();
         Assert.IsFalse(model.HasActiveConflictFilter);
         Assert.IsTrue(model.ConflictRows.All(row => !row.IsExpanded));
         model.IncludeConflictIncomplete = false;
-        model.Sources.Clear();
+        model.ConflictSources.Clear();
         Assert.IsFalse(model.HasActiveConflictFilter);
         Assert.AreEqual(0, model.ConflictRows.Count);
     }
 
     [TestMethod]
-    public async Task SourcesShareSettingsAndOnlyRemovingTheLastSourceResetsResults()
+    public async Task ConflictSourcesAreIndependentAndOnlyRemovingTheLastSourceResetsResults()
     {
         using var files = new TemporaryFiles();
         var mods = files.Directory("Mods");
@@ -135,13 +175,13 @@ public sealed class ConflictScanFlowTests
         viewModel.OpenConflictCommand.Execute(null);
         viewModel.OpenConflictSectionCommand.Execute("basic");
         Assert.AreEqual(1, viewModel.ConflictResources.Count);
-        viewModel.Sources.Add(new ScanSourceViewModel(extra));
-        viewModel.Sources[0].IsEnabled = false;
+        viewModel.ConflictSources.Add(new ScanSourceViewModel(extra));
+        viewModel.ConflictSources[0].IsEnabled = false;
         Assert.AreEqual(1, viewModel.ConflictResources.Count);
         Assert.IsTrue(viewModel.StartConflictScanCommand.CanExecute(null));
-        viewModel.RemoveSourceCommand.Execute(viewModel.Sources[0]);
+        viewModel.RemoveSourceCommand.Execute(viewModel.ConflictSources[0]);
         Assert.AreEqual(1, viewModel.ConflictResources.Count);
-        viewModel.RemoveSourceCommand.Execute(viewModel.Sources[0]);
+        viewModel.RemoveSourceCommand.Execute(viewModel.ConflictSources[0]);
         Assert.AreEqual("initial", viewModel.ConflictRunState);
         Assert.AreEqual(0, viewModel.ConflictResources.Count);
         Assert.AreEqual(0, viewModel.ConflictProblems.Count);
@@ -172,7 +212,7 @@ public sealed class ConflictScanFlowTests
         using var files = new TemporaryFiles();
         var mods = files.Directory("Mods");
         var scanner = new WaitingPackageScanner();
-        var viewModel = CreateViewModel(new FakeSettingsStore(new DuplicateSettings(null,
+        var viewModel = CreateViewModel(new FakeSettingsStore(new DuplicateSettings(mods,
             [new SavedScanSource(mods, true)])), scanner);
         var scan = viewModel.StartConflictScanCommand.ExecuteAsync();
         await scanner.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -200,18 +240,18 @@ public sealed class ConflictScanFlowTests
         using var files = new TemporaryFiles();
         var mods = files.Directory("Mods");
         var scanner = new WaitingPackageScanner();
-        var viewModel = CreateViewModel(new FakeSettingsStore(new DuplicateSettings(null,
+        var viewModel = CreateViewModel(new FakeSettingsStore(new DuplicateSettings(mods,
             [new SavedScanSource(mods, true)])), scanner);
         var scan = viewModel.StartConflictScanCommand.ExecuteAsync();
         await scanner.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        viewModel.Sources.Clear();
+        viewModel.ConflictSources.Clear();
         await scan.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.AreEqual("initial", viewModel.ConflictRunState);
         Assert.IsFalse(viewModel.IsBusy);
         Assert.IsFalse(viewModel.StartConflictScanCommand.CanExecute(null));
-        viewModel.Sources.Add(new ScanSourceViewModel(mods));
+        viewModel.ConflictSources.Add(new ScanSourceViewModel(mods));
         Assert.IsTrue(viewModel.StartConflictScanCommand.CanExecute(null));
     }
 
@@ -220,7 +260,7 @@ public sealed class ConflictScanFlowTests
     {
         using var files = new TemporaryFiles();
         var mods = files.Directory("Mods");
-        var viewModel = CreateViewModel(new FakeSettingsStore(new DuplicateSettings(null,
+        var viewModel = CreateViewModel(new FakeSettingsStore(new DuplicateSettings(mods,
             [new SavedScanSource(mods, true)])), new FailingPackageScanner());
 
         await viewModel.StartConflictScanCommand.ExecuteAsync();
@@ -279,7 +319,7 @@ public sealed class ConflictScanFlowTests
                         Assert.IsFalse(model.ConflictRows[0].IsExpanded);
                         break;
                     case "clear":
-                        model.Sources.Clear();
+                        model.ConflictSources.Clear();
                         Assert.AreEqual("initial", model.ConflictRunState);
                         break;
                     case "rescan":
@@ -419,7 +459,7 @@ public sealed class ConflictScanFlowTests
         Assert.AreEqual(1, failing.ConflictProgressMaximum);
         Assert.IsTrue(failing.ConflictIndeterminate);
 
-        viewModel.Sources.Clear();
+        viewModel.ConflictSources.Clear();
         Assert.AreEqual("initial", viewModel.ConflictRunState);
         Assert.AreEqual(string.Empty, viewModel.ConflictProgressText);
         Assert.AreEqual(1, viewModel.ConflictProgressMaximum);

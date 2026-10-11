@@ -21,7 +21,7 @@ Sims 4 Mod Sieve 是一个面向 Windows 的本地离线《模拟人生 4》Mod 
 - 支持部分失败报告和最近一次删除撤回
 - 通过 CLI 导出 JSON 和静态 HTML 报告
 
-Mod 冲突检测从首页或顶部导航进入四功能总览。「基础排查」比较 package 资源和脚本模块，按资源／模块展示默认收起的卡片，直接列参与文件、原因和按需展开的技术详情；漏斗支持状态与类型复选筛选，独立未完成项合并在结果列表中。具体状态、技术详情和虚拟化规则见 [冲突检测页面方案](docs/design/冲突检测页面方案-v1.md)。报错日志分析、健康性检查、二分排查仍显示「尚未开放」。两种检测共享来源设置，各自保留当前扫描会话；清空来源会重置两种结果，当前没有持久化扫描历史。
+Mod 冲突检测从首页或顶部导航进入四功能总览。「基础排查」比较 package 资源和脚本模块，按资源／模块展示默认收起的卡片，直接列参与文件、原因和按需展开的技术详情；漏斗支持状态与类型复选筛选，独立未完成项合并在结果列表中。具体状态、技术详情和虚拟化规则见 [冲突检测页面方案](docs/design/冲突检测页面方案-v1.md)。报错日志分析、健康性检查、二分排查仍显示「尚未开放」。两种检测的文件夹范围和勾选状态各自独立，同次运行期间切换页面保留；清空范围只重置当前检测的结果。完全关闭再打开，两页恢复默认范围，不恢复上次添加的目录或勾选，当前没有持久化扫描历史。
 
 ## 系统要求
 
@@ -63,7 +63,7 @@ Release 构建输出位于：
 src\Sims4ModSieve.Desktop\bin\Release\net8.0-windows\
 ```
 
-桌面程序名为 `Sims4ModSieve.exe`。扫描来源与错误日志保存在 `%LOCALAPPDATA%\Sims4ModSieve\`，不会写入 Mods 文件夹。新目录尚无设置时，依次读取旧版 `%LOCALAPPDATA%\Sim4ModSieve\duplicate-settings.json` 和 `%LOCALAPPDATA%\Sims4ModDoctor\duplicate-settings.json`；后续保存写入新目录，旧文件保留。
+桌面程序名为 `Sims4ModSieve.exe`。当前 Mods 文件夹位置与错误日志保存在 `%LOCALAPPDATA%\Sims4ModSieve\`，不会写入 Mods 文件夹。新目录尚无设置时，依次读取旧版 `%LOCALAPPDATA%\Sim4ModSieve\duplicate-settings.json` 和 `%LOCALAPPDATA%\Sims4ModDoctor\duplicate-settings.json`；后续保存写入新目录，旧文件保留。仅恢复当前 Mods 文件夹位置，忽略旧设置中的扫描来源；每次启动，两种检测各自默认勾选该 Mods 文件夹，未设置且未发现默认目录时范围为空。
 
 ## CLI
 

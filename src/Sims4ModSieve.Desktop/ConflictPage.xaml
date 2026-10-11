@@ -237,7 +237,7 @@
                                 <Button Grid.Column="1" Content="{Binding ModsRootActionText}" Command="{Binding ChangeModsRootCommand}" Style="{StaticResource HeaderBackButtonStyle}" Padding="6,2" Foreground="#A892C5" FontSize="12" FontWeight="Normal" />
                             </Grid>
                         </Border>
-                        <ListBox x:Name="ConflictSourcesList" Grid.Row="2" ItemsSource="{Binding Sources}" Style="{StaticResource ConflictListStyle}"><ListBox.ItemTemplate><DataTemplate>
+                        <ListBox x:Name="ConflictSourcesList" Grid.Row="2" ItemsSource="{Binding ConflictSources}" Style="{StaticResource ConflictListStyle}"><ListBox.ItemTemplate><DataTemplate>
                                 <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <CheckBox Margin="0,3,10,0" IsChecked="{Binding IsEnabled}" IsEnabled="{Binding DataContext.CanEditSources, RelativeSource={RelativeSource AncestorType=Window}}" />
                                     <StackPanel Grid.Column="1"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Path}" ToolTip="{Binding Path}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource MutedBrush}" /><TextBlock Text="{Binding AvailabilityText}" Foreground="#9A6A32" FontSize="10" Visibility="{Binding HasAvailabilityWarning, Converter={StaticResource BooleanToVisibilityConverter}}" /></StackPanel>

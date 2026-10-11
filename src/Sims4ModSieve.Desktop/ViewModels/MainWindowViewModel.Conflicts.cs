@@ -106,7 +106,7 @@ public sealed partial class MainWindowViewModel
             QueueConflictRowsRefresh();
         });
         StartConflictScanCommand = new AsyncRelayCommand(StartConflictScanAsync,
-            exception => ReportConflictFailure(exception), () => !IsBusy && Sources.Any(source => source.IsEnabled));
+            exception => ReportConflictFailure(exception), () => !IsBusy && ConflictSources.Any(source => source.IsEnabled));
         CancelConflictScanCommand = new RelayCommand(_ => conflictCancellation?.Cancel(), _ => IsConflictScanning);
     }
 
@@ -279,8 +279,7 @@ public sealed partial class MainWindowViewModel
     private async Task StartConflictScanAsync()
     {
         RefreshAvailability();
-        SaveSettings();
-        var sources = Sources.Where(source => source.IsEnabled)
+        var sources = ConflictSources.Where(source => source.IsEnabled)
             .Select((source, index) => new ScanSource(source.Path, source.Path, true, index, source.Name)).ToArray();
         ResetConflictSession();
         var generation = conflictGeneration;

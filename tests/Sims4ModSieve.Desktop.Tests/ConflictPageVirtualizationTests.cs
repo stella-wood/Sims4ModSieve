@@ -26,7 +26,7 @@ public sealed class ConflictPageVirtualizationTests
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
-        for (var index = 0; index < 500; index++) model.Sources.Add(new ScanSourceViewModel($@"C:\Sources\source-{index:D4}"));
+        for (var index = 0; index < 500; index++) model.ConflictSources.Add(new ScanSourceViewModel($@"C:\Sources\source-{index:D4}"));
         var window = OpenWindow(model);
         window.Width = 920;
         window.Height = 640;

@@ -66,6 +66,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         this.resultSession.PropertyChanged += OnResultSessionPropertyChanged;
 
         Sources.CollectionChanged += OnSourcesChanged;
+        ConflictSources.CollectionChanged += OnSourcesChanged;
         OpenDuplicateScannerCommand = new RelayCommand(_ => ShowScanner(), _ => !IsBusy);
         OpenConflictCommand = new RelayCommand(_ => ShowConflictOverview(), _ => !IsBusy);
         GoHomeCommand = new RelayCommand(_ => ShowHome(), _ => !IsBusy);
@@ -94,6 +95,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     public ObservableCollection<ScanSourceViewModel> Sources { get; } = [];
+
+    public ObservableCollection<ScanSourceViewModel> ConflictSources { get; } = [];
+
+    private ObservableCollection<ScanSourceViewModel> ActiveSources => IsConflictVisible ? ConflictSources : Sources;
 
     public IReadOnlyList<DuplicateGroupViewModel> Groups => resultSession.Groups;
 
@@ -280,29 +285,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void LoadSettings()
     {
-        var settings = settingsStore.Load();
-        if (settings is not null)
-        {
-            ModsRoot = NormalizePathOrNull(settings.ModsRoot);
-            foreach (var source in settings.Sources)
-            {
-                AddSource(source.Path, source.Enabled, saveSettings: false);
-            }
-        }
-
-        if (Sources.Count == 0)
+        ModsRoot = NormalizePathOrNull(settingsStore.Load()?.ModsRoot);
+        if (!HasModsRoot)
         {
             var defaultModsRoot = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "Electronic Arts",
                 "The Sims 4",
                 "Mods");
+            if (Directory.Exists(defaultModsRoot)) ModsRoot = defaultModsRoot;
+        }
 
-            if (Directory.Exists(defaultModsRoot))
-            {
-                ModsRoot = defaultModsRoot;
-                AddSource(defaultModsRoot, saveSettings: false);
-            }
+        if (HasModsRoot)
+        {
+            AddSource(Sources, ModsRoot!);
+            AddSource(ConflictSources, ModsRoot!);
         }
 
         RefreshAvailability();
@@ -328,7 +325,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var path = folderPicker.PickFolder("选择要检查的文件夹", ModsRoot);
         if (path is not null)
         {
-            AddSource(path);
+            AddSource(ActiveSources, path);
         }
     }
 
@@ -342,10 +339,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         ModsRoot = normalizedPath;
-        var source = Sources.FirstOrDefault(item => PathRulesEqual(item.Path, normalizedPath));
+        var source = ActiveSources.FirstOrDefault(item => PathRulesEqual(item.Path, normalizedPath));
         if (source is null)
         {
-            AddSource(normalizedPath, saveSettings: false);
+            AddSource(ActiveSources, normalizedPath);
         }
         else
         {
@@ -356,23 +353,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SaveSettings();
     }
 
-    private void AddSource(string path, bool enabled = true, bool saveSettings = true)
+    private void AddSource(ObservableCollection<ScanSourceViewModel> sources, string path)
     {
         var normalizedPath = NormalizePathOrNull(path);
         if (normalizedPath is null
-            || Sources.Any(source => PathRulesEqual(source.Path, normalizedPath)))
+            || sources.Any(source => PathRulesEqual(source.Path, normalizedPath)))
         {
             return;
         }
 
-        var source = new ScanSourceViewModel(normalizedPath, enabled);
-        source.PropertyChanged += OnSourcePropertyChanged;
-        Sources.Add(source);
-
-        if (saveSettings)
-        {
-            SaveSettings();
-        }
+        sources.Add(new ScanSourceViewModel(normalizedPath));
     }
 
     private void RemoveSource(object? parameter)
@@ -382,9 +372,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        source.PropertyChanged -= OnSourcePropertyChanged;
-        Sources.Remove(source);
-        SaveSettings();
+        ActiveSources.Remove(source);
     }
 
     private bool CanStartScan() => !IsBusy && Sources.Any(source => source.IsEnabled);
@@ -398,8 +386,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        SaveSettings();
-
         var input = new DuplicateRunInput(
             enabledSources
                 .Select(source => new DuplicateRunSource(source.Path, source.Name))
@@ -407,6 +393,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ModsRoot);
 
         ResetResultSession();
+        var generation = resultGeneration;
         scanCancellation = new CancellationTokenSource();
         IsBusy = true;
         IsProgressIndeterminate = true;
@@ -414,7 +401,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         StatusText = "正在准备扫描…";
         StatusDetail = string.Empty;
 
-        var progress = new Progress<DuplicateScanProgress>(UpdateProgress);
+        var progress = new Progress<DuplicateScanProgress>(value =>
+        {
+            if (generation == resultGeneration) UpdateProgress(value);
+        });
 
         try
         {
@@ -422,11 +412,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 () => duplicateRunService.RunAsync(input, progress, scanCancellation.Token),
                 scanCancellation.Token);
 
+            if (generation != resultGeneration) return;
             StatusText = "正在整理结果…";
             IsProgressIndeterminate = true;
             var resultGroups = await Task.Run(
                 () => resultSession.PrepareGroups(report.Groups, scanCancellation.Token),
                 scanCancellation.Token);
+            if (generation != resultGeneration) return;
             resultSession.Replace(resultGroups);
 
             IssueCount = report.Issues.Count;
@@ -440,13 +432,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            StatusText = "扫描已取消";
-            StatusDetail = string.Empty;
+            if (generation == resultGeneration)
+            {
+                StatusText = "扫描已取消";
+                StatusDetail = string.Empty;
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            StatusText = "扫描没有完成";
-            StatusDetail = exception.Message;
+            if (generation == resultGeneration)
+            {
+                StatusText = "扫描没有完成";
+                StatusDetail = exception.Message;
+            }
         }
         finally
         {
@@ -585,15 +583,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void OnSourcesChanged(object? sender, NotifyCollectionChangedEventArgs eventArgs)
     {
-        if (Sources.Count == 0)
-        {
-            ResetResultSession();
-            ResetConflictSession();
-        }
+        if (eventArgs.OldItems is not null)
+            foreach (ScanSourceViewModel source in eventArgs.OldItems)
+                source.PropertyChanged -= OnSourcePropertyChanged;
+        if (eventArgs.NewItems is not null)
+            foreach (ScanSourceViewModel source in eventArgs.NewItems)
+                source.PropertyChanged += OnSourcePropertyChanged;
 
-        OnPropertyChanged(nameof(Sources));
-        StartScanCommand?.RaiseCanExecuteChanged();
-        StartConflictScanCommand?.RaiseCanExecuteChanged();
+        if (ReferenceEquals(sender, Sources))
+        {
+            if (Sources.Count == 0) ResetResultSession();
+            OnPropertyChanged(nameof(Sources));
+            StartScanCommand?.RaiseCanExecuteChanged();
+        }
+        else
+        {
+            if (ConflictSources.Count == 0) ResetConflictSession();
+            OnPropertyChanged(nameof(ConflictSources));
+            StartConflictScanCommand?.RaiseCanExecuteChanged();
+        }
     }
 
     private void OnSourcePropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -602,13 +610,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             StartScanCommand.RaiseCanExecuteChanged();
             StartConflictScanCommand?.RaiseCanExecuteChanged();
-            SaveSettings();
         }
     }
 
     private void RefreshAvailability()
     {
-        foreach (var source in Sources)
+        foreach (var source in Sources.Concat(ConflictSources))
         {
             source.RefreshAvailability();
         }
@@ -616,9 +623,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsModsRootAvailable = HasModsRoot && Directory.Exists(ModsRoot!);
     }
 
-    private void SaveSettings() => settingsStore.Save(new DuplicateSettings(
-        ModsRoot,
-        Sources.Select(source => new SavedScanSource(source.Path, source.IsEnabled)).ToArray()));
+    private void SaveSettings() => settingsStore.Save(new DuplicateSettings(ModsRoot, []));
 
     private static string? NormalizePathOrNull(string? path)
     {
@@ -668,6 +673,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void ResetResultSession()
     {
         resultGeneration++;
+        scanCancellation?.Cancel();
         ClearFileActionHistory();
         resultSession.Reset();
         IssueCount = 0;
