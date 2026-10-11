@@ -110,13 +110,12 @@ public sealed partial class MainWindowViewModel
         CancelConflictScanCommand = new RelayCommand(_ => conflictCancellation?.Cancel(), _ => IsConflictScanning);
     }
 
-    private void ShowConflictOverview()
+    private void ShowConflict()
     {
         RefreshAvailability();
         IsHomeVisible = false;
         IsScannerVisible = false;
         IsConflictVisible = true;
-        SelectConflictSection("overview");
     }
 
     private void SelectConflictSection(string? section)

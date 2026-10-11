@@ -11,6 +11,36 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class MainWindowViewModelTests
 {
     [TestMethod]
+    [DataRow("basic")]
+    [DataRow("logs")]
+    [DataRow("health")]
+    [DataRow("bisect")]
+    public void ConflictNavigationRestoresLastSectionUntilExplicitlyReturningToOverview(string section)
+    {
+        var model = CreateViewModel(new FakeSettingsStore(new DuplicateSettings(Path.GetTempPath(), [])));
+        model.OpenConflictCommand.Execute(null);
+        Assert.IsTrue(model.IsConflictOverview);
+        model.OpenConflictSectionCommand.Execute(section);
+
+        model.GoHomeCommand.Execute(null);
+        model.OpenConflictCommand.Execute(null);
+        Assert.AreEqual(section, model.ConflictSection);
+        Assert.IsFalse(model.IsConflictOverview);
+        Assert.IsTrue(section == "basic" ? model.IsConflictBasic : model.IsConflictUnavailable);
+        model.OpenDuplicateScannerCommand.Execute(null);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictCommand.Execute(null);
+        Assert.AreEqual(section, model.ConflictSection);
+        Assert.IsTrue(section == "basic" ? model.IsConflictBasic : model.IsConflictUnavailable);
+
+        model.ConflictBackCommand.Execute(null);
+        Assert.IsTrue(model.IsConflictOverview);
+        model.GoHomeCommand.Execute(null);
+        model.OpenConflictCommand.Execute(null);
+        Assert.IsTrue(model.IsConflictOverview);
+    }
+
+    [TestMethod]
     public void SourcesAndChecksStayIndependentAcrossPageNavigation()
     {
         using var temporary = new TemporaryDirectory();

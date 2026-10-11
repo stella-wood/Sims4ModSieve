@@ -68,7 +68,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Sources.CollectionChanged += OnSourcesChanged;
         ConflictSources.CollectionChanged += OnSourcesChanged;
         OpenDuplicateScannerCommand = new RelayCommand(_ => ShowScanner(), _ => !IsBusy);
-        OpenConflictCommand = new RelayCommand(_ => ShowConflictOverview(), _ => !IsBusy);
+        OpenConflictCommand = new RelayCommand(_ => ShowConflict(), _ => !IsBusy);
         GoHomeCommand = new RelayCommand(_ => ShowHome(), _ => !IsBusy);
         AddSourceCommand = new RelayCommand(_ => AddSource(), _ => !IsBusy);
         ChangeModsRootCommand = new RelayCommand(_ => ChangeModsRoot(), _ => !IsBusy);
