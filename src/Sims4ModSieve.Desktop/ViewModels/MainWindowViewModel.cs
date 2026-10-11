@@ -460,7 +460,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void UpdateProgress(DuplicateScanProgress progress)
     {
-        StatusText = progress.Message;
+        StatusText = progress.Phase == DuplicateScanPhase.Hashing && progress.Message.EndsWith('）')
+            ? $"{progress.Message}…" : progress.Message;
         DiscoveredFileCount = progress.DiscoveredFileCount;
         IsProgressIndeterminate = progress.TotalItems is null || progress.Phase == DuplicateScanPhase.Discovering;
         if (progress.TotalItems is int total)

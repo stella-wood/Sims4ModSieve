@@ -247,8 +247,8 @@
                         <StackPanel Grid.Row="3" Margin="0,12,0,0">
                             <ProgressBar Height="7" Maximum="{Binding ConflictProgressMaximum, Mode=OneWay}" Value="{Binding ConflictCompleted, Mode=OneWay}" IsIndeterminate="{Binding ConflictIndeterminate, Mode=OneWay}" Visibility="{Binding IsConflictScanning, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,2">
-                                <TextBlock Text="{Binding ConflictStatus}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                <TextBlock x:Name="ConflictProgressText" Text="{Binding ConflictProgressText}" Foreground="{StaticResource MutedBrush}" Margin="8,0,0,0" FontWeight="Normal" />
+                                <TextBlock Text="{Binding ConflictStatus}" Style="{StaticResource SectionTitleTextStyle}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="ConflictProgressText" Text="{Binding ConflictProgressText}" Margin="8,0,0,0" Style="{StaticResource SectionTitleTextStyle}" />
                             </StackPanel>
                             <TextBlock Text="{Binding ConflictPhase}" Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" />
                             <Button Margin="0,14,0,0" Content="开始扫描" Command="{Binding StartConflictScanCommand}" Style="{StaticResource PrimaryButtonStyle}" Visibility="{Binding IsConflictNotScanning, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -284,23 +284,26 @@
                                          Visibility="{Binding HasActiveConflictFilter, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             </Grid>
                         </ToggleButton>
-                        <Popup PlacementTarget="{Binding ElementName=ConflictFilterButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                        <Popup x:Name="ConflictFilterPopup" PlacementTarget="{Binding ElementName=ConflictFilterButton}" Placement="Custom" StaysOpen="False" AllowsTransparency="True"
                                IsOpen="{Binding IsChecked, ElementName=ConflictFilterButton, Mode=TwoWay}"
                                DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="14,10" MinWidth="260">
-                                <StackPanel>
-                                    <UniformGrid x:Name="ConflictStatusChoices" Columns="3">
-                                        <CheckBox Content="全部" IsChecked="{Binding IncludeAllConflictStates}" Margin="0,4,10,4" AutomationProperties.Name="全部状态" />
-                                        <CheckBox Content="需查看" IsChecked="{Binding IncludeConflictNeedsReview}" Margin="0,4,10,4" />
-                                        <CheckBox Content="可整理" IsChecked="{Binding IncludeConflictCanOrganize}" Margin="0,4,10,4" />
-                                        <CheckBox Content="未完成" IsChecked="{Binding IncludeConflictIncomplete}" Margin="0,4,10,4" />
-                                    </UniformGrid>
+                            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10,16,10">
+                                <StackPanel Grid.IsSharedSizeScope="True">
+                                    <Grid x:Name="ConflictStatusChoices">
+                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="Auto" SharedSizeGroup="ConflictFilterLastColumn" /></Grid.ColumnDefinitions>
+                                        <CheckBox Content="全部" IsChecked="{Binding IncludeAllConflictStates}" Margin="0,4,0,4" HorizontalAlignment="Left" AutomationProperties.Name="全部状态" />
+                                        <CheckBox Grid.Column="1" Content="需查看" IsChecked="{Binding IncludeConflictNeedsReview}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Column="2" Content="可整理" IsChecked="{Binding IncludeConflictCanOrganize}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Row="1" Content="未完成" IsChecked="{Binding IncludeConflictIncomplete}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                    </Grid>
                                     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />
-                                    <UniformGrid x:Name="ConflictTypeChoices" Columns="3">
-                                        <CheckBox Content="全部" IsChecked="{Binding IncludeAllConflictTypes}" Margin="0,4,10,4" AutomationProperties.Name="全部类型" />
-                                        <CheckBox Content="资源" IsChecked="{Binding IncludeConflictResources}" Margin="0,4,10,4" />
-                                        <CheckBox Content="脚本" IsChecked="{Binding IncludeConflictScripts}" Margin="0,4,10,4" />
-                                    </UniformGrid>
+                                    <Grid x:Name="ConflictTypeChoices">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="Auto" SharedSizeGroup="ConflictFilterLastColumn" /></Grid.ColumnDefinitions>
+                                        <CheckBox Content="全部" IsChecked="{Binding IncludeAllConflictTypes}" Margin="0,4,0,4" HorizontalAlignment="Left" AutomationProperties.Name="全部类型" />
+                                        <CheckBox Grid.Column="1" Content="资源" IsChecked="{Binding IncludeConflictResources}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Column="2" Content="脚本" IsChecked="{Binding IncludeConflictScripts}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                    </Grid>
                                 </StackPanel>
                             </Border>
                         </Popup>

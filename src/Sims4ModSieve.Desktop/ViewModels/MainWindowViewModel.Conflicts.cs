@@ -66,9 +66,9 @@ public sealed partial class MainWindowViewModel
     public bool IsDifferentFilterSelected => conflictFilter == "different";
     public bool IsSameFilterSelected => conflictFilter == "same";
     public bool IsIncompleteFilterSelected => conflictFilter == "incomplete";
-    public string ConflictStatus => conflictStatus;
+    public string ConflictStatus => conflictProgressTotal is > 0 ? conflictStatus.TrimEnd('…') : conflictStatus;
     public string ConflictPhase => conflictPhase;
-    public string ConflictProgressText => conflictProgressTotal is { } total && total > 0 ? $"{conflictCompleted} / {total}" : string.Empty;
+    public string ConflictProgressText => conflictProgressTotal is { } total && total > 0 ? $"（{conflictCompleted}/{total}）…" : string.Empty;
     public string ConflictRunState => conflictRunState;
     public bool IsConflictScanning => conflictRunState == "scanning";
     public bool IsConflictNotScanning => !IsConflictScanning;

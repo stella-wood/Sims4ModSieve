@@ -343,8 +343,8 @@ public sealed class ConflictScanFlowTests
         await scanner.Reading.Task.WaitAsync(TimeSpan.FromSeconds(10));
         scanner.Progress.Report(new(PackageConflictScanPhase.ReadingIndexes, "底层消息不该被解析", 42, 180));
         await PumpAsync();
-        Assert.AreEqual("正在读取资源索引…", viewModel.ConflictStatus);
-        Assert.AreEqual("42 / 180", viewModel.ConflictProgressText);
+        Assert.AreEqual("正在读取资源索引", viewModel.ConflictStatus);
+        Assert.AreEqual("（42/180）…", viewModel.ConflictProgressText);
         Assert.AreEqual(42, viewModel.ConflictCompleted);
         Assert.AreEqual(180, viewModel.ConflictProgressMaximum);
         Assert.IsFalse(viewModel.ConflictIndeterminate);
@@ -359,10 +359,10 @@ public sealed class ConflictScanFlowTests
         await comparer.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await PumpAsync();
         // 比较阶段的第一条结构化进度：42 / 180 已经被阶段切换清掉。
-        Assert.AreEqual("3 / 7", viewModel.ConflictProgressText);
+        Assert.AreEqual("（3/7）…", viewModel.ConflictProgressText);
         Assert.AreEqual(7, viewModel.ConflictProgressMaximum);
         Assert.IsFalse(viewModel.ConflictIndeterminate);
-        Assert.AreEqual("正在比较资源…", viewModel.ConflictStatus);
+        Assert.AreEqual("正在比较资源", viewModel.ConflictStatus);
 
         comparer.Progress.Report(new(ResourceContentComparisonPhase.ReadingContents, "ignored", 0, 0, 0));
         await PumpAsync();
@@ -393,7 +393,7 @@ public sealed class ConflictScanFlowTests
         await scanner.Reading.Task.WaitAsync(TimeSpan.FromSeconds(10));
         scanner.Progress.Report(new(PackageConflictScanPhase.ReadingIndexes, "ignored", 5, 9));
         await PumpAsync();
-        Assert.AreEqual("5 / 9", viewModel.ConflictProgressText);
+        Assert.AreEqual("（5/9）…", viewModel.ConflictProgressText);
 
         viewModel.CancelConflictScanCommand.Execute(null);
         await scan.WaitAsync(TimeSpan.FromSeconds(10));
@@ -442,7 +442,10 @@ public sealed class ConflictScanFlowTests
         await WpfTestHost.LayoutAsync(window);
         var progress = ConflictPageRenderTests.Descendants<TextBlock>(window).Single(text => text.Name == "ConflictProgressText");
         Assert.IsTrue(progress.IsVisible);
-        Assert.AreEqual("42 / 180", progress.Text);
+        Assert.AreEqual("（42/180）…", progress.Text);
+        Assert.AreEqual(FontWeights.SemiBold, progress.FontWeight);
+        var status = ((StackPanel)progress.Parent).Children.OfType<TextBlock>().Single(text => text != progress);
+        Assert.AreEqual(status.Foreground, progress.Foreground);
         var bar = ConflictPageRenderTests.Descendants<ProgressBar>(window).Single(bar => bar.IsVisible);
         Assert.AreEqual(180, bar.Maximum);
         Assert.AreEqual(42, bar.Value);

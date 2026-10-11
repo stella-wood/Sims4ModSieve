@@ -151,11 +151,29 @@ public sealed class ConflictPageRenderTests
             Assert.AreEqual(Colors.Transparent, ((SolidColorBrush)filterBorder.BorderBrush).Color);
             var popup = Descendants<System.Windows.Controls.Primitives.Popup>(window).Single();
             Assert.IsTrue(popup.IsOpen);
+            Assert.AreEqual(System.Windows.Controls.Primitives.PlacementMode.Custom, popup.Placement);
+            var popupContent = (FrameworkElement)popup.Child;
+            var placement = popup.CustomPopupPlacementCallback!(popupContent.RenderSize, filter.RenderSize, new Point()).Single();
+            var popupPoint = filter.TransformToAncestor(window).Transform(placement.Point);
+            Assert.AreEqual(filter.ActualWidth - popupContent.ActualWidth, placement.Point.X, 0.01);
+            Assert.AreEqual(filter.ActualHeight, placement.Point.Y, 0.01);
+            Assert.IsTrue(popupPoint.X >= 0 && popupPoint.X + popupContent.ActualWidth <= window.ActualWidth);
+            Assert.IsTrue(popupPoint.Y >= 0 && popupPoint.Y + popupContent.ActualHeight <= window.ActualHeight);
             var checks = Descendants<CheckBox>(popup.Child).ToArray();
             CollectionAssert.AreEqual(new[] { "全部", "需查看", "可整理", "未完成", "全部", "资源", "脚本" }, checks.Select(box => (string)box.Content).ToArray());
-            var choiceGrids = Descendants<System.Windows.Controls.Primitives.UniformGrid>(popup.Child).ToArray();
+            var choiceGrids = Descendants<Grid>(popup.Child).Where(grid => grid.Name is "ConflictStatusChoices" or "ConflictTypeChoices").ToArray();
             Assert.AreEqual(2, choiceGrids.Length);
-            Assert.IsTrue(choiceGrids.All(grid => grid.Columns == 3 && grid.Rows == 0));
+            foreach (var choices in choiceGrids)
+            {
+                Assert.AreEqual(3, choices.ColumnDefinitions.Count);
+                Assert.AreEqual(72d, choices.ColumnDefinitions[0].ActualWidth, 0.01);
+                Assert.AreEqual(72d, choices.ColumnDefinitions[1].ActualWidth, 0.01);
+            }
+            var longestChoice = checks.Single(box => Equals(box.Content, "可整理"));
+            Assert.AreEqual(longestChoice.ActualWidth, choiceGrids[0].ColumnDefinitions[2].ActualWidth, 0.01);
+            Assert.AreEqual(choiceGrids[0].ColumnDefinitions[2].ActualWidth, choiceGrids[1].ColumnDefinitions[2].ActualWidth, 0.01);
+            var choicePoint = longestChoice.TransformToAncestor(popupContent).Transform(new Point());
+            Assert.AreEqual(16d, popupContent.ActualWidth - choicePoint.X - longestChoice.ActualWidth - 1, 0.01);
             var allStates = checks.Single(box => AutomationProperties.GetName(box) == "全部状态");
             var allTypes = checks.Single(box => AutomationProperties.GetName(box) == "全部类型");
             Assert.AreEqual(true, allStates.IsChecked);
