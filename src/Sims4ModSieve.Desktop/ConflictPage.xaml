@@ -192,13 +192,15 @@
         </DataTemplate>
     </UserControl.Resources>
     <Grid Background="{StaticResource WindowBrush}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsConflictOverview, Converter={StaticResource BooleanToVisibilityConverter}}">
-        <Grid Margin="70,38,100,30">
+        <Grid Margin="70,38,100,30" Visibility="{Binding IsConflictOverview, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
             <TextBlock Text="Mod 冲突检测" FontSize="35" Style="{StaticResource DisplayTextStyle}" />
             <TextBlock Grid.Row="1" Margin="0,10,0,26" Text="选择一种排查方式" FontSize="16" Foreground="{StaticResource MutedBrush}" />
-            <UniformGrid Grid.Row="2" Columns="2" Rows="2" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Grid}}" MaxWidth="880" Height="440" HorizontalAlignment="Left" VerticalAlignment="Top">
-                <Border Style="{StaticResource CardStyle}" Padding="12" Margin="0,0,10,10">
+            <ScrollViewer x:Name="ConflictOverviewViewport" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Left" VerticalContentAlignment="Top" ScrollChanged="ConflictOverviewViewport_ScrollChanged">
+            <Grid x:Name="ConflictOverviewCards" Width="880" Height="440" HorizontalAlignment="Left" VerticalAlignment="Top">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="20" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource CardStyle}" Padding="12" MinHeight="200">
                     <DockPanel LastChildFill="False">
                         <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M2,12 L7,3 L13,12 L18,3 L23,12" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.8" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
                         <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="基础排查" FontSize="22" FontWeight="SemiBold" />
@@ -206,7 +208,7 @@
                         <Button DockPanel.Dock="Bottom" Margin="-9,2,0,0" Content="进入排查 →" Command="{Binding OpenConflictSectionCommand}" CommandParameter="basic" Style="{StaticResource ConflictOverviewActionStyle}" />
                     </DockPanel>
                 </Border>
-                <Border Style="{StaticResource CardStyle}" Padding="12" Margin="10,0,0,10">
+                <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource CardStyle}" Padding="12" MinHeight="200">
                     <DockPanel LastChildFill="False">
                         <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M4,2 L20,2 L20,22 L4,22 Z M7,8 L17,8 M7,12 L17,12 M7,16 L14,16" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
                         <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="报错日志分析" FontSize="22" FontWeight="SemiBold" />
@@ -214,7 +216,7 @@
                         <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
                     </DockPanel>
                 </Border>
-                <Border Style="{StaticResource CardStyle}" Padding="12" Margin="0,10,10,0">
+                <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource CardStyle}" Padding="12" MinHeight="200">
                     <DockPanel LastChildFill="False">
                         <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M12,2 L22,6 L20,17 L12,23 L4,17 L2,6 Z M7,12 L11,16 L17,8" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
                         <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="健康性检查" FontSize="22" FontWeight="SemiBold" />
@@ -222,7 +224,7 @@
                         <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
                     </DockPanel>
                 </Border>
-                <Border Style="{StaticResource CardStyle}" Padding="12" Margin="10,10,0,0">
+                <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource CardStyle}" Padding="12" MinHeight="200">
                     <DockPanel LastChildFill="False">
                         <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M12,2 L12,8 M12,8 L4,13 M12,8 L20,13 M4,13 L4,22 M20,13 L20,22" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
                         <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="二分排查" FontSize="22" FontWeight="SemiBold" />
@@ -230,9 +232,9 @@
                         <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
                     </DockPanel>
                 </Border>
-            </UniformGrid>
+            </Grid>
+            </ScrollViewer>
         </Grid>
-        </ScrollViewer>
         <StackPanel Margin="28,18" Visibility="{Binding IsConflictUnavailable, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Button Content="← 返回冲突检测" Command="{Binding ConflictBackCommand}" Style="{StaticResource HeaderBackButtonStyle}" HorizontalAlignment="Left" />
             <TextBlock Margin="0,28,0,12" Text="{Binding ConflictUnavailableTitle}" FontSize="23" FontWeight="SemiBold" />
