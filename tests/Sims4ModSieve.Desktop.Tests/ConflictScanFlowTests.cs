@@ -16,6 +16,40 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ConflictScanFlowTests
 {
     [TestMethod]
+    public void RepeatedStatusClicksKeepSelectionAndAllRestoresStatesWithoutChangingTypeChoices()
+    {
+        var model = CreateViewModel(Path.GetTempPath());
+        foreach (var view in new[] { "all", "resources", "scripts", "none" })
+        {
+            model.SelectConflictViewCommand.Execute(view);
+            foreach (var choice in new[] { "different", "same", "incomplete" })
+            {
+                model.SelectConflictFilterCommand.Execute(choice);
+                Assert.AreEqual(choice, model.ConflictFilter);
+                model.SelectConflictFilterCommand.Execute(choice);
+                Assert.AreEqual(choice, model.ConflictFilter);
+                Assert.IsFalse(model.IncludeAllConflictStates);
+                Assert.AreEqual(view, model.ConflictView);
+            }
+            model.SelectConflictFilterCommand.Execute("different");
+            model.SelectConflictFilterCommand.Execute("all");
+            model.SelectConflictFilterCommand.Execute("all");
+            Assert.AreEqual("all", model.ConflictFilter);
+            Assert.AreEqual(view, model.ConflictView);
+            model.IncludeConflictNeedsReview = false;
+            model.IncludeConflictCanOrganize = false;
+            Assert.IsTrue(model.IsIncompleteFilterSelected);
+            model.IncludeConflictIncomplete = true;
+            Assert.AreEqual("incomplete", model.ConflictFilter);
+            model.SelectConflictFilterCommand.Execute("incomplete");
+            Assert.IsTrue(model.IsIncompleteFilterSelected);
+            model.SelectConflictFilterCommand.Execute("all");
+            Assert.IsTrue(model.IncludeAllConflictStates);
+            Assert.AreEqual(view, model.ConflictView);
+        }
+    }
+
+    [TestMethod]
     public async Task EachScannerUsesItsOwnCheckedFoldersAndClearsOnlyItsOwnResults()
     {
         using var files = new TemporaryFiles();

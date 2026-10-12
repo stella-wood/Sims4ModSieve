@@ -67,7 +67,9 @@ public sealed class ConflictResultSessionTests
         CollectionAssert.AreEqual(new[] { "第 1 组", "第 2 组", "第 3 组" }, rows.Select(row => row.GroupLabel).ToArray());
         Assert.AreEqual(1, Rows(session, filter: "different").Count);
         Assert.AreEqual(1, Rows(session, filter: "same").Count);
-        Assert.AreEqual("第 1 组", Rows(session, filter: "same").Single().GroupLabel);
+        Assert.AreEqual("第 2 组", Rows(session, filter: "same").Single().GroupLabel);
+        Assert.AreEqual("第 3 组", Rows(session, filter: "incomplete").Single().GroupLabel);
+        CollectionAssert.AreEqual(new[] { "第 1 组", "第 3 组" }, Rows(session, filter: "different,incomplete").Select(row => row.GroupLabel).ToArray());
         Assert.AreEqual(1, Rows(session, filter: "incomplete").Count);
         Assert.AreEqual(2, Rows(session, filter: "different,incomplete").Count);
         Assert.AreEqual(0, Rows(session, filter: "").Count);
@@ -75,6 +77,23 @@ public sealed class ConflictResultSessionTests
         Assert.AreEqual(2, Rows(session, filter: "different").Count(row => row.Kind == ConflictRowKind.File));
         Assert.IsTrue(Rows(session).Where(row => row.Depth > 0).All(row => row.GroupLabel.Length == 0));
         Assert.IsTrue(Rows(session, filter: "same").All(row => row.Depth == 0));
+    }
+
+    [TestMethod]
+    public void GroupNumbersRemainStableAcrossStatusAndTypeFilters()
+    {
+        var session = Session([Resource(1, (A, "x"), (B, "x")), Resource(2, (A, "x"), (B, "y")), Resource(3, (A, "x"), (B, null))],
+            scripts: Scripts([Collision("pkg.a", (A, "x"), (B, "y")), Collision("pkg.b", (A, "x"), (B, "x"))]));
+        var all = Rows(session, "all");
+        var numbers = all.ToDictionary(row => row.Key, row => row.GroupIndex);
+        Assert.AreEqual(5, numbers.Count);
+        session.ToggleExpanded(all[0].Key);
+        foreach (var view in new[] { "all", "resources", "scripts", "problems", "none" })
+            foreach (var filter in new[] { "all", "different", "same", "incomplete", "different,incomplete" })
+                foreach (var row in Rows(session, view, filter).Where(row => row.Depth == 0))
+                    Assert.AreEqual(numbers[row.Key], row.GroupIndex);
+        CollectionAssert.AreEqual(all.Select(row => row.GroupLabel).ToArray(),
+            Rows(session, "all").Where(row => row.Depth == 0).Select(row => row.GroupLabel).ToArray());
     }
 
     [TestMethod]

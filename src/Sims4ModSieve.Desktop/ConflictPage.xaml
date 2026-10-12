@@ -66,6 +66,7 @@
         <SolidColorBrush x:Key="ConflictNeedReviewBrush" Color="#D33C2E" />
         <SolidColorBrush x:Key="ConflictCanOrganizeBrush" Color="#D99316" />
         <SolidColorBrush x:Key="ConflictIncompleteBrush" Color="#948C84" />
+        <SolidColorBrush x:Key="ConflictFilterHoverBrush" Color="#A892C5" />
         <Style x:Key="ConflictQuickFilterStyle" TargetType="Button">
             <Setter Property="Height" Value="31" />
             <Setter Property="Padding" Value="8,3" />
@@ -77,10 +78,15 @@
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
                 <Grid Background="Transparent">
                     <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
+                    <Border x:Name="HoverUnderline" Height="2" Background="{StaticResource ConflictFilterHoverBrush}" VerticalAlignment="Bottom" Margin="8,0,8,0" Opacity="0" IsHitTestVisible="False" />
                     <Border x:Name="Underline" Height="2" Background="{StaticResource AccentBrush}" VerticalAlignment="Bottom" Margin="8,0,8,0" Visibility="Collapsed" IsHitTestVisible="False" />
                 </Grid>
                 <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></Trigger>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                        <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="HoverUnderline" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" /></Storyboard></BeginStoryboard></Trigger.EnterActions>
+                        <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="HoverUnderline" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" /></Storyboard></BeginStoryboard></Trigger.ExitActions>
+                    </Trigger>
                     <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></Trigger>
                     <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></DataTrigger>
                 </ControlTemplate.Triggers>
@@ -93,15 +99,19 @@
                     <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
                 </Grid>
                 <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /></Trigger>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Foreground" Value="#624D89" />
+                    </Trigger>
                 </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
         </Style>
         <Style x:Key="ConflictExpandButtonStyle" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Width" Value="24" />
             <Setter Property="Height" Value="24" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="ToolTip" Value="展开" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="AutomationProperties.Name" Value="{Binding ExpandName, Mode=OneWay}" />
             <Setter Property="AutomationProperties.AutomationId" Value="{Binding Key, Mode=OneWay}" />
             <Setter Property="Template">
@@ -114,7 +124,6 @@
                             <DataTrigger Binding="{Binding IsExpanded}" Value="True">
                                 <Setter TargetName="Arrow" Property="RenderTransform"><Setter.Value><RotateTransform Angle="90" /></Setter.Value></Setter>
                             </DataTrigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="HitArea" Property="BorderBrush" Value="{StaticResource AccentBrush}" /></Trigger>
                             <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
