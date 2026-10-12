@@ -42,6 +42,17 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="ConflictOverviewActionStyle" TargetType="Button" BasedOn="{StaticResource EntranceActionStyle}">
+            <Setter Property="Foreground" Value="#624D89" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+                <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
+                </Border>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
         <Style x:Key="ConflictTechnicalButtonStyle" TargetType="Button" BasedOn="{StaticResource EntranceActionStyle}">
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="FontSize" Value="11" />
@@ -181,17 +192,18 @@
         </DataTemplate>
     </UserControl.Resources>
     <Grid Background="{StaticResource WindowBrush}">
-        <Grid Margin="70,38,100,30" Visibility="{Binding IsConflictOverview, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding IsConflictOverview, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <Grid Margin="70,38,100,30">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
             <TextBlock Text="Mod 冲突检测" FontSize="35" Style="{StaticResource DisplayTextStyle}" />
             <TextBlock Grid.Row="1" Margin="0,10,0,26" Text="选择一种排查方式" FontSize="16" Foreground="{StaticResource MutedBrush}" />
-            <UniformGrid Grid.Row="2" Columns="2" Rows="2">
+            <UniformGrid Grid.Row="2" Columns="2" Rows="2" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Grid}}" MaxWidth="880" Height="440" HorizontalAlignment="Left" VerticalAlignment="Top">
                 <Border Style="{StaticResource CardStyle}" Padding="12" Margin="0,0,10,10">
                     <DockPanel LastChildFill="False">
                         <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M2,12 L7,3 L13,12 L18,3 L23,12" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.8" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
                         <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="基础排查" FontSize="22" FontWeight="SemiBold" />
                         <TextBlock DockPanel.Dock="Top" Text="比较资源覆盖与脚本模块，查看内容差异" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                        <Button DockPanel.Dock="Bottom" Margin="-9,2,0,0" Content="进入排查→" Command="{Binding OpenConflictSectionCommand}" CommandParameter="basic" Style="{StaticResource EntranceActionStyle}" />
+                        <Button DockPanel.Dock="Bottom" Margin="-9,2,0,0" Content="进入排查 →" Command="{Binding OpenConflictSectionCommand}" CommandParameter="basic" Style="{StaticResource ConflictOverviewActionStyle}" />
                     </DockPanel>
                 </Border>
                 <Border Style="{StaticResource CardStyle}" Padding="12" Margin="10,0,0,10">
@@ -199,8 +211,7 @@
                         <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M4,2 L20,2 L20,22 L4,22 Z M7,8 L17,8 M7,12 L17,12 M7,16 L14,16" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
                         <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="报错日志分析" FontSize="22" FontWeight="SemiBold" />
                         <TextBlock DockPanel.Dock="Top" Text="从报错日志中整理线索，缩小排查范围" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                        <TextBlock DockPanel.Dock="Top" Text="尚未开放" FontSize="10" Foreground="{StaticResource MutedBrush}" />
-                        <Button DockPanel.Dock="Bottom" Margin="-9,2,0,0" Content="进入排查→" Command="{Binding OpenConflictSectionCommand}" CommandParameter="logs" Style="{StaticResource EntranceActionStyle}" />
+                        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
                     </DockPanel>
                 </Border>
                 <Border Style="{StaticResource CardStyle}" Padding="12" Margin="0,10,10,0">
@@ -208,8 +219,7 @@
                         <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M12,2 L22,6 L20,17 L12,23 L4,17 L2,6 Z M7,12 L11,16 L17,8" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
                         <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="健康性检查" FontSize="22" FontWeight="SemiBold" />
                         <TextBlock DockPanel.Dock="Top" Text="检查文件结构、读取状态与未完成项" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                        <TextBlock DockPanel.Dock="Top" Text="尚未开放" FontSize="10" Foreground="{StaticResource MutedBrush}" />
-                        <Button DockPanel.Dock="Bottom" Margin="-9,2,0,0" Content="进入排查→" Command="{Binding OpenConflictSectionCommand}" CommandParameter="health" Style="{StaticResource EntranceActionStyle}" />
+                        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
                     </DockPanel>
                 </Border>
                 <Border Style="{StaticResource CardStyle}" Padding="12" Margin="10,10,0,0">
@@ -217,12 +227,12 @@
                         <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M12,2 L12,8 M12,8 L4,13 M12,8 L20,13 M4,13 L4,22 M20,13 L20,22" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
                         <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="二分排查" FontSize="22" FontWeight="SemiBold" />
                         <TextBlock DockPanel.Dock="Top" Text="分批试运行，根据反馈逐步缩小范围" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                        <TextBlock DockPanel.Dock="Top" Text="尚未开放" FontSize="10" Foreground="{StaticResource MutedBrush}" />
-                        <Button DockPanel.Dock="Bottom" Margin="-9,2,0,0" Content="进入排查→" Command="{Binding OpenConflictSectionCommand}" CommandParameter="bisect" Style="{StaticResource EntranceActionStyle}" />
+                        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
                     </DockPanel>
                 </Border>
             </UniformGrid>
         </Grid>
+        </ScrollViewer>
         <StackPanel Margin="28,18" Visibility="{Binding IsConflictUnavailable, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Button Content="← 返回冲突检测" Command="{Binding ConflictBackCommand}" Style="{StaticResource HeaderBackButtonStyle}" HorizontalAlignment="Left" />
             <TextBlock Margin="0,28,0,12" Text="{Binding ConflictUnavailableTitle}" FontSize="23" FontWeight="SemiBold" />
