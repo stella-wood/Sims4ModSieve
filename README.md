@@ -34,6 +34,8 @@ Mod 冲突检测首次从首页或顶部导航进入四功能总览，同次运�
 
 每次推送到 `main` 或提交 Pull Request 时，GitHub Actions 都会在 Windows 上执行锁定还原、Release 构建和普通测试。
 
+测试范围与断言边界统一遵循 [AGENTS.md 的测试规则](AGENTS.md#10-完成标准)。冲突页截图可通过 `eng/render-conflict-review.ps1` 保存到 `artifacts/conflict-review/`，供人工查看。
+
 ```powershell
 .\eng\dotnet.cmd restore .\Sims4ModSieve.sln --locked-mode
 .\eng\dotnet.cmd build .\Sims4ModSieve.sln -c Release --no-restore --nologo -m:1

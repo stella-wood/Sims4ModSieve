@@ -517,9 +517,6 @@ public sealed class ConflictScanFlowTests
         var progress = ConflictPageRenderTests.Descendants<TextBlock>(window).Single(text => text.Name == "ConflictProgressText");
         Assert.IsTrue(progress.IsVisible);
         Assert.AreEqual("（42/180）…", progress.Text);
-        Assert.AreEqual(FontWeights.SemiBold, progress.FontWeight);
-        var status = ((StackPanel)progress.Parent).Children.OfType<TextBlock>().Single(text => text != progress);
-        Assert.AreEqual(status.Foreground, progress.Foreground);
         var bar = ConflictPageRenderTests.Descendants<ProgressBar>(window).Single(bar => bar.IsVisible);
         Assert.AreEqual(180, bar.Maximum);
         Assert.AreEqual(42, bar.Value);
