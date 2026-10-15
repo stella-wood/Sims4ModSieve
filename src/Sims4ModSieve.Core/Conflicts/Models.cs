@@ -102,7 +102,18 @@ public static class PackageConflictScanIssueCode
 public sealed record PackageResourceInventory(
     string Path,
     FileStamp ScannedStamp,
-    int ResourceCount);
+    int ResourceCount)
+{
+    private readonly IReadOnlyDictionary<uint, int>? resourceTypeCounts;
+
+    /// <summary>完整索引的类型数量；null 表示旧报告未提供，不等于空索引。</summary>
+    public IReadOnlyDictionary<uint, int>? ResourceTypeCounts
+    {
+        get => resourceTypeCounts;
+        init => resourceTypeCounts = value is null ? null
+            : new ReadOnlyDictionary<uint, int>(new Dictionary<uint, int>(value));
+    }
+}
 
 /// <summary>
 /// 候选冲突扫描结果。

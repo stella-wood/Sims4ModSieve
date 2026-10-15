@@ -82,7 +82,9 @@ public sealed class DuplicateGroupViewModel : ObservableObject
 
     public string GroupLabel => $"第 {Index} 组";
 
-    public string Title => $"{Files.Count} 份相同";
+    public string Title => System.IO.Path.GetFileName(Model.SuggestedKeepPath);
+
+    public string CopyCountText => $"{Files.Count} 份相同";
 
     public string Detail => $"{FormatBytes(Model.FileSize)} / 份 · 可清理 {FormatBytes(Model.ReclaimableBytes)}";
 

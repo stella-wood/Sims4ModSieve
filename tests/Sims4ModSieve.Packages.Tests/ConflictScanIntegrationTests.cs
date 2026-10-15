@@ -14,6 +14,34 @@ namespace Sims4ModSieve.Packages.Tests;
 public sealed class ConflictScanIntegrationTests
 {
     [TestMethod]
+    public async Task GroupingCanRecalculateAfterTemporaryPackagesHaveBeenMovedAway()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var parked = temp.CreateDirectory("Parked");
+        var first = temp.WriteBytes(Path.Combine("Mods", "a.package"), new DbpfFixtureBuilder()
+            .AddContent([1, 2], instanceLo: 1).Build());
+        var second = temp.WriteBytes(Path.Combine("Mods", "b.package"), new DbpfFixtureBuilder()
+            .AddContent([3, 4], instanceLo: 1).AddContent([5, 6], instanceLo: 2).Build());
+        var scan = await new PackageConflictScanner(new PhysicalFileSystemAccess(), LlamaLogicPackageIndexReader.CreateDefault())
+            .ScanAsync(new PackageConflictScanRequest([new ScanSource("mods", mods)]));
+        var contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault())
+            .CompareAsync(new ResourceContentComparisonRequest(scan.Candidates));
+        File.Move(first, Path.Combine(parked, "a.package"));
+        File.Move(second, Path.Combine(parked, "b.package"));
+        Assert.IsFalse(File.Exists(first) || File.Exists(second));
+        var builder = new PackageConflictGroupingBuilder();
+        var input = builder.Prepare(scan, contents);
+        var bundle = builder.Build(input, new(1, new(OverrideConflictCardRuleKind.ByPair)));
+        Assert.AreEqual(PackageConflictRelationKind.BundleContainment, bundle.Groups.Single().Kind);
+        var same = builder.Build(input, new(3, new(OverrideConflictCardRuleKind.ByExactSharedKeySet)));
+        Assert.AreEqual(PackageConflictRelationKind.SuspectedSameMod, same.Groups.Single().Kind);
+        var conflict = builder.Build(input, new(3, new(OverrideConflictCardRuleKind.BySharedKeyOverlap, 0.7), 0.9));
+        Assert.AreEqual(PackageConflictRelationKind.OverrideConflict, conflict.Groups.Single().Kind);
+        Assert.AreSame(contents.Comparisons.Single(), conflict.Groups.Single().Relations.Single().Pair.Resources.Single().Comparison);
+    }
+
+    [TestMethod]
     public async Task TwoFixturePackagesSharingATgiProduceACandidate()
     {
         using var temp = new TempDirectory();

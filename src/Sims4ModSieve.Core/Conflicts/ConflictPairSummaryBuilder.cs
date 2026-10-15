@@ -70,6 +70,80 @@ public sealed record ScriptConflictPairSummary(
 /// <summary>只整理已有报告，不读取文件；明细共享原始资源比较和模块碰撞。</summary>
 public sealed class ConflictPairSummaryBuilder
 {
+    /// <summary>v2 分组专用：先排除类型和退出文件，保留包括纯一致局部重叠的所有配对。</summary>
+    public IReadOnlyList<PackageConflictPairSummary> BuildGroupingPackagePairs(
+        ResourceContentComparisonReport comparisonReport,
+        IReadOnlySet<uint> excludedTypes,
+        IReadOnlySet<string> excludedPaths,
+        CancellationToken cancellationToken = default)
+    {
+        var excluded = new HashSet<string>(Walk(excludedPaths, cancellationToken), PathRules.Comparer);
+        var comparisons = Walk(comparisonReport.Comparisons, cancellationToken)
+            .Where(comparison => !excludedTypes.Contains(comparison.Key.Type)).ToArray();
+        var paths = CanonicalPaths(comparisons.SelectMany(comparison => PackageOccurrences(comparison, cancellationToken))
+            .Where(occurrence => !excluded.Contains(occurrence.PackagePath))
+            .Select(occurrence => occurrence.PackagePath), cancellationToken);
+        var pairs = new Dictionary<(string First, string Second), PackagePairData>();
+        foreach (var comparison in Walk(comparisons, cancellationToken))
+        {
+            var participants = new Dictionary<string, Participant>(PathRules.Comparer);
+            for (var group = 0; group < comparison.ContentGroups.Count; group++)
+            {
+                foreach (var occurrence in Walk(comparison.ContentGroups[group].Occurrences, cancellationToken))
+                {
+                    if (!excluded.Contains(occurrence.PackagePath))
+                        GetParticipant(participants, paths[occurrence.PackagePath]).Groups.Add(group);
+                }
+            }
+            foreach (var occurrence in Walk(comparison.Uncompared, cancellationToken))
+            {
+                if (!excluded.Contains(occurrence.PackagePath))
+                    GetParticipant(participants, paths[occurrence.PackagePath]).HasIncomplete = true;
+            }
+            var members = Order(participants.Values, (left, right) => ComparePaths(left.Path, right.Path), cancellationToken);
+            for (var first = 0; first < members.Count; first++)
+            {
+                for (var second = first + 1; second < members.Count; second++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var key = (members[first].Path, members[second].Path);
+                    if (!pairs.TryGetValue(key, out var pair)) pairs.Add(key, pair = new PackagePairData());
+                    var facts = FactsFor(members[first], members[second]);
+                    var match = new PackagePairResourceMatch(comparison, facts.Different, facts.Identical, facts.Incomplete);
+                    if (pair.Resources.TryGetValue(comparison.Key, out var previous))
+                    {
+                        match = previous with
+                        {
+                            HasConfirmedDifference = previous.HasConfirmedDifference || match.HasConfirmedDifference,
+                            HasConfirmedIdentical = previous.HasConfirmedIdentical || match.HasConfirmedIdentical,
+                            HasIncomplete = previous.HasIncomplete || match.HasIncomplete,
+                        };
+                    }
+                    pair.Resources[comparison.Key] = match;
+                }
+            }
+        }
+        var summaries = new List<PackageConflictPairSummary>();
+        foreach (var (pathsPair, pair) in Walk(pairs, cancellationToken))
+        {
+            var resources = Order(pair.Resources.Values, (left, right) =>
+            {
+                var result = left.Key.Type.CompareTo(right.Key.Type);
+                if (result == 0) result = left.Key.Group.CompareTo(right.Key.Group);
+                return result == 0 ? left.Key.Instance.CompareTo(right.Key.Instance) : result;
+            }, cancellationToken);
+            summaries.Add(new PackageConflictPairSummary(pathsPair.First, pathsPair.Second,
+                resources.Count(resource => resource.HasConfirmedDifference),
+                resources.Count(resource => resource.HasConfirmedIdentical),
+                resources.Count(resource => resource.HasIncomplete), false, false, resources));
+        }
+        return Order(summaries, (left, right) =>
+        {
+            var result = ComparePaths(left.FirstPath, right.FirstPath);
+            return result == 0 ? ComparePaths(left.SecondPath, right.SecondPath) : result;
+        }, cancellationToken);
+    }
+
     public IReadOnlyList<PackageConflictPairSummary> BuildPackagePairs(
         PackageConflictScanReport scanReport,
         ResourceContentComparisonReport comparisonReport,

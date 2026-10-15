@@ -43,6 +43,8 @@ public sealed class PackageConflictScannerTests
         CollectionAssert.AreEqual(new[] { first, second }, report.ResourceInventories.Select(item => item.Path).ToArray());
         CollectionAssert.AreEqual(new[] { 2, 1 }, report.ResourceInventories.Select(item => item.ResourceCount).ToArray());
         Assert.IsTrue(report.ResourceInventories.All(item => item.ScannedStamp == new FileStamp(1, DateTime.UnixEpoch)));
+        Assert.AreEqual(1, report.ResourceInventories[0].ResourceTypeCounts![Lonely.Type]);
+        Assert.AreEqual(1, report.ResourceInventories[0].ResourceTypeCounts![Hair.Type]);
 
         var candidate = report.Candidates[0];
         Assert.AreEqual(Hair, candidate.Key);
@@ -432,6 +434,8 @@ public sealed class PackageConflictScannerTests
         AssertNotMutable(report.IncompletePackagePaths);
         AssertNotMutable(report.Issues);
         AssertNotMutable(report.ResourceInventories);
+        Assert.ThrowsExactly<NotSupportedException>(() =>
+            ((IDictionary<uint, int>)report.ResourceInventories[0].ResourceTypeCounts!).Add(123, 1));
     }
 
     [TestMethod]
@@ -447,7 +451,11 @@ public sealed class PackageConflictScannerTests
             new PackageConflictScanRequest([new ScanSource("mods", Path.Combine(mods, "."))]));
 
         Assert.AreEqual(0, report.Candidates.Count);
-        Assert.AreEqual(new PackageResourceInventory(path, stamp, 1), report.ResourceInventories.Single());
+        var inventory = report.ResourceInventories.Single();
+        Assert.AreEqual(path, inventory.Path);
+        Assert.AreEqual(stamp, inventory.ScannedStamp);
+        Assert.AreEqual(1, inventory.ResourceCount);
+        Assert.AreEqual(1, inventory.ResourceTypeCounts![Lonely.Type]);
         Assert.AreEqual(1, reader.ReadCount);
     }
 

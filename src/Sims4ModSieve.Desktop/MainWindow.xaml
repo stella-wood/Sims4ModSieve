@@ -363,14 +363,20 @@
                                                                   IsChecked="{Binding IsSuggestionSelected, Mode=TwoWay}"
                                                                   ToolTip="按建议勾选本组" />
                                                         <StackPanel Grid.Column="1">
-                                                            <StackPanel Orientation="Horizontal">
-                                                                <TextBlock Margin="0,3,9,0"
+                                                            <DockPanel HorizontalAlignment="Left">
+                                                                <TextBlock DockPanel.Dock="Left" Margin="0,3,9,0"
                                                                            Text="{Binding GroupLabel}"
                                                                            Foreground="{StaticResource AccentBrush}"
                                                                            FontSize="11"
                                                                            FontWeight="SemiBold" />
-                                                                <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitleTextStyle}" FontSize="15" />
-                                                            </StackPanel>
+                                                                <TextBlock DockPanel.Dock="Right" Margin="9,0,0,0"
+                                                                           Text="{Binding CopyCountText}"
+                                                                           Foreground="{StaticResource MutedBrush}"
+                                                                           FontSize="11" VerticalAlignment="Center" />
+                                                                <TextBlock Text="{Binding Title}" ToolTip="{Binding Title}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Style="{StaticResource SectionTitleTextStyle}" FontSize="15" />
+                                                            </DockPanel>
                                                             <TextBlock Text="{Binding Detail}" Foreground="{StaticResource MutedBrush}" Style="{StaticResource DataTextStyle}" FontSize="11" />
                                                         </StackPanel>
                                                         <Border Grid.Column="2"
@@ -395,7 +401,7 @@
                                                                     </Grid.ColumnDefinitions>
                                                                     <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,11,0" />
                                                                     <StackPanel Grid.Column="1">
-                                                                        <TextBlock Text="{Binding FileName}" Style="{StaticResource FileNameTextStyle}" TextTrimming="CharacterEllipsis" />
+                                                                        <TextBlock Text="{Binding FileName}" Style="{StaticResource FileNameTextStyle}" FontFamily="等线" FontSize="14" TextTrimming="CharacterEllipsis" />
                                                                         <TextBlock Text="{Binding Path}" Foreground="{StaticResource MutedBrush}" Style="{StaticResource DataTextStyle}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
                                                                     </StackPanel>
                                                                     <TextBlock Grid.Column="2"

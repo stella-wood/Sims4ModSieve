@@ -77,6 +77,20 @@ public sealed class DuplicateGroupViewModelTests
     }
 
     [TestMethod]
+    public void TitleUsesSuggestedKeepFileNameAndCopyCountIsSeparate()
+    {
+        var copy = CreateFile(@"D:\Downloads\renamed-copy.package", isInsideMods: false, directoryDepth: 4);
+        var keep = CreateFile(@"D:\Mods\作者\keep.package", isInsideMods: true, directoryDepth: 2);
+        var viewModel = CreateViewModel([copy, keep]);
+
+        viewModel.Files[0].IsSelected = true;
+
+        Assert.AreEqual("keep.package", viewModel.Title);
+        Assert.AreEqual("2 份相同", viewModel.CopyCountText);
+        Assert.AreEqual("第 1 组", viewModel.GroupLabel);
+    }
+
+    [TestMethod]
     public void PartialManualSelectionDoesNotMarkGroupAsSelected()
     {
         var viewModel = CreateViewModel([

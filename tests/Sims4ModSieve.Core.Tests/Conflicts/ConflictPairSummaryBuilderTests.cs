@@ -101,6 +101,21 @@ public sealed class ConflictPairSummaryBuilderTests
     }
 
     [TestMethod]
+    public void GroupingEntryKeepsIdenticalPartialOverlapAndFiltersBeforeExpanding()
+    {
+        var resource = Resource(1, ("a", "x"), ("b", "x"), ("c", "y"));
+        var pairs = Builder.BuildGroupingPackagePairs(Contents(resource), new HashSet<uint>(), new HashSet<string> { "C" });
+        var pair = pairs.Single();
+        Assert.AreEqual("a", pair.FirstPath);
+        Assert.AreEqual("b", pair.SecondPath);
+        Assert.AreEqual(1, pair.IdenticalResourceCount);
+        Assert.AreEqual(0, pair.DifferentResourceCount);
+        Assert.AreSame(resource, pair.Resources.Single().Comparison);
+        Assert.AreEqual(0, Builder.BuildGroupingPackagePairs(Contents(resource), new HashSet<uint> { 1 }, new HashSet<string>()).Count);
+        AssertReadOnly(pairs);
+    }
+
+    [TestMethod]
     public void FullResourceCountProvesOnlyTheCoveredDirection()
     {
         var pair = Build(Scan(("a", 1), ("b", 2)), Resource(1, ("a", "x"), ("b", "x"))).Single();

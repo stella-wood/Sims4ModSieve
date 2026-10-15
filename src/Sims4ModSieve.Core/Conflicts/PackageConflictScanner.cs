@@ -122,7 +122,12 @@ public sealed class PackageConflictScanner(
         {
             ResourceInventories = ReadOnlyLists.Freeze(EnumerateWithCancellation(analyzed, cancellationToken)
                 .Select(package => new PackageResourceInventory(
-                    package.Path, package.Summary.Stamp, package.Summary.ResourceCount))),
+                    package.Path, package.Summary.Stamp, package.Summary.ResourceCount)
+                {
+                    ResourceTypeCounts = EnumerateWithCancellation(package.Summary.Resources, cancellationToken)
+                        .GroupBy(resource => resource.Key.Type)
+                        .ToDictionary(group => group.Key, group => group.Count()),
+                })),
         };
 
         cancellationToken.ThrowIfCancellationRequested();
