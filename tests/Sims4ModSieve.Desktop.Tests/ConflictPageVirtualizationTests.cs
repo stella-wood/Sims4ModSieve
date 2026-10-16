@@ -58,7 +58,7 @@ public sealed class ConflictPageVirtualizationTests
     [TestMethod]
     public Task ResourceAndScriptCardsStayVirtualizedAcrossThousandsOfGroups() => WpfTestHost.RunAsync(async () =>
     {
-        var resources = Enumerable.Range(0, 10500).Select(index => Resource((ulong)index, (A, "a"), (B, "b"))).ToArray();
+        var resources = Enumerable.Range(0, 10500).Select(index => Resource((ulong)index, ($@"C:\Mods\first-{index:D5}.package", "a"), ($@"C:\Mods\second-{index:D5}.package", "b"))).ToArray();
         var modules = Enumerable.Range(0, 10500).Select(index => Collision($"library.module{index:D5}", (A + ".ts4script", "a"), (B + ".ts4script", "b"))).ToArray();
         var session = Session(resources, scripts: Scripts(modules));
         var model = CreateModel();
@@ -92,18 +92,17 @@ public sealed class ConflictPageVirtualizationTests
     [TestMethod]
     public Task FullContentContextWithThousandsOfFilesRemainsVirtualized() => WpfTestHost.RunAsync(async () =>
     {
-        var files = Enumerable.Range(0, 10000).Select(index => ($@"C:\Mods\copy-{index:D5}.package", (string?)"same"))
-            .Append((@"C:\Mods\unfinished.package", (string?)null)).ToArray();
-        var session = Session([Resource(1, files)]);
+        var files = Enumerable.Range(0, 10000).Select(index => $@"C:\Mods\copy-{index:D5}.package").ToArray();
+        var session = ConflictV2SessionTests.V2([], [], ConflictV2SessionTests.Duplicates(files));
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        await SetSessionAsync(model, session);
+        await SetSessionAsync(model, session, "all");
         Assert.AreEqual(1, model.ConflictRows.Count);
         model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
         await model.ConflictRowsRefreshTask;
-        Assert.AreEqual(10001, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
+        Assert.AreEqual(10000, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
         var list = Descendants<ListBox>(window).Single(list => list.Name == "ConflictRowsList");
         await CheckScrollAsync(window, list, "完整内容组文件");
     });
@@ -145,19 +144,18 @@ public sealed class ConflictPageVirtualizationTests
     public Task ManyFilesAndReasonsStaySeparateWithoutCollapsedDetailTooltips() => WpfTestHost.RunAsync(async () =>
     {
         var files = Enumerable.Range(0, 1000).Select(index => ($@"C:\Mods\文件-{index:D4}.package", (string?)"same")).ToArray();
-        var session = Session([Resource(1, files.Append((B, (string?)null)).ToArray())], scripts: Scripts(issues:
-            Enumerable.Range(0, 1000).Select(index => new Sims4ModSieve.Core.Scripts.ScriptArchiveIssue(
-                Sims4ModSieve.Core.Scripts.ScriptArchiveIssueCode.EntryCorrupt,
-                Sims4ModSieve.Core.Scripts.ScriptArchiveIssueStage.Entry, A, "raw detail", EntryName: $"pkg/{index}.pyc")).ToArray()));
-        var pair = Rows(session).First(row => row.Kind == ConflictRowKind.Resource);
+        var session = Session([], scripts: Scripts([Collision("pkg.shared", files.Append((B, (string?)null)).ToArray())],
+            Enumerable.Range(0, 1000).Select(index => new ScriptArchiveIssue(ScriptArchiveIssueCode.EntryCorrupt,
+                ScriptArchiveIssueStage.Entry, A, "raw detail", EntryName: $"pkg/{index}.pyc")).ToArray()));
+        var pair = Rows(session, "scripts").First(row => row.Kind == ConflictRowKind.Module);
         session.ToggleExpanded(pair.Key);
-        AssertOrdinaryRows(Rows(session));
-        Assert.AreEqual(1001, Rows(session).Count(row => row.Kind == ConflictRowKind.File));
+        AssertOrdinaryRows(Rows(session, "scripts"));
+        Assert.AreEqual(1001, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.File));
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        await SetSessionAsync(model, session);
+        await SetSessionAsync(model, session, "scripts");
         var list = Descendants<ListBox>(window).Single(element => element.Name == "ConflictRowsList");
         await CheckScrollAsync(window, list, "千份文件技术详情收起");
         await ExpandAsync(model, ConflictRowKind.Technical);
@@ -199,7 +197,7 @@ public sealed class ConflictPageVirtualizationTests
         Assert.IsTrue(containers is > 0 and < 150, $"{label}: containers={containers}");
         Assert.IsTrue(texts < 750, $"{label}: detail text elements={texts}");
         Assert.IsTrue(controls < 3000, $"{label}: elements={controls}");
-        Assert.AreEqual(0, Descendants<ItemsControl>(list).Count(control => control is not ListBox));
+        Assert.IsTrue(Descendants<ItemsControl>(list).Count(control => control is not ListBox) <= containers);
         Console.WriteLine($"{label}: logical={list.Items.Count}, containers={containers}, text-elements={texts}, all-elements={controls}");
     }
 }

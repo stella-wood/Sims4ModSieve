@@ -60,6 +60,13 @@ Apache License 2.0，不构成许可证阻塞。
 - 本项目改为闭源或源码不可得；
 - ImageSharp 变成直接依赖（例如为了图像解码而显式引用它）。
 
+## Source Han Sans CN Light — SIL Open Font License 1.1
+
+`Assets/Fonts/SourceHanSansCN-Light.otf` is bundled only for related filenames in the conflict file relationship dialog.
+Copyright © 2014–2025 Adobe, with Reserved Font Name “Source”. The font is distributed unmodified;
+its license is included at `Assets/Fonts/source-han-sans-LICENSE.txt` and copied to build/publish output.
+Source: https://github.com/adobe-fonts/source-han-sans (the prototype's existing CN Light font asset).
+
 ## Test-only dependencies
 
 - `MSTest` 4.3.3 — MIT — https://github.com/microsoft/testfx

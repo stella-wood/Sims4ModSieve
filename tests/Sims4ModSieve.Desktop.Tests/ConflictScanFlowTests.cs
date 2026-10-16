@@ -122,7 +122,7 @@ public sealed class ConflictScanFlowTests
 
         viewModel.SelectConflictFilterCommand.Execute("different");
         await viewModel.ConflictRowsRefreshTask;
-        Assert.AreEqual(2, viewModel.VisibleConflictParentCount);
+        Assert.AreEqual(1, viewModel.VisibleConflictParentCount);
         viewModel.SelectConflictViewCommand.Execute("scripts");
         await viewModel.ConflictRowsRefreshTask;
         var pair = viewModel.ConflictRows.Single();
@@ -160,10 +160,10 @@ public sealed class ConflictScanFlowTests
         var resource = model.ConflictRows.Single();
         model.ToggleConflictExpandedCommand.Execute(resource);
         await model.ConflictRowsRefreshTask;
-        model.IncludeConflictNeedsReview = false;
+        model.IncludeConflictCanOrganize = false;
         await model.ConflictRowsRefreshTask;
         Assert.AreEqual(0, model.ConflictRows.Count);
-        model.IncludeConflictNeedsReview = true;
+        model.IncludeConflictCanOrganize = true;
         await model.ConflictRowsRefreshTask;
         Assert.IsTrue(model.ConflictRows.Single(row => row.Depth == 0).IsExpanded);
         model.IncludeConflictResources = false;
@@ -323,8 +323,8 @@ public sealed class ConflictScanFlowTests
                 ConflictResultSessionTests.Resource(1, (ConflictResultSessionTests.A, "a"), (ConflictResultSessionTests.B, "b"))]);
             await ConflictPageRenderTests.SetSessionAsync(model, session);
             var parent = model.ConflictRows.Single();
-            using var gate = new GateList<PackageConflictPairSummary>(session.Resources);
-            typeof(ConflictResultSession).GetField("<Resources>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(session, gate);
+            using var gate = new GateList<ConflictCard>(session.Cards);
+            typeof(ConflictResultSession).GetField("<Cards>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(session, gate);
             model.ToggleConflictExpandedCommand.Execute(parent);
             var old = model.ConflictRowsRefreshTask;
             await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -333,7 +333,7 @@ public sealed class ConflictScanFlowTests
                 switch (action)
                 {
                     case "filter":
-                        model.SelectConflictFilterCommand.Execute("same");
+                        model.SelectConflictFilterCommand.Execute("different");
                         await model.ConflictRowsRefreshTask;
                         Assert.AreEqual(0, model.VisibleConflictParentCount);
                         Assert.IsFalse(model.ShowConflictWarning);
@@ -390,7 +390,7 @@ public sealed class ConflictScanFlowTests
         WritePackage(mods, "a.package", 1, "a");
         WritePackage(mods, "b.package", 1, "b");
         await model.StartConflictScanCommand.ExecuteAsync();
-        model.SelectConflictFilterCommand.Execute("same");
+        model.SelectConflictFilterCommand.Execute("different");
         await model.ConflictRowsRefreshTask;
         Assert.IsTrue(model.ShowEmptyConflictRows);
         Assert.IsFalse(model.ShowConflictWarning);

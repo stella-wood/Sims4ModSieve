@@ -6,13 +6,17 @@ using Sims4ModSieve.Core.Scripts;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
 
-public enum ConflictRowKind { PackagePair, ScriptPair, Resource, Module, Content, File, Technical, Explanation, Problem, RangeProblem }
+public enum ConflictRowKind { PackagePair, ScriptPair, Resource, Module, Content, File, Technical, Explanation, Problem, RangeProblem, TechnicalHeader, CopyDetails, Duplicate, GroupReference }
 
 public sealed record ConflictResultRow(
     string Key, ConflictRowKind Kind, int Depth, string Title,
     string Detail = "", string Tooltip = "", string SecondTitle = "", string SecondTooltip = "",
     ConflictPairPriority? Priority = null, bool IsExpandable = false, bool IsExpanded = false, bool IsCardEnd = false,
-    int GroupIndex = 0)
+    int GroupIndex = 0, string OwnerKey = "", ConflictFile? File = null,
+    string Annotation = "", string Tag = "", string FileCountText = "",
+    bool IsIgnored = false, bool IsBundle = false,
+    ConflictGroupLink? DuplicateLink = null, int CopyCount = 0,
+    ConflictTechnicalEntry? TechnicalEntry = null, string CopyText = "", ConflictGroupLink? RelatedLink = null)
 {
     public string StateText => Priority switch
     {
@@ -26,6 +30,11 @@ public sealed record ConflictResultRow(
     public bool HasDetail => Detail.Length > 0;
     public bool IsCardStart => Depth == 0;
     public bool IsTechnicalToggle => Kind == ConflictRowKind.Technical && IsExpandable;
+    public bool HasAnnotation => Annotation.Length > 0;
+    public bool HasTag => Tag.Length > 0;
+    public bool HasCopies => CopyCount > 0;
+    public string CopiesLabel => $"另有{CopyCount}份重复 →";
+    public bool IsDuplicateExplanation => Kind == ConflictRowKind.Explanation && DuplicateLink is not null;
     public string GroupLabel => GroupIndex > 0 ? $"第 {GroupIndex} 组" : string.Empty;
     public string ExpandName => (IsExpanded ? "收起 " : "展开 ") + Title;
 }
@@ -56,7 +65,7 @@ public sealed record ConflictProblemRow(
 
 public sealed record ConflictRangeProblem(string Path, string Summary, string Code, string? Detail, bool IsScript = false);
 
-public sealed class ConflictResultSession
+public sealed partial class ConflictResultSession
 {
     private const string TechnicalDetailTitle = "技术详情";
     private readonly HashSet<string> expandedKeys = new(StringComparer.Ordinal);
@@ -78,6 +87,7 @@ public sealed class ConflictResultSession
         ContentReport = null;
         ScriptReport = null;
         expandedKeys.Clear();
+        ResetGroups();
     }
 
     public void ToggleExpanded(string key)
@@ -88,11 +98,29 @@ public sealed class ConflictResultSession
     public IReadOnlySet<string> GetExpandedKeysSnapshot() => new HashSet<string>(expandedKeys, StringComparer.Ordinal);
 
     public void Replace(PackageConflictScanReport packages, ResourceContentComparisonReport contents,
-        ScriptModuleScanReport scripts, CancellationToken cancellationToken = default)
+        ScriptModuleScanReport scripts, CancellationToken cancellationToken = default,
+        DuplicateReport? duplicates = null)
     {
+        var groupingBuilder = new PackageConflictGroupingBuilder();
+        var prepared = groupingBuilder.Prepare(packages, contents, cancellationToken: cancellationToken);
+        var stampMismatches = duplicates?.Groups.SelectMany(group => group.Files)
+            .Where(file => !MatchesScannedStamp(file, packages, scripts))
+            .DistinctBy(file => file.Path, StringComparer.OrdinalIgnoreCase).ToArray() ?? [];
+        var changedPaths = (duplicates?.Issues ?? []).Where(issue => issue.Code == "file-changed-during-hash")
+            .Select(issue => issue.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        changedPaths.UnionWith(stampMismatches.Select(file => file.Path));
+        // 缓存输入也只保留稳定文件，删除和撤回重建不能重新使用旧版本的关系。
+        prepared = prepared with
+        {
+            Files = prepared.Files.Where(file => !changedPaths.Contains(file.Path)).ToArray(),
+            Pairs = prepared.Pairs.Where(pair => !changedPaths.Contains(pair.FirstPath) && !changedPaths.Contains(pair.SecondPath)).ToArray(),
+        };
+        var grouping = groupingBuilder.Build(prepared, new PackageConflictGroupingOptions(), cancellationToken);
         var builder = new ConflictPairSummaryBuilder();
-        var resources = builder.BuildPackagePairs(packages, contents, cancellationToken);
-        var modules = builder.BuildScriptPairs(scripts, cancellationToken);
+        var resources = builder.BuildPackagePairs(packages, contents, cancellationToken)
+            .Where(pair => !changedPaths.Contains(pair.FirstPath) && !changedPaths.Contains(pair.SecondPath)).ToArray();
+        var modules = builder.BuildScriptPairs(scripts, cancellationToken)
+            .Where(pair => !changedPaths.Contains(pair.FirstPath) && !changedPaths.Contains(pair.SecondPath)).ToArray();
         var problems = new Dictionary<string, (bool Whole, HashSet<string> Entries, HashSet<ConflictProblemReason> Reasons)>(StringComparer.OrdinalIgnoreCase);
         void Add(string path, bool whole, string? identity, ConflictProblemReason reason)
         {
@@ -126,6 +154,13 @@ public sealed class ConflictResultSession
             }
 
         var ranges = new List<ConflictRangeProblem>();
+        foreach (var excluded in grouping.ExcludedFiles)
+        {
+            foreach (var issue in excluded.InputIssues)
+                Add(excluded.Path, excluded.FailedResources.Count == 0, null, new(issue.Code, issue.Key?.Tgi, issue.Message, ConflictProblemCategory.Unknown, issue.Key?.Type));
+            foreach (var version in excluded.InvalidVersions)
+                Add(excluded.Path, true, null, new("grouping-version-unstable", null, null, ConflictProblemCategory.Changed));
+        }
         foreach (var issue in packages.Issues)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -145,6 +180,21 @@ public sealed class ConflictResultSession
             else Add(issue.Path, issue.EntryName is null, issue.EntryName is null ? null : "script:" + issue.EntryName,
                 new(issue.Code, issue.EntryName, issue.Detail, category));
         }
+
+        foreach (var issue in duplicates?.Issues ?? [])
+        {
+            if (issue.Stage is ScanIssueStage.SourceValidation or ScanIssueStage.Discovery)
+            {
+                if (!ranges.Any(problem => StringComparer.OrdinalIgnoreCase.Equals(problem.Path, issue.Path) && problem.Code == issue.Code))
+                    ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Message));
+            }
+            else Add(issue.Path, true, null, new(issue.Code, null, issue.Message,
+                issue.Code == "file-changed-during-hash" ? ConflictProblemCategory.Changed : ConflictProblemCategory.Access));
+        }
+        foreach (var file in stampMismatches)
+            Add(file.Path, true, null, new("hash-scan-stamp-mismatch", null,
+                $"整文件哈希扫描：{file.Size} 字节 · {file.LastWriteTimeUtc:O}；与资源／脚本扫描文件戳不一致",
+                ConflictProblemCategory.Changed));
 
         var mappedProblems = new List<ConflictProblemRow>(problems.Count);
         foreach (var (path, entry) in problems.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase))
@@ -169,18 +219,24 @@ public sealed class ConflictResultSession
         Scripts = modules;
         Problems = mappedProblems.AsReadOnly();
         RangeProblems = ranges.Distinct().ToArray();
+        InitializeGroups(prepared, grouping, duplicates, changedPaths, cancellationToken);
     }
 
     public IReadOnlyList<ConflictResultRow> BuildVisibleRows(string view, string filter,
-        IReadOnlySet<string> expanded, CancellationToken cancellationToken = default)
+        IReadOnlySet<string> expanded, CancellationToken cancellationToken = default,
+        bool showIgnored = false, IReadOnlySet<string>? types = null)
     {
         var rows = new List<ConflictResultRow>();
         var cards = new List<(ConflictPairPriority Priority, string Key, bool Included, Action Build)>();
+        var currentOwnerKey = string.Empty;
         bool Add(ConflictResultRow row)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var owner = row.OwnerKey.Length > 0 ? row.OwnerKey : currentOwnerKey;
+            var fileIgnored = row.File is not null && ignoredFiles.Contains(FileKey(owner, row.File.Path));
+            if (fileIgnored && !showIgnored) return false;
             var open = row.IsExpandable && expanded.Contains(row.Key);
-            rows.Add(row with { IsExpanded = open });
+            rows.Add(row with { IsExpanded = open, OwnerKey = owner, IsIgnored = row.IsIgnored || fileIgnored || ignoredGroups.Contains(owner) });
             return open;
         }
         void Technical(string key, string text) =>
@@ -197,82 +253,13 @@ public sealed class ConflictResultSession
                 ? $"{value.LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm} · {DuplicateGroupViewModel.FormatBytes(value.Length)}"
                 : "修改时间未知 · 大小未知";
             Add(new(owner + "/file" + Identity(path.ToUpperInvariant()), ConflictRowKind.File, 1,
-                Path.GetFileName(path), Path.GetDirectoryName(path) + "\n" + metadata + (issue is null ? "" : "\n" + issue), Tooltip: path));
+                Path.GetFileName(path), Path.GetDirectoryName(path) + "\n" + metadata + (issue is null ? "" : "\n" + issue), Tooltip: path, OwnerKey: owner, File: new(path, stamp)));
         }
         void Explanation(string owner, string text) => Add(new(owner + "/explanation", ConflictRowKind.Explanation, 1, text));
         void Card(ConflictPairPriority priority, string key, bool included, Action build) => cards.Add((priority, key, included, build));
 
-        var resourceGroups = Resources.SelectMany(pair => pair.Resources).GroupBy(match => match.Key).ToArray();
+        AddGroupCards(cards, Add, view, expanded, showIgnored, types, cancellationToken);
         var moduleGroups = Scripts.SelectMany(pair => pair.Modules).GroupBy(match => match.ModuleName, StringComparer.Ordinal).ToArray();
-        foreach (var matches in resourceGroups)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var comparison = matches.First().Comparison;
-            var priority = matches.Min(match => match.Priority);
-            var key = "resource" + Identity(comparison.Key.Tgi);
-            Card(priority, key, view is "all" or "resources", () =>
-            {
-                if (!Add(new(key, ConflictRowKind.Resource, 0, GetResourceTypeDisplayName(comparison.Key.Type),
-                    Priority: priority, IsExpandable: true))) return;
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var fileCount = comparison.ContentGroups.SelectMany(group => group.Occurrences).Concat(comparison.Uncompared)
-                    .Select(occurrence => occurrence.PackagePath).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-                var showGroups = fileCount >= 3 && comparison.ContentGroups.Count >= 2;
-                for (var index = 0; index < comparison.ContentGroups.Count; index++)
-                {
-                    var group = comparison.ContentGroups[index];
-                    var files = group.Occurrences.Where(occurrence => seen.Add(occurrence.PackagePath)).ToArray();
-                    if (showGroups && files.Length > 1)
-                        Add(new(key + "/content" + index, ConflictRowKind.Content, 1, $"以下 {files.Length} 个内容相同"));
-                    foreach (var occurrence in files) File(key, occurrence.PackagePath, occurrence.PackageStamp);
-                }
-                foreach (var occurrence in comparison.Uncompared)
-                    if (seen.Add(occurrence.PackagePath))
-                        File(key, occurrence.PackagePath, occurrence.PackageStamp, GetProblemSummary(Classify(occurrence.Issue?.Code, resourceStage: occurrence.Issue?.Stage)));
-                Explanation(key, comparison.HasConfirmedDifference
-                    ? "这几个 mod 改了同一样东西，游戏只会用其中一个"
-                    : comparison.IsComplete ? "这些文件里的这项资源内容相同"
-                    : "部分资源未完成比较，暂时无法确认全部内容是否相同");
-                Detail(key, () => new[] { "TGI " + comparison.Key.Tgi }
-                    .Concat(comparison.ContentGroups.SelectMany(group => group.Occurrences.Select(occurrence =>
-                        $"{occurrence.PackagePath}\nSHA256 {group.Sha256} · 解压大小 {occurrence.DecompressedLength} 字节")))
-                    .Concat(comparison.Uncompared.Select(occurrence => occurrence.PackagePath + "\n" +
-                        ProblemTechnical(occurrence.Issue?.Code, occurrence.Issue?.Detail, Classify(occurrence.Issue?.Code, resourceStage: occurrence.Issue?.Stage)))));
-            });
-        }
-        foreach (var matches in moduleGroups)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var collision = matches.First().Collision;
-            var priority = matches.Min(match => match.Priority);
-            var key = "module" + Identity(collision.ModuleName);
-            Card(priority, key, view is "all" or "scripts", () =>
-            {
-                if (!Add(new(key, ConflictRowKind.Module, 0, collision.ModuleName, Priority: priority, IsExpandable: true))) return;
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var showGroups = collision.ArchiveCount >= 3 && collision.ContentGroups.Count >= 2;
-                for (var index = 0; index < collision.ContentGroups.Count; index++)
-                {
-                    var group = collision.ContentGroups[index];
-                    var files = group.Occurrences.Where(occurrence => seen.Add(occurrence.ArchivePath)).ToArray();
-                    if (showGroups && files.Length > 1)
-                        Add(new(key + "/content" + index, ConflictRowKind.Content, 1, $"以下 {files.Length} 个内容相同"));
-                    foreach (var occurrence in files) File(key, occurrence.ArchivePath, occurrence.ArchiveStamp);
-                }
-                foreach (var occurrence in collision.Uncompared)
-                    if (seen.Add(occurrence.ArchivePath))
-                        File(key, occurrence.ArchivePath, occurrence.ArchiveStamp, GetProblemSummary(Classify(occurrence.Issue?.Code, scriptStage: occurrence.Issue?.Stage)));
-                Explanation(key, collision.HasConfirmedDifference
-                    ? "这几个 mod 带了同名脚本，游戏只会加载其中一份"
-                    : collision.IsComplete ? "这些文件带的这个脚本模块内容相同"
-                    : "部分脚本未完成比较，暂时无法确认全部内容是否相同");
-                Detail(key, () => collision.ContentGroups.SelectMany(group => group.Occurrences.Select(occurrence =>
-                        $"{occurrence.ArchivePath}\n{occurrence.EntryName}\nSHA256 {group.Sha256} · 解压大小 {occurrence.ContentLength} 字节"))
-                    .Concat(collision.Uncompared.Select(occurrence => occurrence.ArchivePath + "\n" + occurrence.EntryName + "\n" +
-                        ProblemTechnical(occurrence.Issue?.Code, occurrence.Issue?.Detail, Classify(occurrence.Issue?.Code, scriptStage: occurrence.Issue?.Stage)))));
-            });
-        }
-
         // 已出现在资源／模块卡里的失败条目，不再复制为未完成文件卡；未碰撞的失败仍保留。
         var represented = new Dictionary<string, HashSet<(string Entry, string Code)>>(StringComparer.OrdinalIgnoreCase);
         void Represent(string path, string entry, string code)
@@ -280,13 +267,12 @@ public sealed class ConflictResultSession
             if (!represented.TryGetValue(path, out var entries)) represented[path] = entries = [];
             entries.Add((entry, code));
         }
-        foreach (var matches in resourceGroups)
-            foreach (var occurrence in matches.First().Comparison.Uncompared) Represent(occurrence.PackagePath, occurrence.Key.Tgi, occurrence.Issue?.Code ?? "resource-read-unknown");
         foreach (var matches in moduleGroups)
             foreach (var occurrence in matches.First().Collision.Uncompared) Represent(occurrence.ArchivePath, occurrence.EntryName, occurrence.Issue?.Code ?? "script-read-unknown");
         foreach (var problem in Problems)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (removedPaths.Contains(problem.Path)) continue;
             var isScript = Path.GetExtension(problem.Path).Equals(".ts4script", StringComparison.OrdinalIgnoreCase);
             var reasons = problem.Reasons.Where(reason => reason.EntryName is null
                 || !represented.TryGetValue(problem.Path, out var entries) || !entries.Contains((reason.EntryName, reason.Code))).ToArray();
@@ -309,6 +295,7 @@ public sealed class ConflictResultSession
         for (var index = 0; index < RangeProblems.Count; index++)
         {
             var problem = RangeProblems[index];
+            if (removedPaths.Contains(problem.Path)) continue;
             var key = "range" + Identity(problem.Path.ToUpperInvariant()) + index;
             Card(ConflictPairPriority.Incomplete, key, view is "all" or "problems" || view == (problem.IsScript ? "scripts" : "resources"), () =>
             {
@@ -319,14 +306,15 @@ public sealed class ConflictResultSession
             });
         }
         var groupIndex = 0;
-        foreach (var card in cards.OrderBy(card => card.Priority).ThenBy(card => card.Key, StringComparer.Ordinal))
+        foreach (var card in cards.OrderBy(card => card.Priority).ThenBy(card => groupNumbers.GetValueOrDefault(card.Key, int.MaxValue)).ThenBy(card => card.Key, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
             groupIndex++;
-            if (!card.Included || !Matches(filter, card.Priority)) continue;
+            if (!card.Included || !Matches(filter, card.Priority) || !showIgnored && ignoredGroups.Contains(card.Key)) continue;
             var firstRow = rows.Count;
+            currentOwnerKey = card.Key;
             card.Build();
-            rows[firstRow] = rows[firstRow] with { GroupIndex = groupIndex };
+            rows[firstRow] = rows[firstRow] with { GroupIndex = groupNumbers.GetValueOrDefault(card.Key, groupIndex) };
             rows[^1] = rows[^1] with { IsCardEnd = true };
         }
         return rows.AsReadOnly();

@@ -37,6 +37,7 @@
                             Command="{Binding GoHomeCommand}"
                             Style="{StaticResource HeaderNavButtonStyle}"
                             Visibility="{Binding IsConflictVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Content="首页" Command="{Binding GoHomeCommand}" Style="{StaticResource HeaderNavButtonStyle}" Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Border Width="1"
                             Height="18"
                             Margin="20,0"
@@ -53,6 +54,7 @@
                             Command="{Binding OpenDuplicateScannerCommand}"
                             Style="{StaticResource HeaderNavButtonStyle}"
                             Visibility="{Binding IsConflictVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Content="重复检测" Command="{Binding OpenDuplicateScannerCommand}" Style="{StaticResource HeaderNavButtonStyle}" Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="28,0,0,0"
                             Content="冲突检测"
                             Command="{Binding OpenConflictCommand}"
@@ -68,11 +70,21 @@
                             Command="{Binding OpenConflictCommand}"
                             Style="{StaticResource ActiveHeaderNavButtonStyle}"
                             Visibility="{Binding IsConflictVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Margin="28,0,0,0" Content="冲突检测" Command="{Binding OpenConflictCommand}" Style="{StaticResource HeaderNavButtonStyle}" Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
                 <Button Grid.Column="2"
                         Content="设置"
-                        IsEnabled="False"
-                        Style="{StaticResource HeaderNavButtonStyle}" />
+                        Command="{Binding OpenSettingsCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource HeaderNavButtonStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSettingsVisible}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
             </Grid>
         </Border>
 
@@ -319,7 +331,7 @@
                                 <TextBlock Text="尚未扫描" Foreground="{StaticResource MutedBrush}" FontSize="15" HorizontalAlignment="Center" />
                             </StackPanel>
 
-                            <ListBox ItemsSource="{Binding Groups}"
+                            <ListBox x:Name="DuplicateGroupsList" ItemsSource="{Binding Groups}"
                                      Padding="20,6,8,12"
                                      Background="Transparent"
                                      BorderThickness="0"
@@ -500,6 +512,7 @@
                 </Border>
             </Grid>
         </Grid>
+        <local:SettingsPage Grid.Row="1" Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
         <local:ConflictPage Grid.Row="1" Visibility="{Binding IsConflictVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>
 </Window>

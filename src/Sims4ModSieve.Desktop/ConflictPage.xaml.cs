@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
+using Sims4ModSieve.Desktop.ViewModels;
 
 namespace Sims4ModSieve.Desktop;
 
@@ -11,7 +13,23 @@ public partial class ConflictPage : UserControl
         InitializeComponent();
         ConflictFilterPopup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
             [new CustomPopupPlacement(new Point(targetSize.Width - popupSize.Width, targetSize.Height), PopupPrimaryAxis.Horizontal)];
+        DataContextChanged += (_, e) =>
+        {
+            if (e.OldValue is MainWindowViewModel oldModel) oldModel.ConflictGroupLocationRequested -= LocateGroup;
+            if (e.NewValue is MainWindowViewModel newModel) newModel.ConflictGroupLocationRequested += LocateGroup;
+        };
     }
+
+    private void LocateGroup(string key) => Dispatcher.BeginInvoke(() =>
+    {
+        if (DataContext is not MainWindowViewModel model) return;
+        var row = model.ConflictRows.FirstOrDefault(row => row.Key == key);
+        if (row is null) return;
+        ConflictRowsList.ScrollIntoView(row);
+        ConflictRowsList.UpdateLayout();
+        if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is ListBoxItem item)
+            item.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.First));
+    }, DispatcherPriority.Loaded);
 
     private void ConflictOverviewViewport_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {

@@ -1,0 +1,93 @@
+<UserControl x:Class="Sims4ModSieve.Desktop.ConflictRelationshipsDialog"
+             x:Name="DialogRoot"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="Collapsed" Focusable="True" KeyboardNavigation.TabNavigation="Cycle" PreviewKeyDown="Dialog_PreviewKeyDown">
+    <UserControl.Resources>
+        <Style x:Key="RelationLinkStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" /><Setter Property="Padding" Value="0" /><Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border Background="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Center" /></Border></ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Geometry x:Key="MainFileMark">M8,0 C9,5 11,7 16,8 C11,9 9,11 8,16 C7,11 5,9 0,8 C5,7 7,5 8,0 Z</Geometry>
+        <DataTemplate x:Key="RelationAnnotationTemplate">
+            <WrapPanel Margin="0,0,8,0">
+                <Border x:Name="Badge" BorderBrush="#E8D5D0" BorderThickness="1" Background="#F8EFED" CornerRadius="2" Padding="4,0" AutomationProperties.Name="{Binding AccessibleLabel}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="Label" Text="{Binding Label}" FontSize="11" Foreground="#89655D" />
+                        <TextBlock x:Name="BeforeMark" Visibility="Collapsed" FontSize="11" Foreground="#88774E" />
+                        <Path x:Name="MainMark" Visibility="Collapsed" Data="{StaticResource MainFileMark}" Fill="{StaticResource AccentBrush}" Width="10" Height="10" Stretch="Uniform" Margin="1,0" IsHitTestVisible="False" />
+                        <TextBlock x:Name="AfterMark" Visibility="Collapsed" FontSize="11" Foreground="#88774E" Text="包含" />
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="Reason" Text="{Binding Detail}" Margin="5,0,0,0" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+            </WrapPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsContainment}" Value="True"><Setter TargetName="Badge" Property="Background" Value="#F8F3E8" /><Setter TargetName="Badge" Property="BorderBrush" Value="#E5DCC6" /><Setter TargetName="Label" Property="Visibility" Value="Collapsed" /><Setter TargetName="MainMark" Property="Visibility" Value="Visible" /><Setter TargetName="BeforeMark" Property="Visibility" Value="Visible" /><Setter TargetName="Reason" Property="Visibility" Value="Collapsed" /></DataTrigger>
+                <DataTrigger Binding="{Binding ContainsMain}" Value="True"><Setter TargetName="BeforeMark" Property="Text" Value="包含" /></DataTrigger>
+                <DataTrigger Binding="{Binding ContainedByMain}" Value="True"><Setter TargetName="BeforeMark" Property="Text" Value="被" /><Setter TargetName="AfterMark" Property="Visibility" Value="Visible" /></DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+        <DataTemplate x:Key="RelationPartnerTemplate">
+            <Grid Margin="0,5,0,5">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Ellipse x:Name="Dot" Width="8" Height="8" Fill="#D99316" VerticalAlignment="Top" Margin="0,6,0,0" />
+                <StackPanel Grid.Column="1" Margin="8,0,12,0">
+                    <WrapPanel>
+                        <TextBlock MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}" Text="{Binding Partner.File.Name}" FontFamily="/Sims4ModSieve;component/Assets/Fonts/#Source Han Sans CN" FontWeight="Light" FontSize="13" TextWrapping="Wrap" Margin="0,0,8,0" />
+                        <ItemsControl MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}" ItemsSource="{Binding Partner.Relationships}" ItemTemplate="{StaticResource RelationAnnotationTemplate}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
+                        <Button x:Name="CopiesToggle" Style="{StaticResource RelationLinkStyle}" Foreground="#A892C5" Margin="6,0,0,0" Click="CopiesToggle_Click" Visibility="{Binding Partner.HasCopies, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.Name="{Binding Partner.CopiesLabel}">
+                            <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding CopiesLabel}" /><Path x:Name="CopyArrow" Data="M2,1 L6,5 L2,9" Stroke="#A892C5" StrokeThickness="1" Width="10" Height="10" Margin="3,0,0,0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5" /></StackPanel>
+                        </Button>
+                    </WrapPanel>
+                    <TextBlock Text="{Binding Partner.File.Path}" ToolTip="{Binding Partner.File.Path}" FontSize="11" Foreground="{StaticResource MutedBrush}" FontWeight="Normal" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <ItemsControl Grid.Column="2" ItemsSource="{Binding Links}" VerticalAlignment="Center"><ItemsControl.ItemTemplate><DataTemplate>
+                    <Button Content="{Binding Label}" Style="{StaticResource RelationLinkStyle}" Margin="0,2" Click="Jump_Click" />
+                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+            </Grid>
+            <DataTemplate.Triggers><DataTrigger Binding="{Binding Partner.Priority}" Value="NeedsReview"><Setter TargetName="Dot" Property="Fill" Value="#D33C2E" /></DataTrigger><DataTrigger Binding="{Binding IsExpanded}" Value="True"><Setter TargetName="CopyArrow" Property="RenderTransform"><Setter.Value><RotateTransform Angle="90" /></Setter.Value></Setter></DataTrigger></DataTemplate.Triggers>
+        </DataTemplate>
+        <DataTemplate x:Key="RelationCopyTemplate">
+            <Grid Margin="18,4,0,4">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding Copy.Path}" ToolTip="{Binding Copy.Path}" FontSize="11" FontWeight="Normal" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,12,0" />
+                <Button Grid.Column="1" Content="{Binding CopyLink.CopyLabel}" Style="{StaticResource RelationLinkStyle}" FontSize="10" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Click="CopyJump_Click" Visibility="{Binding HasCopyLink, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="RelationDisplayTemplate">
+            <ContentControl Content="{Binding}" HorizontalContentAlignment="Stretch"><ContentControl.Style><Style TargetType="ContentControl">
+                <Setter Property="ContentTemplate" Value="{StaticResource RelationPartnerTemplate}" />
+                <Style.Triggers><DataTrigger Binding="{Binding IsCopy}" Value="True"><Setter Property="ContentTemplate" Value="{StaticResource RelationCopyTemplate}" /></DataTrigger></Style.Triggers>
+            </Style></ContentControl.Style></ContentControl>
+        </DataTemplate>
+    </UserControl.Resources>
+    <Grid x:Name="Backdrop" Background="#1F2F2B25" MouseDown="Backdrop_MouseDown">
+        <Border x:Name="Pane" Width="620" MaxHeight="440" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="26,22,26,22" RenderTransformOrigin="0.5,0.5" AutomationProperties.Name="文件关系">
+            <Border.RenderTransform><TransformGroup><RotateTransform /><ScaleTransform ScaleX="1" ScaleY="1" /></TransformGroup></Border.RenderTransform>
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,12,0">
+                            <WrapPanel><TextBlock Text="{Binding File.Name}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" /><Border Background="#EEE9F3" CornerRadius="2" Padding="5,1" Margin="8,3,0,0" Visibility="{Binding HasContainment, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.Name="主文件"><Path Data="{StaticResource MainFileMark}" Fill="{StaticResource AccentBrush}" Width="10" Height="10" Stretch="Uniform" IsHitTestVisible="False" /></Border></WrapPanel>
+                            <TextBlock Text="{Binding File.Path}" ToolTip="{Binding File.Path}" FontWeight="Normal" FontSize="12" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                            <TextBlock Text="{Binding File.Metadata}" FontWeight="Normal" FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                        </StackPanel>
+                        <Button x:Name="CloseButton" Grid.Column="1" Width="24" Height="24" VerticalAlignment="Top" Style="{StaticResource RelationLinkStyle}" Click="Close_Click" AutomationProperties.Name="关闭文件关系" ToolTip="关闭文件关系"><Path Data="M3,3 L13,13 M13,3 L3,13" Stroke="{StaticResource MutedBrush}" StrokeThickness="1.3" Width="16" Height="16" IsHitTestVisible="False" /></Button>
+                    </Grid>
+                </Border>
+                <StackPanel Grid.Row="1" Visibility="{Binding HasCopies, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Button x:Name="OwnCopiesToggle" Style="{StaticResource RelationLinkStyle}" HorizontalAlignment="Left" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,4" Click="OwnCopiesToggle_Click" AutomationProperties.Name="{Binding CopiesLabel}"><StackPanel Orientation="Horizontal"><Path x:Name="OwnCopiesArrow" Data="M2,1 L6,5 L2,9" Stroke="{StaticResource MutedBrush}" StrokeThickness="1" Width="10" Height="10" Margin="0,0,3,0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5" /><TextBlock Text="{Binding CopiesLabel}" /></StackPanel></Button>
+                    <Line x:Name="OwnCopiesSeparator" Visibility="Collapsed" X1="0" X2="1" Stretch="Fill" Height="1" Stroke="#D8D3CC" StrokeDashArray="2,4" />
+                </StackPanel>
+                <ListBox x:Name="RelationRowsList" Grid.Row="2" Background="Transparent" BorderThickness="0" ItemTemplate="{StaticResource RelationDisplayTemplate}" HorizontalContentAlignment="Stretch" ScrollViewer.CanContentScroll="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                    <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                    <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Focusable" Value="False" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+                </ListBox>
+                <Border Grid.Row="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,8,0,0"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding Footer}" Foreground="#948C84" FontSize="11" /><Button Grid.Column="1" Style="{StaticResource RelationLinkStyle}" Content="打开所在文件夹" Command="{Binding DataContext.OpenConflictFolderCommand, ElementName=DialogRoot}" CommandParameter="{Binding File}" /></Grid></Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

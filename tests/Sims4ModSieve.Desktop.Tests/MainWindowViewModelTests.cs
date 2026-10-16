@@ -453,9 +453,13 @@ public sealed class MainWindowViewModelTests
     private sealed class FakeFolderPicker(params string[] paths) : IFolderPickerService
     {
         private readonly Queue<string> paths = new(paths);
+        public List<string?> InitialDirectories { get; } = [];
 
-        public string? PickFolder(string title, string? initialDirectory = null) =>
-            paths.Count == 0 ? null : paths.Dequeue();
+        public string? PickFolder(string title, string? initialDirectory = null)
+        {
+            InitialDirectories.Add(initialDirectory);
+            return paths.Count == 0 ? null : paths.Dequeue();
+        }
     }
 
     private sealed class FakeDuplicateRunService(

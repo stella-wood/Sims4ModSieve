@@ -18,5 +18,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+        viewModel.DuplicateGroupLocationRequested += LocateDuplicateGroup;
+        Closed += (_, _) => viewModel.DuplicateGroupLocationRequested -= LocateDuplicateGroup;
     }
+
+    private void LocateDuplicateGroup(DuplicateGroupViewModel group) => Dispatcher.BeginInvoke(() =>
+    {
+        DuplicateGroupsList.ScrollIntoView(group);
+        DuplicateGroupsList.UpdateLayout();
+    }, System.Windows.Threading.DispatcherPriority.Loaded);
 }

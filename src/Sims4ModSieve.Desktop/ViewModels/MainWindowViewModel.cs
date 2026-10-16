@@ -49,12 +49,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         DuplicateResultSession? resultSession = null,
         IPackageConflictScanner? packageConflictScanner = null,
         IResourceContentComparer? resourceContentComparer = null,
-        IScriptModuleScanner? scriptModuleScanner = null)
+        IScriptModuleScanner? scriptModuleScanner = null,
+        SettingsSupportService? settingsSupport = null,
+        Action<string>? conflictDetailsCopy = null)
     {
         this.duplicateRunService = duplicateRunService;
+        this.conflictDetailsCopy = conflictDetailsCopy ?? System.Windows.Clipboard.SetText;
         this.resultSession = resultSession ?? new DuplicateResultSession();
         this.folderPicker = folderPicker;
         this.settingsStore = settingsStore;
+        this.settingsSupport = settingsSupport ?? new SettingsSupportService();
         this.fileActionService = fileActionService ?? new FileActionService();
         this.fileActionDialogs = fileActionDialogs ?? new FileActionDialogService();
         this.unexpectedErrorHandler = unexpectedErrorHandler ?? new UnexpectedErrorHandler();
@@ -92,6 +96,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         LoadSettings();
         InitializeConflict();
+        InitializeSettings();
     }
 
     public ObservableCollection<ScanSourceViewModel> Sources { get; } = [];
@@ -281,19 +286,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasFileActionStatus => !string.IsNullOrWhiteSpace(FileActionStatusText);
 
-    public bool CanUndoLastDelete => fileActionService.CanUndoLastDelete;
+    public bool CanUndoLastDelete => lastDeleteOwner != "conflict" && fileActionService.CanUndoLastDelete;
 
     private void LoadSettings()
     {
-        ModsRoot = NormalizePathOrNull(settingsStore.Load()?.ModsRoot);
+        var settings = settingsStore.Load();
+        ModsRoot = NormalizePathOrNull(settings?.ModsRoot);
+        TrayRoot = NormalizePathOrNull(settings?.TrayRoot);
         if (!HasModsRoot)
         {
-            var defaultModsRoot = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "Electronic Arts",
-                "The Sims 4",
-                "Mods");
-            if (Directory.Exists(defaultModsRoot)) ModsRoot = defaultModsRoot;
+            ModsRoot = settingsSupport.FindDefaultFolder("Mods");
         }
 
         if (HasModsRoot)
@@ -307,6 +309,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void ShowScanner()
     {
+        IsSettingsVisible = false;
         RefreshAvailability();
         IsHomeVisible = false;
         IsConflictVisible = false;
@@ -315,6 +318,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void ShowHome()
     {
+        IsSettingsVisible = false;
         IsScannerVisible = false;
         IsConflictVisible = false;
         IsHomeVisible = true;
@@ -338,6 +342,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
+        if (!TrySaveSettings(new DuplicateSettings(normalizedPath, [], TrayRoot)))
+        {
+            fileActionDialogs.ShowProblems("设置未保存", [new FileActionFailure(string.Empty, SettingsFeedback)]);
+            return;
+        }
+
         ModsRoot = normalizedPath;
         var source = ActiveSources.FirstOrDefault(item => PathRulesEqual(item.Path, normalizedPath));
         if (source is null)
@@ -350,7 +360,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         RefreshAvailability();
-        SaveSettings();
     }
 
     private void AddSource(ObservableCollection<ScanSourceViewModel> sources, string path)
@@ -513,18 +522,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         var snapshot = Groups.Select(group => group.Model).ToArray();
+        var deletionGeneration = resultGeneration;
+        var relatedConflictSession = conflictSession;
         IsBusy = true;
         try
         {
             var result = await fileActionService.DeleteAsync(preflight);
             if (result.CompletedPaths.Count > 0)
             {
-                lastDeleteSnapshot = snapshot;
-                lastDeleteResultGeneration = resultGeneration;
-                resultSession.RemoveCompletedPaths(
-                    snapshot,
-                    result.CompletedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase));
-                FileActionStatusText = $"已移入回收站 {result.CompletedPaths.Count} 个文件";
+                if (deletionGeneration == resultGeneration)
+                    RememberDeletion("duplicates", relatedConflictSession, snapshot, deletionGeneration, result.CompletedPaths);
+                else fileActionService.ClearLastDelete();
+                if (ReferenceEquals(relatedConflictSession, conflictSession) && IsConflictComplete)
+                {
+                    await UpdateConflictFilePathsAsync(relatedConflictSession, result.CompletedPaths, restore: false);
+                }
+                if (deletionGeneration == resultGeneration)
+                {
+                    resultSession.RemoveCompletedPaths(snapshot, result.CompletedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase));
+                    FileActionStatusText = $"已移入回收站 {result.CompletedPaths.Count} 个文件";
+                }
             }
 
             if (result.Failures.Count > 0)
@@ -548,20 +565,33 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
+        var snapshot = lastDeleteSnapshot;
+        var generation = lastDeleteResultGeneration;
+        var relatedSession = lastDeleteConflictSession;
+        var owner = lastDeleteOwner;
+        var pending = new HashSet<string>(lastDeletePendingPaths, StringComparer.OrdinalIgnoreCase);
         IsBusy = true;
         try
         {
             var result = await fileActionService.UndoLastDeleteAsync();
             if (result.CompletedPaths.Count > 0)
             {
-                if (lastDeleteSnapshot is not null && lastDeleteResultGeneration == resultGeneration)
+                pending.ExceptWith(result.CompletedPaths);
+                if (ReferenceEquals(snapshot, lastDeleteSnapshot)) lastDeletePendingPaths.ExceptWith(result.CompletedPaths);
+                if (snapshot is not null && generation == resultGeneration)
                 {
-                    resultSession.RestoreExistingPaths(lastDeleteSnapshot);
+                    resultSession.RestoreCompletedPaths(snapshot, pending);
                 }
 
-                FileActionStatusText = result.Failures.Count == 0
+                if (ReferenceEquals(relatedSession, conflictSession) && IsConflictComplete)
+                {
+                    await UpdateConflictFilePathsAsync(conflictSession, result.CompletedPaths, restore: true);
+                }
+                var restoredText = result.Failures.Count == 0
                     ? $"已撤回，恢复 {result.CompletedPaths.Count} 个文件"
                     : $"已恢复 {result.CompletedPaths.Count} 个文件，部分项目仍需处理";
+                if (owner == "conflict" && ReferenceEquals(relatedSession, conflictSession)) ConflictFileActionStatusText = restoredText;
+                else if (owner != "conflict" && generation == resultGeneration) FileActionStatusText = restoredText;
             }
 
             if (result.Failures.Count > 0)
@@ -623,7 +653,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsModsRootAvailable = HasModsRoot && Directory.Exists(ModsRoot!);
     }
 
-    private void SaveSettings() => settingsStore.Save(new DuplicateSettings(ModsRoot, []));
+    private bool TrySaveSettings(DuplicateSettings candidate)
+    {
+        try
+        {
+            settingsStore.Save(candidate);
+            SettingsFeedback = string.Empty;
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            SettingsFeedback = "设置未保存，请检查配置目录的写入权限";
+            return false;
+        }
+    }
 
     private static string? NormalizePathOrNull(string? path)
     {
@@ -674,7 +717,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         resultGeneration++;
         scanCancellation?.Cancel();
-        ClearFileActionHistory();
+        if (lastDeleteOwner != "conflict") ClearFileActionHistory();
+        FileActionStatusText = string.Empty;
         resultSession.Reset();
         IssueCount = 0;
         DiscoveredFileCount = 0;
@@ -690,13 +734,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         fileActionService.ClearLastDelete();
         lastDeleteSnapshot = null;
+        lastDeletePendingPaths.Clear();
+        lastDeleteOwner = null;
+        lastDeleteConflictSession = null;
         FileActionStatusText = string.Empty;
+        OnPropertyChanged(nameof(CanUndoConflictDelete));
         OnPropertyChanged(nameof(CanUndoLastDelete));
         UndoLastDeleteCommand.RaiseCanExecuteChanged();
     }
 
     private void RefreshResultProperties()
     {
+        OnPropertyChanged(nameof(CanUndoConflictDelete));
         OnPropertyChanged(nameof(CanUndoLastDelete));
         RefreshResultCommands();
     }
@@ -724,6 +773,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         CancelConflictScanCommand?.RaiseCanExecuteChanged();
         ConflictBackCommand?.RaiseCanExecuteChanged();
         OpenConflictSectionCommand?.RaiseCanExecuteChanged();
+        IgnoreConflictCommand?.RaiseCanExecuteChanged();
+        OpenConflictRelationshipsCommand?.RaiseCanExecuteChanged();
+        JumpToConflictGroupCommand?.RaiseCanExecuteChanged();
+        OpenConflictDuplicatesCommand?.RaiseCanExecuteChanged();
+        DeleteConflictFileCommand?.RaiseCanExecuteChanged();
+        RefreshSettingsCommands();
         RefreshResultCommands();
     }
 }

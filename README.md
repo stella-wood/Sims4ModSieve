@@ -65,7 +65,9 @@ Release 构建输出位于：
 src\Sims4ModSieve.Desktop\bin\Release\net8.0-windows\
 ```
 
-桌面程序名为 `Sims4ModSieve.exe`。当前 Mods 文件夹位置与错误日志保存在 `%LOCALAPPDATA%\Sims4ModSieve\`，不会写入 Mods 文件夹。新目录尚无设置时，依次读取旧版 `%LOCALAPPDATA%\Sim4ModSieve\duplicate-settings.json` 和 `%LOCALAPPDATA%\Sims4ModDoctor\duplicate-settings.json`；后续保存写入新目录，旧文件保留。仅恢复当前 Mods 文件夹位置，忽略旧设置中的扫描来源；每次启动，两种检测各自默认勾选该 Mods 文件夹，未设置且未发现默认目录时范围为空。
+桌面程序名为 `Sims4ModSieve.exe`。顶部「设置」提供文件夹、诊断与反馈、关于三个分类。可立即保存共用默认 Mods 与独立 Tray 位置，打开目录，或查找并确认采用系统文档下的默认目录；Tray 仅保存位置，图库检测尚未开放。设置页修改默认 Mods 不改变已添加的扫描范围；检测页原有「更改」仍将新位置加入当前页。配置兼容和会话规则见 [设置页面方案](docs/design/设置页面方案-v1.md)。
+
+配置文件 `duplicate-settings.json` 与本工具错误日志保存在 `%LOCALAPPDATA%\Sims4ModSieve\`，不会写入 Mods 文件夹。「诊断与反馈」仅查看本工具的运行及启动日志，支持有界读取、路径脱敏和复制；无日志也可复制实际版本与系统信息。关于页可读取随构建输出的 MIT 许可证和第三方声明。GitHub 仅在点击链接时通过系统浏览器打开，无自动联网。
 
 ## CLI
 

@@ -8,6 +8,23 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class DuplicateSettingsStoreTests
 {
     [TestMethod]
+    public void LegacySettingsWithoutTrayStillLoad()
+    {
+        using var files = new SettingsViewModelTests.Scenario();
+        foreach (var name in new[] { "Sims4ModDoctor", "Sim4ModSieve", "Sims4ModSieve" })
+        {
+            var path = Path.Combine(files.Root, name, "duplicate-settings.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var json = "{\"ModsRoot\":\"" + name + "\",\"Sources\":[]}";
+            File.WriteAllText(path, json);
+            var loaded = new DuplicateSettingsStore(files.Root).Load()!;
+            Assert.AreEqual(name, loaded.ModsRoot);
+            Assert.IsNull(loaded.TrayRoot);
+            Assert.AreEqual(json, File.ReadAllText(path));
+        }
+    }
+
+    [TestMethod]
     public void RenamePrefersMostRecentLegacyDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"s4ms-settings-{Guid.NewGuid():N}");

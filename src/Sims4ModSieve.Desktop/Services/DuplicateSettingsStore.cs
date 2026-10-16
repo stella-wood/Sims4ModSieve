@@ -5,7 +5,7 @@ namespace Sims4ModSieve.Desktop.Services;
 
 public sealed record SavedScanSource(string Path, bool Enabled);
 
-public sealed record DuplicateSettings(string? ModsRoot, IReadOnlyList<SavedScanSource> Sources);
+public sealed record DuplicateSettings(string? ModsRoot, IReadOnlyList<SavedScanSource> Sources, string? TrayRoot = null);
 
 public interface IDuplicateSettingsStore
 {
@@ -50,15 +50,17 @@ public sealed class DuplicateSettingsStore : IDuplicateSettingsStore
 
     public void Save(DuplicateSettings settings)
     {
+        var directory = Path.GetDirectoryName(settingsPath)!;
+        Directory.CreateDirectory(directory);
+        var temporaryPath = Path.Combine(directory, Path.GetRandomFileName());
         try
         {
-            var directory = Path.GetDirectoryName(settingsPath)!;
-            Directory.CreateDirectory(directory);
-            File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, JsonOptions));
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, JsonOptions));
+            File.Move(temporaryPath, settingsPath, overwrite: true);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        finally
         {
-            // A read-only settings location should not prevent a scan.
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
         }
     }
 }

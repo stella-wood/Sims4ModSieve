@@ -164,6 +164,38 @@ public sealed class DuplicateResultSession : ObservableObject
                 group.Files.Where(file => File.Exists(file.Path)).ToArray())));
     }
 
+    public void SynchronizeDeletedPaths(IEnumerable<string> paths)
+    {
+        var removed = paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        SynchronizeModels(Groups.Select(group => group.Model with
+        {
+            Files = group.Model.Files.Where(file => !removed.Contains(file.Path)).ToArray(),
+        }));
+    }
+
+    public void RestoreCompletedPaths(IReadOnlyList<DuplicateGroup> snapshot, IReadOnlySet<string> remainingDeletedPaths)
+    {
+        SynchronizeModels(snapshot.Select(group => group with
+        {
+            Files = group.Files.Where(file => !remainingDeletedPaths.Contains(file.Path)).ToArray(),
+        }));
+    }
+
+    private void SynchronizeModels(IEnumerable<DuplicateGroup> models)
+    {
+        var selected = Groups.SelectMany(group => group.Files).Where(file => file.IsSelected)
+            .Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var expanded = Groups.Where(group => group.IsExpanded).Select(group => (group.Model.Sha256, group.Model.FileSize)).ToHashSet();
+        var rebuilt = models.Select(group => RebuildGroup(group, group.Files)).Where(group => group is not null).Cast<DuplicateGroup>().ToArray();
+        var prepared = PrepareGroups(rebuilt);
+        foreach (var group in prepared)
+        {
+            group.IsExpanded = expanded.Contains((group.Model.Sha256, group.Model.FileSize));
+            foreach (var file in group.Files) file.IsSelected = selected.Contains(file.Path);
+        }
+        Replace(prepared);
+    }
+
     private void ReplaceFromModels(IEnumerable<DuplicateGroup?> models)
     {
         var groupsToShow = models
