@@ -31,6 +31,145 @@ public sealed class ConflictRelationshipsDialogTests
     }
 
     [TestMethod]
+    public Task GroupHeadingAndFileTextAreasRouteToTheirActions() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        var window = OpenWindow(model);
+        window.Left = 70;
+        window.Top = 50;
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
+        {
+            window.Width = width;
+            window.Height = height;
+            var session = ReviewSession();
+            var card = session.Cards.First(card => card.Type == "override" && card.Files.Any(file => file.Path == A));
+            await SetSessionAsync(model, session, "all");
+            var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
+            list.ScrollIntoView(model.ConflictRows.Single(row => row.Key == card.Key));
+            await WpfTestHost.LayoutAsync(window);
+            var heading = Descendants<Button>(list).Single(button => button.Name == "ExpandButton" && button.DataContext is ConflictResultRow row && row.Key == card.Key);
+            foreach (var target in Descendants<TextBlock>(heading).Cast<FrameworkElement>().Concat(Descendants<System.Windows.Shapes.Ellipse>(heading)))
+                Assert.AreSame(heading, HitButton(window, target, new Point(target.ActualWidth / 2, target.ActualHeight / 2)));
+            foreach (var fraction in new[] { 0.05, 0.95 })
+            {
+                heading = Descendants<Button>(list).Single(button => button.Name == "ExpandButton" && button.DataContext is ConflictResultRow row && row.Key == card.Key);
+                var hit = HitButton(window, heading, new Point(heading.ActualWidth * fraction, heading.ActualHeight * fraction));
+                Assert.AreSame(heading, hit);
+                Invoke(hit);
+                await WpfTestHost.LayoutAsync(window);
+                await model.ConflictRowsRefreshTask;
+                await WpfTestHost.LayoutAsync(window);
+                var expanded = model.ConflictRows.Single(row => row.Key == card.Key).IsExpanded;
+                Assert.AreEqual(fraction < 0.5, expanded);
+            }
+            model.ToggleConflictExpandedCommand.Execute(model.ConflictRows.Single(row => row.Key == card.Key));
+            await model.ConflictRowsRefreshTask;
+            var file = model.ConflictRows.First(row => row.OwnerKey == card.Key && row.File?.Path.Contains("关联文件-0", StringComparison.Ordinal) == true);
+            list.ScrollIntoView(file);
+            await WpfTestHost.LayoutAsync(window);
+            var details = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, file) && button.Name == "FileDetailsButton");
+            var surface = Descendants<Border>(list).Single(border => ReferenceEquals(border.DataContext, file) && border.Name == "FileSurface");
+            Save(window, $"v2-file-hit-areas-{width}x{height}.png");
+            var targets = Descendants<TextBlock>(surface).Where(text => text.IsVisible && !string.IsNullOrEmpty(text.Text)).ToArray();
+            Assert.IsTrue(targets.Any(text => text.Text == file.Title));
+            Assert.IsTrue(targets.Any(text => text.Text == file.Annotation));
+            Assert.IsTrue(targets.Any(text => text.Text == file.File!.Path));
+            Assert.IsTrue(targets.Any(text => text.Text == file.File!.Metadata));
+            var title = targets.Single(text => text.Name == "Title");
+            var annotation = targets.Single(text => text.Text == file.Annotation);
+            Assert.IsFalse(IsInside(window.InputHitTest(annotation.TranslatePoint(new Point(annotation.ActualWidth / 2, annotation.ActualHeight / 2), window)) as DependencyObject, details));
+            foreach (var target in targets.Where(text => text.Text != file.Annotation))
+            {
+                var hit = HitButton(window, target, new Point(Math.Min(title.ActualWidth, target.ActualWidth) / 2, target.ActualHeight / 2));
+                Assert.AreSame(details, hit, target.Text);
+                if (ReferenceEquals(target, title))
+                {
+                    details.Focus();
+                    Assert.IsTrue(details.IsKeyboardFocused);
+                    var source = PresentationSource.FromVisual(details)!;
+                    details.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyDownEvent });
+                    Assert.IsTrue(details.IsPressed);
+                    Save(window, $"v2-file-details-pressed-{width}x{height}.png");
+                    details.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyUpEvent });
+                }
+                else Invoke(hit);
+                await WpfTestHost.LayoutAsync(window);
+                var dialog = Descendants<ConflictRelationshipsDialog>(window).Single();
+                Assert.IsTrue(dialog.IsVisible);
+                Assert.AreEqual(file.File!.Path, model.ConflictRelationships!.File.Path);
+                var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                void OnVisibilityChanged(object sender, DependencyPropertyChangedEventArgs args)
+                {
+                    if (!dialog.IsVisible) closed.TrySetResult();
+                }
+                dialog.IsVisibleChanged += OnVisibilityChanged;
+                try
+                {
+                    model.CloseConflictRelationshipsCommand.Execute(null);
+                    await closed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                }
+                finally { dialog.IsVisibleChanged -= OnVisibilityChanged; }
+            }
+            foreach (var x in new[] { 0.05, 0.95 })
+                foreach (var y in new[] { 0.05, 0.95 })
+                    Assert.AreSame(details, HitButton(window, details, new Point(details.ActualWidth * x, details.ActualHeight * y)));
+            foreach (var y in new[] { 0.05, 0.5, 0.95 })
+                Assert.IsFalse(IsInside(window.InputHitTest(details.TranslatePoint(new Point(details.ActualWidth + 1, details.ActualHeight * y), window)) as DependencyObject, details));
+            var actions = Descendants<Button>(surface).Where(button => button.Command != model.OpenConflictRelationshipsCommand && button.IsVisible).ToArray();
+            foreach (var action in actions)
+            {
+                Assert.AreSame(action, HitButton(window, action, new Point(action.ActualWidth / 2, action.ActualHeight / 2)));
+                Assert.IsFalse(IsInside(action, details));
+            }
+            Save(window, $"v2-expanded-hit-areas-{width}x{height}.png");
+            var representative = model.ConflictRows.Single(row => row.OwnerKey == card.Key && row.File?.Path == A);
+            list.ScrollIntoView(representative);
+            await WpfTestHost.LayoutAsync(window);
+            var copies = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, representative) && button.Command == model.JumpToConflictGroupCommand);
+            Assert.AreSame(copies, HitButton(window, copies, new Point(copies.ActualWidth / 2, copies.ActualHeight / 2)));
+            copies.Focus();
+            Assert.IsTrue(copies.IsKeyboardFocused);
+            Save(window, $"v2-copy-link-focused-{width}x{height}.png");
+            Invoke(copies);
+            await WpfTestHost.LayoutAsync(window);
+            await model.ConflictRowsRefreshTask;
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsNull(model.ConflictRelationships);
+            Assert.IsTrue(model.ConflictRows.Single(row => row.Key == representative.DuplicateLink!.Key).IsExpanded);
+            var collection = session.Cards.First(card => card.Type == "collection");
+            model.ToggleConflictExpandedCommand.Execute(model.ConflictRows.Single(row => row.Key == collection.Key));
+            await model.ConflictRowsRefreshTask;
+            var tagged = model.ConflictRows.First(row => row.OwnerKey == collection.Key && row.HasTag);
+            list.ScrollIntoView(tagged);
+            await WpfTestHost.LayoutAsync(window);
+            var taggedSurface = Descendants<Border>(list).Single(border => ReferenceEquals(border.DataContext, tagged) && border.Name == "FileSurface");
+            var taggedButton = Descendants<Button>(taggedSurface).Single(button => button.Name == "FileDetailsButton");
+            var tag = Descendants<TextBlock>(taggedSurface).Single(text => text.Text == tagged.Tag);
+            Assert.IsFalse(IsInside(window.InputHitTest(tag.TranslatePoint(new Point(tag.ActualWidth / 2, tag.ActualHeight / 2), window)) as DependencyObject, taggedButton));
+        }
+    });
+
+    private static Button HitButton(Window window, FrameworkElement target, Point point)
+    {
+        var hit = window.InputHitTest(target.TranslatePoint(point, window)) as DependencyObject;
+        while (hit is not null && hit is not Button) hit = VisualTreeHelper.GetParent(hit);
+        Assert.IsInstanceOfType<Button>(hit, $"未命中按钮：{(target as TextBlock)?.Text ?? target.Name}，窗口坐标 {target.TranslatePoint(point, window)}");
+        return (Button)hit;
+    }
+
+    private static bool IsInside(DependencyObject? child, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = child; current is not null; current = VisualTreeHelper.GetParent(current))
+            if (ReferenceEquals(current, ancestor)) return true;
+        return false;
+    }
+
+    private static void Invoke(Button button) =>
+        ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();
+
+    [TestMethod]
     public Task DialogShowsDirectRelationsCopiesAndRestoresFocusAfterEscape() => WpfTestHost.RunAsync(async () =>
     {
         var model = CreateModel();
@@ -217,15 +356,28 @@ public sealed class ConflictRelationshipsDialogTests
                 Assert.AreSame(button, hit);
             }
         var detail = model.ConflictRows.Single(row => row.OwnerKey == card.Key && row.IsTechnicalToggle);
-        model.ToggleConflictExpandedCommand.Execute(detail);
+        list.ScrollIntoView(detail);
+        await WpfTestHost.LayoutAsync(window);
+        var detailButton = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, detail));
+        detailButton.Focus();
+        Assert.IsTrue(detailButton.IsKeyboardFocused);
+        var source = PresentationSource.FromVisual(detailButton)!;
+        detailButton.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyDownEvent });
+        Assert.IsTrue(detailButton.IsPressed);
+        Save(window, "v2-technical-toggle-pressed.png");
+        detailButton.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyUpEvent });
         await model.ConflictRowsRefreshTask;
         Assert.IsTrue(model.ConflictRows.Any(row => row.OwnerKey == card.Key && row.Kind == ConflictRowKind.TechnicalHeader));
         Assert.IsNull(model.ConflictRelationships);
         var copy = model.ConflictRows.Single(row => row.OwnerKey == card.Key && row.Kind == ConflictRowKind.CopyDetails);
-        model.CopyConflictDetailsCommand.Execute(copy);
-        Assert.AreEqual(copy.CopyText, copied);
         list.ScrollIntoView(copy);
         await WpfTestHost.LayoutAsync(window);
+        var copyButton = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, copy));
+        copyButton.Focus();
+        Assert.IsTrue(copyButton.IsKeyboardFocused);
+        Invoke(copyButton);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(copy.CopyText, copied);
         Save(window, "v2-technical-inline.png");
         model.ToggleConflictExpandedCommand.Execute(detail);
         await model.ConflictRowsRefreshTask;

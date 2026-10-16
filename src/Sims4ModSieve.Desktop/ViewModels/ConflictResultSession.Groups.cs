@@ -140,11 +140,12 @@ public sealed partial class ConflictResultSession
                 .Where(match => match.HasConfirmedDifference).Select(match => match.Key).Distinct().Count();
             var explanation = type switch
             {
-                "override" => $"这 {files.Length} 个 mod 都在替换同一批东西（{group.ResourceKeys.Count} 样），游戏只会用其中一份",
-                "collection" => $"{Path.GetFileName(group.BundlePath)} 里装着 {files.Length - 1} 个你另外单独放着的文件："
-                    + $"{group.Members.Count(member => member.ContainedContentIdentical == true)} 个已被包含，"
-                    + $"{group.Members.Count(member => member.ContainedContentIdentical == false)} 个存在不同。它还有 {group.BundleUniqueResourceCount} 样只有合集里有",
-                _ => "这几个文件大部分内容相同，像同一个 mod 装了几份" + (different > 0 ? $"，有 {different} 样不一样，疑似新旧版本" : ""),
+                "override" => $"这 {files.Length} 个文件有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同；游戏对每个编号只会使用一份资源",
+                "collection" => $"合集里包含{files.Length - 1}个另外单独放着的文件，"
+                    + $"{group.Members.Count(member => member.ContainedContentIdentical == true)}个已被包含，"
+                    + $"{group.Members.Count(member => member.ContainedContentIdentical == false)}个存在不同。还有{group.BundleUniqueResourceCount}样资源只在合集里有。",
+                _ => (files.Length == 2 ? "两份文件" : $"这 {files.Length} 份文件") + $"有 {group.ResourceKeys.Count} 项资源编号相同"
+                    + (different > 0 ? $"，其中 {different} 项内容不同，可能是同一 mod 的不同版本" : ""),
             };
             cards.Add(new(key, type, title, type == "override" ? ConflictPairPriority.NeedsReview : ConflictPairPriority.CanOrganize,
                 files, explanation, Package: group));
@@ -240,22 +241,26 @@ public sealed partial class ConflictResultSession
                                 $"以下 {moduleContentCounts[contentGroup.Sha256]} 个内容相同", OwnerKey: card.Key, IsIgnored: ignored));
                     }
                     var member = card.Package?.Members.First(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, representative.Path));
+                    var sharedResources = card.Package?.Relations.Where(relation =>
+                            StringComparer.OrdinalIgnoreCase.Equals(relation.Pair.FirstPath, representative.Path)
+                            || StringComparer.OrdinalIgnoreCase.Equals(relation.Pair.SecondPath, representative.Path))
+                        .SelectMany(relation => relation.Pair.Resources).GroupBy(match => match.Key).ToArray();
+                    var differentCount = sharedResources?.Count(matches => matches.Any(match => match.HasConfirmedDifference)) ?? 0;
                     var annotation = member is null ? card.Duplicate is not null && visibleIndex > 0 ? "内容完全相同" : ""
                         : member.IsBundle ? $"独有 {member.UniqueResourceCount} 样"
                         : member.ContainedContentIdentical is { } identical ? identical ? "已被包含" : "存在不同"
-                        : $"撞 {member.SharedResourceCount} 样 · 独有 {member.UniqueResourceCount} 样";
-                    if (card.Type == "suspected" && card.Package!.Relations.Any(relation =>
-                        !relation.Pair.HasConfirmedDifference && relation.Pair.HasConfirmedIdentical
-                        && (StringComparer.OrdinalIgnoreCase.Equals(relation.Pair.FirstPath, representative.Path)
-                            || StringComparer.OrdinalIgnoreCase.Equals(relation.Pair.SecondPath, representative.Path))))
-                        annotation += " · 内容相同";
+                        : $"撞 {differentCount} 样 · 独有 {member.UniqueResourceCount} 样";
+                    var annotationTooltip = member is not null && !member.IsBundle && member.ContainedContentIdentical is null
+                        ? $"相同TGI编号{sharedResources!.Length}个，其中{sharedResources.Count(matches => matches.All(match => match.HasConfirmedIdentical && !match.HasConfirmedDifference))}个内容相同，独有编号{member.UniqueResourceCount}个"
+                        : null;
                     var tag = member?.IsBundle == true ? "合集"
                         : card.Type == "suspected" && representative.Stamp?.LastWriteTimeUtc == card.Files.Max(item => item.Stamp?.LastWriteTimeUtc) ? "最新"
                         : card.Duplicate is not null && StringComparer.OrdinalIgnoreCase.Equals(representative.Path, card.Duplicate.SuggestedKeepPath) ? "建议保留" : "";
                     add(new(key, ConflictRowKind.File, 1, representative.Name, representative.Path + "\n" + representative.Metadata,
                         Tooltip: representative.Path, OwnerKey: card.Key, File: representative, Annotation: annotation, Tag: tag,
                         IsIgnored: ignored || fileIgnored, IsBundle: member?.IsBundle == true,
-                        DuplicateLink: duplicate is null ? null : Link(duplicate), CopyCount: duplicate is null ? 0 : duplicate.Files.Count - 1));
+                        DuplicateLink: duplicate is null ? null : Link(duplicate), CopyCount: duplicate is null ? 0 : duplicate.Files.Count - 1,
+                        AnnotationTooltip: annotationTooltip));
                     visibleIndex++;
                 }
                 if (card.Duplicate is not null) return;

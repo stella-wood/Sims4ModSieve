@@ -62,6 +62,46 @@ public sealed class ConflictV2SessionTests
     }
 
     [TestMethod]
+    [DataRow(4, 5, false, "suspected")]
+    [DataRow(4, 5, true, "suspected")]
+    [DataRow(10, 10, true, "override")]
+    public void ResourceAnnotationsSeparateIdenticalDifferentAndUniqueTgis(int firstCount, int secondCount, bool different, string type)
+    {
+        var session = V2([Resource(1, (A, "one"), (B, "one")), Resource(2, (A, "two"), (B, "two")),
+            Resource(3, (A, "three"), (B, different ? "changed" : "three"))], [(A, firstCount), (B, secondCount)]);
+        var card = session.Cards.Single();
+        Assert.AreEqual(type, card.Type);
+        session.ToggleExpanded(card.Key);
+        foreach (var (path, count) in new[] { (A, firstCount), (B, secondCount) })
+        {
+            var row = Rows(session).Single(row => row.File?.Path == path);
+            Assert.AreEqual($"撞 {(different ? 1 : 0)} 样 · 独有 {count - 3} 样", row.Annotation);
+            Assert.AreEqual($"相同TGI编号3个，其中{(different ? 2 : 3)}个内容相同，独有编号{count - 3}个", row.AnnotationTooltip);
+        }
+    }
+
+    [TestMethod]
+    public void ResourceAnnotationsCountEachTgiOnceWhenThreeFilesHaveMixedContents()
+    {
+        var session = V2([Resource(1, (A, "one"), (B, "one")),
+            Resource(2, (A, "two"), (B, "two"), (C, "changed")),
+            Resource(3, (A, "three"), (B, "changed"), (C, "three"))], [(A, 4), (B, 4), (C, 4)]);
+        var card = session.Cards.Single();
+        Assert.AreEqual("suspected", card.Type);
+        Assert.AreEqual(3, card.Files.Count);
+        session.ToggleExpanded(card.Key);
+        foreach (var path in new[] { A, B })
+        {
+            var row = Rows(session).Single(row => row.File?.Path == path);
+            Assert.AreEqual("撞 2 样 · 独有 1 样", row.Annotation);
+            Assert.AreEqual("相同TGI编号3个，其中1个内容相同，独有编号1个", row.AnnotationTooltip);
+        }
+        var third = Rows(session).Single(row => row.File?.Path == C);
+        Assert.AreEqual("撞 2 样 · 独有 2 样", third.Annotation);
+        Assert.AreEqual("相同TGI编号2个，其中0个内容相同，独有编号2个", third.AnnotationTooltip);
+    }
+
+    [TestMethod]
     public void IgnoreIsLocalAndAllIgnoredFilesStillLeaveTheirCard()
     {
         var session = ContainmentSession();

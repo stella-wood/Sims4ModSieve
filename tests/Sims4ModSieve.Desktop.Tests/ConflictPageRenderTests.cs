@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,6 +18,206 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class ConflictPageRenderTests
 {
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out System.Drawing.Point point);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int x, int y);
+
+    [TestMethod]
+    public Task ResourceAnnotationHoverShowsCountsWithoutOpeningFileRelationships() => WpfTestHost.RunAsync(async () =>
+    {
+        var session = ConflictV2SessionTests.V2([Resource(1, (A, "one"), (B, "one")),
+            Resource(2, (A, "two"), (B, "two")), Resource(3, (A, "three"), (B, "changed"))], [(A, 4), (B, 5)]);
+        var card = session.Cards.Single();
+        session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        window.Left = 70;
+        window.Top = 50;
+        window.Activate();
+        await SetSessionAsync(model, session, "all");
+        await WpfTestHost.LayoutAsync(window);
+        var row = model.ConflictRows.Single(row => row.File?.Path == A);
+        var annotation = Descendants<Border>(window).Single(border => border.Name == "AnnotationSurface" && ReferenceEquals(border.DataContext, row));
+        Assert.AreEqual("撞 1 样 · 独有 1 样", row.Annotation);
+        Assert.AreEqual("相同TGI编号3个，其中2个内容相同，独有编号1个", annotation.ToolTip);
+        var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        annotation.ToolTipOpening += (_, _) => opened.TrySetResult();
+        ToolTipService.SetInitialShowDelay(annotation, 0);
+        var point = new Point(annotation.ActualWidth / 2, annotation.ActualHeight / 2);
+        Assert.AreSame(annotation, window.InputHitTest(annotation.TranslatePoint(point, window)));
+        Assert.IsTrue(GetCursorPos(out var previous));
+        try
+        {
+            var screen = annotation.PointToScreen(point);
+            Assert.IsTrue(SetCursorPos((int)screen.X, (int)screen.Y));
+            Mouse.Synchronize();
+            Assert.AreSame(opened.Task, await Task.WhenAny(opened.Task, Task.Delay(3000)), "鼠标悬停应打开计数说明");
+            await Task.Delay(100);
+            var tooltip = PresentationSource.CurrentSources.Cast<PresentationSource>()
+                .Select(source => source.RootVisual).OfType<DependencyObject>().SelectMany(Descendants<ToolTip>)
+                .Single(tooltip => tooltip.IsOpen && Equals(tooltip.Content, row.AnnotationTooltip));
+            Assert.IsNull(model.ConflictRelationships);
+            Save(window, "annotation-counts.png");
+            Save(window, "annotation-counts-tooltip.png", tooltip);
+        }
+        finally { SetCursorPos(previous.X, previous.Y); }
+    });
+
+    [TestMethod]
+    public Task CollectionExplanationAndAnnotationsDoNotOpenEmptyTooltips() => WpfTestHost.RunAsync(async () =>
+    {
+        var session = ConflictV2SessionTests.V2([
+            Resource(1, (A, "one"), (B, "one")), Resource(2, (A, "two"), (B, "two")), Resource(3, (A, "three"), (B, "three")),
+            Resource(4, (B, "four"), (C, "four")), Resource(5, (B, "five"), (C, "five")), Resource(6, (B, "six"), (C, "changed"))],
+            [(A, 3), (B, 10), (C, 3)]);
+        var card = session.Cards.Single();
+        session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        window.Left = 70;
+        window.Top = 50;
+        window.Activate();
+        await SetSessionAsync(model, session, "all");
+        await WpfTestHost.LayoutAsync(window);
+        var explanation = model.ConflictRows.Single(row => row.Kind == ConflictRowKind.Explanation);
+        Assert.AreEqual("合集里包含2个另外单独放着的文件，1个已被包含，1个存在不同。还有4样资源只在合集里有。", explanation.Title);
+        var text = Descendants<TextBlock>(window).Single(text => ReferenceEquals(text.DataContext, explanation) && text.Name == "Title");
+        var annotations = Descendants<Border>(window).Where(border => border.Name == "AnnotationSurface" && border.IsVisible).ToArray();
+        Assert.AreEqual(3, annotations.Length);
+        Assert.IsTrue(annotations.All(annotation => !ToolTipService.GetIsEnabled(annotation)));
+        var opened = 0;
+        Assert.IsTrue(GetCursorPos(out var previous));
+        try
+        {
+            foreach (var target in annotations.Cast<FrameworkElement>().Prepend(text))
+            {
+                Assert.IsNull(target.ToolTip);
+                target.ToolTipOpening += (_, _) => opened++;
+                ToolTipService.SetInitialShowDelay(target, 0);
+                var point = target.PointToScreen(new Point(target.ActualWidth / 2, target.ActualHeight / 2));
+                Assert.IsTrue(SetCursorPos((int)point.X, (int)point.Y));
+                Mouse.Synchronize();
+                await Task.Delay(200);
+            }
+            Assert.AreEqual(0, opened, "合集说明和注释不应弹出空悬停框");
+            Save(window, "collection-explanation-and-annotations.png");
+        }
+        finally { SetCursorPos(previous.X, previous.Y); }
+    });
+
+    [TestMethod]
+    public Task DuplicateExplanationLinkStaysInlineAndNavigates() => WpfTestHost.RunAsync(async () =>
+    {
+        var session = ConflictV2SessionTests.V2([], [], ConflictV2SessionTests.Duplicates(A, B));
+        session.ToggleExpanded(session.Cards.Single().Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
+        {
+            window.Width = width;
+            window.Height = height;
+            await WpfTestHost.LayoutAsync(window);
+            var explanation = model.ConflictRows.Single(row => row.IsDuplicateExplanation);
+            var title = Descendants<TextBlock>(window).Single(text => ReferenceEquals(text.DataContext, explanation) && text.Name == "Title");
+            var link = Descendants<Button>(window).Single(button => ReferenceEquals(button.DataContext, explanation) && button.Name == "DuplicateNavigation");
+            var titleOrigin = title.TranslatePoint(new Point(), window);
+            var linkOrigin = link.TranslatePoint(new Point(), window);
+            Assert.IsTrue(titleOrigin.Y < linkOrigin.Y + link.ActualHeight && linkOrigin.Y < titleOrigin.Y + title.ActualHeight,
+                "重复组说明与处理链接应位于同一行");
+            Assert.IsTrue(IsInside(window.InputHitTest(link.TranslatePoint(new Point(link.ActualWidth / 2, link.ActualHeight / 2), window)) as DependencyObject, link));
+            link.Focus();
+            Assert.IsTrue(link.IsKeyboardFocused);
+            Save(window, $"duplicate-explanation-inline-{width}x{height}.png");
+        }
+        var navigation = Descendants<Button>(window).Single(button => button.Name == "DuplicateNavigation" && button.IsVisible);
+        var source = PresentationSource.FromVisual(navigation)!;
+        navigation.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyDownEvent });
+        Assert.IsTrue(navigation.IsPressed);
+        Save(window, "duplicate-navigation-pressed.png");
+        navigation.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyUpEvent });
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(model.IsScannerVisible);
+    });
+
+    [TestMethod]
+    public Task AllConflictFilterTracksSelectionAndSupportsHoverAndKeyboard() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        window.Left = 70;
+        window.Top = 50;
+        window.Activate();
+        await SetSessionAsync(model, ConflictV2SessionTests.ContainmentSession(), "all");
+        model.IncludeConflictScripts = false;
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        var all = Descendants<Button>(window).Single(button => button.Name == "ConflictAllFilter");
+        var different = Descendants<Button>(window).Single(button => button.Name == "ConflictNeedsReviewFilter");
+        var bar = Descendants<Border>(window).Single(border => border.Name == "ConflictQuickFilterBar");
+        Assert.AreEqual(true, all.Tag);
+        Assert.IsTrue(GetCursorPos(out var previous));
+        try
+        {
+            foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
+            {
+                window.Width = width;
+                window.Height = height;
+                model.SelectConflictFilterCommand.Execute("different");
+                await model.ConflictRowsRefreshTask;
+                await WpfTestHost.LayoutAsync(window);
+                Assert.AreEqual(false, all.Tag);
+                Assert.AreEqual(true, different.Tag);
+                different.Focus();
+                var center = new Point(all.ActualWidth / 2, all.ActualHeight / 2);
+                Assert.IsTrue(IsInside(window.InputHitTest(all.TranslatePoint(center, window)) as DependencyObject, all));
+                var screen = all.PointToScreen(center);
+                Assert.IsTrue(SetCursorPos((int)screen.X, (int)screen.Y));
+                Mouse.Synchronize();
+                await Task.Delay(200);
+                Assert.IsTrue(all.IsMouseOver);
+                Save(window, $"all-filter-hover-{width}x{height}.png");
+                all.Focus();
+                Assert.IsTrue(all.IsKeyboardFocused);
+                var source = PresentationSource.FromVisual(all)!;
+                all.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyDownEvent });
+                Assert.IsTrue(all.IsPressed);
+                all.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Space) { RoutedEvent = Keyboard.KeyUpEvent });
+                await model.ConflictRowsRefreshTask;
+                await WpfTestHost.LayoutAsync(window);
+                Assert.AreEqual(true, all.Tag);
+                Assert.AreEqual(false, different.Tag);
+                Assert.IsTrue(model.IncludeAllConflictStates);
+                Assert.IsFalse(model.IncludeConflictScripts);
+                Assert.IsTrue(model.IncludeConflictResources);
+                Keyboard.ClearFocus();
+                screen = bar.PointToScreen(new Point(bar.ActualWidth / 2, bar.ActualHeight + 10));
+                Assert.IsTrue(SetCursorPos((int)screen.X, (int)screen.Y));
+                Mouse.Synchronize();
+                await Task.Delay(200);
+                Assert.IsFalse(all.IsMouseOver);
+                Save(window, $"all-filter-selected-{width}x{height}.png");
+                model.IncludeConflictIncomplete = false;
+                await model.ConflictRowsRefreshTask;
+                Assert.AreEqual(false, all.Tag);
+                model.IncludeConflictIncomplete = true;
+                await model.ConflictRowsRefreshTask;
+                Assert.AreEqual(true, all.Tag);
+            }
+        }
+        finally { SetCursorPos(previous.X, previous.Y); }
+    });
+
     [TestMethod]
     public Task ResourceCardsAndFilterPopupSupportKeyboardAndNarrowWindows() => WpfTestHost.RunAsync(async () =>
     {

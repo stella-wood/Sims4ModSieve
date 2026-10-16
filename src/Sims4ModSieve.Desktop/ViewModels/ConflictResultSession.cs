@@ -16,7 +16,8 @@ public sealed record ConflictResultRow(
     string Annotation = "", string Tag = "", string FileCountText = "",
     bool IsIgnored = false, bool IsBundle = false,
     ConflictGroupLink? DuplicateLink = null, int CopyCount = 0,
-    ConflictTechnicalEntry? TechnicalEntry = null, string CopyText = "", ConflictGroupLink? RelatedLink = null)
+    ConflictTechnicalEntry? TechnicalEntry = null, string CopyText = "", ConflictGroupLink? RelatedLink = null,
+    string? AnnotationTooltip = null)
 {
     public string StateText => Priority switch
     {
