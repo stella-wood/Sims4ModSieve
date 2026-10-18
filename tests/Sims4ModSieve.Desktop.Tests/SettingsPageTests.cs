@@ -18,6 +18,92 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class SettingsPageTests
 {
     [TestMethod]
+    public Task OuterScrollBarShowsOnPageScrollAndHidesAfterIdle() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var support = new SettingsSupportService(files.Root);
+        Directory.CreateDirectory(support.LogDirectory);
+        File.WriteAllText(Path.Combine(support.LogDirectory, "application-error.log"),
+            string.Join("\n", Enumerable.Range(1, 80).Select(index => $"测试日志第 {index} 行")));
+        var model = files.Model(support: support);
+        var window = new MainWindow(model) { Width = 1180, Height = 640, IsHitTestVisible = false };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("diagnostics");
+        await model.RefreshDiagnosticsAsync();
+        await WpfTestHost.LayoutAsync(window);
+        var page = Descendants<SettingsPage>(window).Single();
+        var scroll = (ScrollViewer)page.FindName("SettingsContentScroll");
+        var bar = (ScrollBar)scroll.Template.FindName("PART_VerticalScrollBar", scroll);
+        Assert.IsTrue(bar.IsVisible);
+        Assert.IsTrue(bar.Opacity <= 0, "外层滑块默认隐藏，但保留滚动条热区。");
+        scroll.ScrollToEnd();
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsGreaterThan(0, scroll.VerticalOffset);
+        Assert.IsTrue(bar.Opacity > 0, "整页滚动时应显示滑块。");
+        for (var attempt = 0; attempt < 100 && bar.Opacity > 0; attempt++) await Task.Delay(20);
+        Assert.IsTrue(bar.Opacity <= 0, "停止操作后应淡出。");
+        var summary = (TextBox)page.FindName("DiagnosticLogSummary");
+        var innerBar = Descendants<ScrollBar>(summary).Single(control => control.IsVisible);
+        var offset = scroll.VerticalOffset;
+        ScrollBar.PageDownCommand.Execute(null, innerBar);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsGreaterThan(0, summary.VerticalOffset);
+        Assert.AreEqual(offset, scroll.VerticalOffset);
+        Assert.IsTrue(bar.Opacity <= 0, "文本框内滚动不应显示外层滑块。");
+        scroll.ScrollToTop();
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(bar.Opacity > 0, "再次整页滚动时应重新显示滑块。");
+        window.Close();
+    });
+
+    [TestMethod]
+    public Task SettingsPageAndTextFramesScrollIndependently() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var support = new SettingsSupportService(files.Root);
+        var text = string.Join("\n", Enumerable.Range(1, 80).Select(index => $"测试日志第 {index} 行"));
+        await support.WriteScanTimingAsync(text);
+        File.WriteAllText(Path.Combine(support.LogDirectory, "application-error.log"), text);
+        var model = files.Model(support: support);
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("diagnostics");
+        await model.RefreshDiagnosticsAsync();
+        await WpfTestHost.LayoutAsync(window);
+        var page = Descendants<SettingsPage>(window).Single();
+        var scroll = (ScrollViewer)page.FindName("SettingsContentScroll");
+        var outerBar = (ScrollBar)scroll.Template.FindName("PART_VerticalScrollBar", scroll);
+        Assert.IsTrue(outerBar.IsVisible);
+        var thumb = Descendants<Thumb>(outerBar).Single();
+        AssertHitRectangle(thumb);
+        var timing = (TextBox)page.FindName("ScanTimingSummary");
+        var errors = (TextBox)page.FindName("DiagnosticLogSummary");
+        var outerOffset = scroll.VerticalOffset;
+        ScrollBar.PageDownCommand.Execute(null, outerBar);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsGreaterThan(outerOffset, scroll.VerticalOffset);
+        Assert.AreEqual(0d, timing.VerticalOffset);
+        Assert.AreEqual(0d, errors.VerticalOffset);
+        foreach (var summary in new[] { timing, errors })
+        {
+            summary.BringIntoView();
+            await WpfTestHost.LayoutAsync(window);
+            outerOffset = scroll.VerticalOffset;
+            var innerBar = Descendants<ScrollBar>(summary).Single(bar => bar.IsVisible);
+            ScrollBar.PageDownCommand.Execute(null, innerBar);
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsGreaterThan(0, summary.VerticalOffset);
+            Assert.AreEqual(outerOffset, scroll.VerticalOffset);
+        }
+        ScrollBar.PageUpCommand.Execute(null, outerBar);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsLessThan(outerOffset, scroll.VerticalOffset);
+        window.Close();
+    });
+
+    [TestMethod]
     public Task AboutDocumentsToggleSwitchAndScrollWithKeyboardAndClick() => WpfTestHost.RunAsync(async () =>
     {
         using var files = new Scenario();
