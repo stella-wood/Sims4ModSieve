@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace Sims4ModSieve.Desktop.Services;
@@ -8,6 +9,7 @@ public sealed partial class SettingsSupportService
 {
     public const string RuntimeLogName = "application.log";
     public const string LatestScanTimingName = "scan-performance-latest.log";
+    private const int MaximumSummaryLogBytes = 2 * 1024 * 1024;
     private string? latestScanTiming;
     private readonly SemaphoreSlim scanTimingWriteGate = new(1);
 
@@ -20,7 +22,16 @@ public sealed partial class SettingsSupportService
             try
             {
                 Directory.CreateDirectory(LogDirectory);
-                await File.AppendAllTextAsync(Path.Combine(LogDirectory, RuntimeLogName), summary + Environment.NewLine);
+                var path = Path.Combine(LogDirectory, RuntimeLogName);
+                var entry = summary + Environment.NewLine;
+                var current = new FileInfo(path);
+                if (current.Exists && current.Length > 0 && current.Length + Encoding.UTF8.GetByteCount(entry) > MaximumSummaryLogBytes)
+                {
+                    var previous = Path.Combine(LogDirectory, "application.1.log");
+                    if (File.Exists(previous)) File.Move(previous, Path.Combine(LogDirectory, "application.2.log"), overwrite: true);
+                    File.Move(path, previous, overwrite: true);
+                }
+                await File.AppendAllTextAsync(path, entry);
                 await File.WriteAllTextAsync(Path.Combine(LogDirectory, LatestScanTimingName), summary);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

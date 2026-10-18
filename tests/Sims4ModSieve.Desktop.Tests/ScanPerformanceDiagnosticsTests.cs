@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Text;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
@@ -220,6 +221,51 @@ public sealed class ScanPerformanceDiagnosticsTests
         Assert.AreEqual(raw, model.ScanTimingText);
         await model.CopyScanTimingCommand.ExecuteAsync();
         Assert.AreEqual(raw, copied);
+    }
+
+    [TestMethod]
+    public async Task SummaryLogRotatesAtByteLimitAndRetainsOnlyThreeFiles()
+    {
+        const int maximumBytes = 2 * 1024 * 1024;
+        using var files = new Scenario();
+        var support = new SettingsSupportService(files.Root);
+        files.Folder("Sims4ModSieve");
+        var errorPath = Path.Combine(support.LogDirectory, "application-error.log");
+        var startupPath = Path.Combine(support.LogDirectory, "startup-error.log");
+        await File.WriteAllTextAsync(errorPath, "独立运行错误");
+        await File.WriteAllTextAsync(startupPath, "独立启动错误");
+        var summaries = new List<string>();
+        for (var index = 0; index < 4; index++)
+        {
+            var prefix = $"第 {index} 次扫描\n";
+            var remaining = maximumBytes - Encoding.UTF8.GetByteCount(prefix + Environment.NewLine);
+            var summary = prefix + new string('界', remaining / 3) + new string('x', remaining % 3);
+            summaries.Add(summary);
+            await support.WriteScanTimingAsync(summary);
+
+            var names = Enumerable.Range(0, Math.Min(index + 1, 3))
+                .Select(age => age == 0 ? "application.log" : $"application.{age}.log").ToArray();
+            CollectionAssert.AreEquivalent(names, Directory.GetFiles(support.LogDirectory, "application.*").Select(Path.GetFileName).ToArray());
+            for (var age = 0; age < names.Length; age++)
+            {
+                var path = Path.Combine(support.LogDirectory, names[age]);
+                Assert.AreEqual((long)maximumBytes, new FileInfo(path).Length);
+                Assert.AreEqual(summaries[index - age] + Environment.NewLine, await File.ReadAllTextAsync(path));
+            }
+            Assert.AreEqual(summary, await File.ReadAllTextAsync(Path.Combine(support.LogDirectory, SettingsSupportService.LatestScanTimingName)));
+        }
+        var current = Path.Combine(support.LogDirectory, "application.log");
+        await File.AppendAllTextAsync(current, "超限");
+        Assert.IsGreaterThan((long)maximumBytes, new FileInfo(current).Length);
+        await support.WriteScanTimingAsync("最近一次扫描");
+        CollectionAssert.AreEquivalent(new[] { "application.log", "application.1.log", "application.2.log" },
+            Directory.GetFiles(support.LogDirectory, "application.*").Select(Path.GetFileName).ToArray());
+        Assert.AreEqual("最近一次扫描" + Environment.NewLine, await File.ReadAllTextAsync(current));
+        Assert.AreEqual(summaries[3] + Environment.NewLine + "超限", await File.ReadAllTextAsync(Path.Combine(support.LogDirectory, "application.1.log")));
+        Assert.AreEqual(summaries[2] + Environment.NewLine, await File.ReadAllTextAsync(Path.Combine(support.LogDirectory, "application.2.log")));
+        Assert.AreEqual("最近一次扫描", await File.ReadAllTextAsync(Path.Combine(support.LogDirectory, SettingsSupportService.LatestScanTimingName)));
+        Assert.AreEqual("独立运行错误", await File.ReadAllTextAsync(errorPath));
+        Assert.AreEqual("独立启动错误", await File.ReadAllTextAsync(startupPath));
     }
 
     [TestMethod]
