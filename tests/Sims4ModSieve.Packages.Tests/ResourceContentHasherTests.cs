@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Conflicts;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
 using Sims4ModSieve.Core.Tests;
@@ -18,6 +19,32 @@ public sealed class ResourceContentHasherTests
 {
     private const uint Type = 0x0904DF10;
     private static readonly byte[] Content = MakeContent(3000);
+
+    [TestMethod]
+    public async Task PerformanceCountsActualDecompressionAndLeavesHashResultsUnchanged()
+    {
+        using var temp = new TempDirectory();
+        var path = temp.WriteBytes("timing.package", new DbpfFixtureBuilder()
+            .AddContent(Content)
+            .AddContent(DbpfFixtureBuilder.Zlib(Content), DbpfFixtureBuilder.CompressionZlib, (uint)Content.Length)
+            .AddContent(Content, DbpfFixtureBuilder.CompressionInternal, (uint)Content.Length)
+            .AddContent(new byte[8], DbpfFixtureBuilder.CompressionZlib, (uint)Content.Length)
+            .Build());
+        var baseline = await HashAsync(path, [0, 1, 2, 3]);
+        using var performance = ScanPerformance.Start("资源计时");
+        using (var stage = ScanPerformance.Measure("content"))
+        {
+            var measured = await HashAsync(path, [0, 1, 2, 3]);
+            for (var i = 0; i < baseline.Results.Count; i++)
+            {
+                Assert.AreEqual(baseline.Results[i].Sha256, measured.Results[i].Sha256);
+                Assert.AreEqual(baseline.Results[i].Issue?.Code, measured.Results[i].Issue?.Code);
+            }
+            Assert.AreEqual(3L, stage!.ReadEntries);
+            Assert.AreEqual(2L, stage.DecompressionAttempts);
+            Assert.AreEqual(1L, stage.DecompressionCompleted);
+        }
+    }
 
     [TestMethod]
     public async Task UncompressedAndZlibCopiesOfTheSameContentHashTheSame()

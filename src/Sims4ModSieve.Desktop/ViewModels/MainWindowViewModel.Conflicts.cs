@@ -1,6 +1,7 @@
 using System.Windows;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Core.Conflicts;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Desktop.Infrastructure;
@@ -317,6 +318,9 @@ public sealed partial class MainWindowViewModel
         RefreshAvailability();
         var sources = ConflictSources.Where(source => source.IsEnabled)
             .Select((source, index) => new ScanSource(source.Path, source.Path, true, index, source.Name)).ToArray();
+        using var performance = ScanPerformance.Start("冲突检测");
+        var timingOutcome = "未完成";
+        ScanPerformance.Stage? renderingTiming = null;
         ResetConflictSession();
         var generation = conflictGeneration;
         var scanningSession = conflictSession;
@@ -401,11 +405,19 @@ public sealed partial class MainWindowViewModel
                 cancellation.Token.ThrowIfCancellationRequested();
                 Volatile.Write(ref activeStage, 4);
                 Report(4, "正在整理文件组…", 0, null);
+                using var sessionTiming = ScanPerformance.Measure("界面 · 生成冲突会话和结果行");
                 var mapped = new ConflictResultSession();
                 mapped.Replace(packages, contents, scripts, cancellation.Token, duplicates);
                 cancellation.Token.ThrowIfCancellationRequested();
                 var view = initialView;
                 var rows = mapped.BuildVisibleRows(view, initialFilter, mapped.GetExpandedKeysSnapshot(), cancellation.Token, initialShowIgnored, initialTypes);
+                if (sessionTiming is not null)
+                {
+                    sessionTiming.Files = duplicates.DiscoveredFileCount;
+                    sessionTiming.Bytes = performance.Stages.LastOrDefault(stage => stage.Name == "整文件核对 · 枚举目录和文件信息")?.Bytes ?? 0;
+                    sessionTiming.Entries = packages.ResourceInventories.Sum(inventory => (long)inventory.ResourceCount);
+                    sessionTiming.ResultItems = rows.Count;
+                }
                 return (Session: mapped, Rows: rows, ParentCount: rows.Count(row => row.Depth == 0), View: view);
             }, cancellation.Token);
             if (generation != conflictGeneration) return;
@@ -417,6 +429,7 @@ public sealed partial class MainWindowViewModel
             var parentCount = results.ParentCount;
             while (finalView != results.View || finalFilter != initialFilter || !conflictTypes.SetEquals(initialTypes) || showIgnoredConflicts != initialShowIgnored)
             {
+                using var projectionTiming = ScanPerformance.Measure("界面 · 同步扫描期间的筛选");
                 var viewSnapshot = finalView;
                 var filterSnapshot = finalFilter;
                 var typesSnapshot = new HashSet<string>(conflictTypes, StringComparer.Ordinal);
@@ -428,6 +441,7 @@ public sealed partial class MainWindowViewModel
                     return (Rows: rows, ParentCount: rows.Count(row => row.Depth == 0));
                 }, cancellation.Token);
                 initialRows = projection.Rows;
+                if (projectionTiming is not null) projectionTiming.ResultItems = initialRows.Count;
                 parentCount = projection.ParentCount;
                 if (generation != conflictGeneration) return;
                 if ((results.View == "problems" || finalView == conflictView) && finalFilter == conflictFilter
@@ -438,6 +452,15 @@ public sealed partial class MainWindowViewModel
             cancellation.Token.ThrowIfCancellationRequested();
             if (generation != conflictGeneration || initialRequest != conflictRowsRequest
                 || !ReferenceEquals(scanningSession, conflictSession)) return;
+            renderingTiming = BeginResultRenderingTiming();
+            if (renderingTiming is not null)
+            {
+                var sessionTiming = performance.Stages.LastOrDefault(stage => stage.Name == "界面 · 生成冲突会话和结果行");
+                renderingTiming.Files = sessionTiming?.Files ?? 0;
+                renderingTiming.Bytes = sessionTiming?.Bytes ?? 0;
+                renderingTiming.Entries = sessionTiming?.Entries ?? 0;
+                renderingTiming.ResultItems = initialRows.Count;
+            }
             conflictSession = results.Session;
             conflictView = finalView;
             OnPropertyChanged(nameof(ConflictView));
@@ -449,9 +472,11 @@ public sealed partial class MainWindowViewModel
                 ? $"{conflictSession.Problems.Count} 个文件未完成分析 · {conflictSession.RangeProblems.Count} 项范围问题"
                 : string.Empty;
             RefreshConflictVisibility();
+            timingOutcome = "完成";
         }
         catch (OperationCanceledException)
         {
+            timingOutcome = "已取消";
             if (generation != conflictGeneration) return;
             conflictRunState = "cancelled";
             conflictStatus = "扫描已取消";
@@ -460,6 +485,7 @@ public sealed partial class MainWindowViewModel
         }
         catch (Exception exception)
         {
+            timingOutcome = "失败";
             if (generation != conflictGeneration) return;
             ReportConflictFailure(exception);
         }
@@ -471,6 +497,7 @@ public sealed partial class MainWindowViewModel
                 IsBusy = false;
                 RefreshConflictResults();
             }
+            await FinishScanTimingAsync(performance, timingOutcome, renderingTiming, sources.Select(source => source.Path));
         }
     }
 

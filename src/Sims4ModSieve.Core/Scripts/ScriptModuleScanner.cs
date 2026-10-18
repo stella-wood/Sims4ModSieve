@@ -1,4 +1,5 @@
 using Sims4ModSieve.Core.Conflicts;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Core.Scripts;
@@ -43,6 +44,7 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem) : IScriptM
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(new ScriptModuleScanProgress(ScriptModuleScanPhase.Starting, "正在准备扫描…"));
 
+        using var discoveryTiming = ScanPerformance.Measure("脚本 · 枚举目录和文件信息");
         var startedAt = DateTime.UtcNow;
         var sourceIssues = new List<ScanIssue>();
         var sources = SourceFileDiscovery.NormalizeSources(request.Sources, sourceIssues);
@@ -62,6 +64,20 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem) : IScriptM
                     DiscoveredArchiveCount: count)),
             cancellationToken);
 
+        var bytes = discoveryTiming is null ? 0 : discovered.Values.Sum(file => file.DiscoveredStamp.Length);
+        if (discoveryTiming is not null)
+        {
+            discoveryTiming.Files = discovered.Count;
+            discoveryTiming.Bytes = bytes;
+        }
+        discoveryTiming?.Dispose();
+        using var archiveTiming = ScanPerformance.Measure("脚本 · ZIP 目录、模块读取、解压和哈希", limits.MaxDegreeOfParallelism);
+        if (archiveTiming is not null)
+        {
+            archiveTiming.CountsContent = true;
+            archiveTiming.Files = discovered.Count;
+            archiveTiming.Bytes = bytes;
+        }
         // 每个结果写回自己在数组里的位置，并发完成顺序不影响结果。
         var archivePaths = discovered.Keys
             .OrderBy(path => path, PathRules.Comparer)
@@ -100,6 +116,15 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem) : IScriptM
                 })
             .ConfigureAwait(false);
 
+        if (archiveTiming is not null)
+        {
+            archiveTiming.Entries = archiveTiming.ObservedEntries;
+            archiveTiming.ProcessedBytes = budget.ConsumedBytes;
+            archiveTiming.SkippedFiles = outcomes.Count(outcome => outcome.Modules is null);
+            archiveTiming.FailedEntries = outcomes.Sum(outcome => (long)(outcome.Modules?.Count(module => module.Issue is not null) ?? 0));
+        }
+        archiveTiming?.Dispose();
+        using var groupingTiming = ScanPerformance.Measure("脚本 · 模块名比较、分组和生成报告");
         progress?.Report(new ScriptModuleScanProgress(
             ScriptModuleScanPhase.Grouping,
             "正在比对模块名…",
@@ -157,6 +182,13 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem) : IScriptM
             archivePaths.Length,
             archivePaths.Length,
             archivePaths.Length));
+        if (groupingTiming is not null)
+        {
+            groupingTiming.Files = archivePaths.Length;
+            groupingTiming.Bytes = bytes;
+            groupingTiming.Entries = occurrences.Count;
+            groupingTiming.ResultItems = collisions.Count;
+        }
         return report;
     }
 
@@ -233,6 +265,7 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem) : IScriptM
                     path, "这个脚本文件的 ZIP 结构无法分析。", detail: exception.Message));
             }
 
+            ScanPerformance.CurrentStage?.ObserveEntries(directory.Entries.Count);
             var selected = ScriptModuleNames.GetCandidates(directory.Entries, entry => entry.Name);
             modules = new List<ModuleResult>(selected.Count);
             foreach (var candidates in selected)

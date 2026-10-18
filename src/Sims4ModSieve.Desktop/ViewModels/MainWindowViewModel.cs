@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Desktop.Infrastructure;
@@ -401,6 +402,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 .ToArray(),
             ModsRoot);
 
+        using var performance = ScanPerformance.Start("重复检测");
+        var timingOutcome = "未完成";
+        ScanPerformance.Stage? renderingTiming = null;
         ResetResultSession();
         var generation = resultGeneration;
         scanCancellation = new CancellationTokenSource();
@@ -424,10 +428,27 @@ public sealed partial class MainWindowViewModel : ObservableObject
             if (generation != resultGeneration) return;
             StatusText = "正在整理结果…";
             IsProgressIndeterminate = true;
-            var resultGroups = await Task.Run(
-                () => resultSession.PrepareGroups(report.Groups, scanCancellation.Token),
-                scanCancellation.Token);
+            IReadOnlyList<DuplicateGroupViewModel> resultGroups;
+            using (var preparationTiming = ScanPerformance.Measure("界面 · 生成重复结果模型"))
+            {
+                resultGroups = await Task.Run(
+                    () => resultSession.PrepareGroups(report.Groups, scanCancellation.Token),
+                    scanCancellation.Token);
+                if (preparationTiming is not null)
+                {
+                    preparationTiming.Files = report.Groups.Sum(group => (long)group.Files.Count);
+                    preparationTiming.Bytes = report.Groups.Sum(group => group.FileSize * group.Files.Count);
+                    preparationTiming.ResultItems = resultGroups.Count;
+                }
+            }
             if (generation != resultGeneration) return;
+            renderingTiming = BeginResultRenderingTiming();
+            if (renderingTiming is not null)
+            {
+                renderingTiming.Files = report.Groups.Sum(group => (long)group.Files.Count);
+                renderingTiming.Bytes = report.Groups.Sum(group => group.FileSize * group.Files.Count);
+                renderingTiming.ResultItems = resultGroups.Count;
+            }
             resultSession.Replace(resultGroups);
 
             IssueCount = report.Issues.Count;
@@ -438,9 +459,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
             StatusDetail = report.Issues.Count == 0
                 ? $"共查看 {report.DiscoveredFileCount:N0} 个文件，结果完整。"
                 : $"共查看 {report.DiscoveredFileCount:N0} 个文件；有 {report.Issues.Count} 项未能读取，可重新扫描。";
+            timingOutcome = "完成";
         }
         catch (OperationCanceledException)
         {
+            timingOutcome = "已取消";
             if (generation == resultGeneration)
             {
                 StatusText = "扫描已取消";
@@ -449,6 +472,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            timingOutcome = "失败";
             if (generation == resultGeneration)
             {
                 StatusText = "扫描没有完成";
@@ -462,6 +486,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             IsBusy = false;
             IsProgressIndeterminate = false;
             RefreshResultProperties();
+            await FinishScanTimingAsync(performance, timingOutcome, renderingTiming, input.Sources.Select(source => source.Path));
         }
     }
 

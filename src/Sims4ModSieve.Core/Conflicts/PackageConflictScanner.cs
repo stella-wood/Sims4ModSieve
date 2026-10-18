@@ -1,4 +1,5 @@
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Packages;
 
 namespace Sims4ModSieve.Core.Conflicts;
@@ -53,6 +54,7 @@ public sealed class PackageConflictScanner(
             PackageConflictScanPhase.Starting,
             "正在准备扫描…"));
 
+        using var discoveryTiming = ScanPerformance.Measure("Package · 枚举目录和文件信息");
         var startedAt = DateTime.UtcNow;
         var sourceIssues = new List<ScanIssue>();
         var sources = SourceFileDiscovery.NormalizeSources(request.Sources, sourceIssues);
@@ -75,6 +77,19 @@ public sealed class PackageConflictScanner(
                     DiscoveredPackageCount: count)),
             cancellationToken);
 
+        var bytes = ScanPerformance.CurrentStage is null ? 0 : discovered.Values.Sum(file => file.DiscoveredStamp.Length);
+        if (discoveryTiming is not null)
+        {
+            discoveryTiming.Files = discovered.Count;
+            discoveryTiming.Bytes = bytes;
+        }
+        discoveryTiming?.Dispose();
+        using var indexTiming = ScanPerformance.Measure("Package · 排序和读取索引", parallelism);
+        if (indexTiming is not null)
+        {
+            indexTiming.Files = discovered.Count;
+            indexTiming.Bytes = bytes;
+        }
         // 读取顺序与并发完成顺序都不影响结果：每个结果写回自己在这个数组里的位置。
         var packagePaths = discovered.Keys
             .OrderBy(path => path, PathRules.Comparer)
@@ -83,6 +98,13 @@ public sealed class PackageConflictScanner(
         var results = await ReadIndexesAsync(packagePaths, parallelism, progress, cancellationToken)
             .ConfigureAwait(false);
 
+        if (indexTiming is not null)
+        {
+            indexTiming.Entries = results.Sum(result => (long)(result.Summary?.ResourceCount ?? 0));
+            indexTiming.SkippedFiles = results.Count(result => result.Summary is null);
+        }
+        indexTiming?.Dispose();
+        using var groupingTiming = ScanPerformance.Measure("Package · TGI 分组和生成索引报告");
         progress?.Report(new PackageConflictScanProgress(
             PackageConflictScanPhase.Grouping,
             "正在比对资源编号…",
@@ -140,6 +162,13 @@ public sealed class PackageConflictScanner(
             packagePaths.Length,
             packagePaths.Length));
 
+        if (groupingTiming is not null)
+        {
+            groupingTiming.Files = packagePaths.Length;
+            groupingTiming.Bytes = bytes;
+            groupingTiming.Entries = indexTiming?.Entries ?? 0;
+            groupingTiming.ResultItems = candidates.Count;
+        }
         return report;
     }
 

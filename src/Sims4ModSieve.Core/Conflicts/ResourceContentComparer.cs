@@ -1,4 +1,5 @@
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Packages;
 
 namespace Sims4ModSieve.Core.Conflicts;
@@ -45,13 +46,37 @@ public sealed class ResourceContentComparer(IResourceContentHasher hasher) : IRe
         var budget = new ResourceContentBudget(limits.MaxTotalProcessedBytes);
         var reporter = new ProgressReporter(progress, budget);
 
+        using var preparationTiming = ScanPerformance.Measure("资源内容 · 构建读取批次");
         var batches = BuildBatches(request.Candidates, cancellationToken);
         var total = batches.Sum(batch => batch.Targets.Count);
+        var bytes = preparationTiming is null ? 0 : batches.Sum(batch => batch.Stamp.Length);
+        if (preparationTiming is not null)
+        {
+            preparationTiming.Files = batches.Count;
+            preparationTiming.Bytes = bytes;
+            preparationTiming.Entries = total;
+        }
+        preparationTiming?.Dispose();
         reporter.Report(ResourceContentComparisonPhase.Starting, "正在准备比较资源内容…", 0, total);
 
+        using var contentTiming = ScanPerformance.Measure("资源内容 · 复核索引、读取、解压和哈希", limits.MaxDegreeOfParallelism);
+        if (contentTiming is not null)
+        {
+            contentTiming.CountsContent = true;
+            contentTiming.Files = batches.Count;
+            contentTiming.Bytes = bytes;
+            contentTiming.Entries = total;
+        }
         var outcomes = await HashBatchesAsync(batches, limits, budget, reporter, total, cancellationToken)
             .ConfigureAwait(false);
 
+        if (contentTiming is not null)
+        {
+            contentTiming.ProcessedBytes = budget.ConsumedBytes;
+            contentTiming.FailedEntries = outcomes.Sum(outcome => (long)outcome.Results.Count(result => !result.IsSuccess));
+        }
+        contentTiming?.Dispose();
+        using var groupingTiming = ScanPerformance.Measure("资源内容 · 按哈希比较、分组和生成报告");
         reporter.Report(ResourceContentComparisonPhase.Grouping, "正在按内容分组…", total, total);
 
         var lookup = new Dictionary<(string Path, FileStamp Stamp, int Ordinal, ResourceKey Key), ResourceContentResult>(
@@ -103,6 +128,13 @@ public sealed class ResourceContentComparer(IResourceContentHasher hasher) : IRe
             total,
             total);
 
+        if (groupingTiming is not null)
+        {
+            groupingTiming.Files = batches.Count;
+            groupingTiming.Bytes = bytes;
+            groupingTiming.Entries = total;
+            groupingTiming.ResultItems = comparisons.Count;
+        }
         return report;
     }
 

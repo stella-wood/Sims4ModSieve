@@ -231,6 +231,69 @@
                 </StackPanel>
                 <StackPanel Visibility="{Binding IsDiagnosticsSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="诊断与反馈" Style="{StaticResource SettingsTitle}" />
+                    <TextBlock Text="最近一次扫描计时" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,15" />
+                    <Border x:Name="ScanTimingFrame" Padding="0" Margin="0,0,0,28">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource SettingsGroup}">
+                                <Setter Property="Height" Value="280" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsScanTimingEmpty}" Value="True">
+                                        <Setter Property="Height" Value="Auto" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <Grid.Resources>
+                                <Style TargetType="{x:Type ScrollBar}">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                                <Grid Width="6" HorizontalAlignment="Right" Margin="0,3,2,3" Background="Transparent">
+                                                    <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True"
+                                                           Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                                                           Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
+                                                        <Track.DecreaseRepeatButton>
+                                                            <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0" Focusable="False" />
+                                                        </Track.DecreaseRepeatButton>
+                                                        <Track.Thumb>
+                                                            <Thumb MinHeight="24">
+                                                                <Thumb.Style>
+                                                                    <Style TargetType="Thumb">
+                                                                        <Setter Property="Background" Value="#CEC9C3" />
+                                                                        <Style.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#B2ABA3" /></Trigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Thumb.Style>
+                                                                <Thumb.Template>
+                                                                    <ControlTemplate TargetType="Thumb"><Border Background="{TemplateBinding Background}" CornerRadius="3" /></ControlTemplate>
+                                                                </Thumb.Template>
+                                                            </Thumb>
+                                                        </Track.Thumb>
+                                                        <Track.IncreaseRepeatButton>
+                                                            <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0" Focusable="False" />
+                                                        </Track.IncreaseRepeatButton>
+                                                    </Track>
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Grid.Resources>
+                            <TextBox x:Name="ScanTimingSummary" Text="{Binding ScanTimingText, Mode=OneWay}" IsReadOnly="True"
+                                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                     Padding="14,12,42,12" BorderThickness="0" Background="White" Foreground="#44403C"
+                                     FontFamily="Consolas, Microsoft YaHei UI" FontSize="12" />
+                            <Button x:Name="CopyScanTimingButton" Style="{StaticResource BareIconButtonStyle}" Command="{Binding CopyScanTimingCommand}"
+                                    AutomationProperties.Name="复制扫描计时" ToolTip="复制扫描计时" Background="White" Cursor="Hand"
+                                    Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,9,16,0">
+                                <Path Width="16" Height="16" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.25" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False"
+                                      Data="M 5.5,5.5 L 13.5,5.5 L 13.5,14.5 L 5.5,14.5 Z M 10.5,3.5 L 10.5,1.5 L 1.5,1.5 L 1.5,10.5 L 3.5,10.5" />
+                            </Button>
+                        </Grid>
+                    </Border>
                     <TextBlock Text="错误记录" FontSize="15" FontWeight="SemiBold" />
                     <TextBlock Text="本工具的运行与启动错误" Style="{StaticResource SettingsDescription}" Margin="0,6,0,15" />
                     <TextBlock Text="暂时没有错误记录" Foreground="{StaticResource MutedBrush}" Margin="0,6,0,16" Visibility="{Binding HasNoDiagnosticErrors, Converter={StaticResource BooleanToVisibilityConverter}}" />

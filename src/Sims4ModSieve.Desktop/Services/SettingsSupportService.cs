@@ -11,7 +11,7 @@ public sealed record DiagnosticLog(string Name, string Content, bool HasContent,
     public bool ShowEntry => HasContent || ReadFailed;
 }
 
-public sealed class SettingsSupportService
+public sealed partial class SettingsSupportService
 {
     public const int MaximumLogCharacters = 65_536;
     public const string ProjectUrl = "https://github.com/stella-wood/Sims4ModDoctor";

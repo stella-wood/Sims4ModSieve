@@ -1,4 +1,7 @@
 using System.IO;
+using System.Windows;
+using System.Windows.Threading;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Desktop.Infrastructure;
 using Sims4ModSieve.Desktop.Services;
 
@@ -17,6 +20,7 @@ public sealed partial class MainWindowViewModel
     private string aboutFeedback = string.Empty;
     private string licenseText = string.Empty;
     private IReadOnlyList<DiagnosticLog> diagnosticLogs = [];
+    private string latestScanTiming = "尚无扫描计时";
     private DefaultFolderCandidate? defaultFolderCandidate;
 
     public sealed record DefaultFolderCandidate(string Kind, string Path);
@@ -33,6 +37,7 @@ public sealed partial class MainWindowViewModel
     public RelayCommand OpenTrayFolderCommand { get; private set; } = null!;
     public AsyncRelayCommand RefreshDiagnosticsCommand { get; private set; } = null!;
     public AsyncRelayCommand CopyDiagnosticsCommand { get; private set; } = null!;
+    public AsyncRelayCommand CopyScanTimingCommand { get; private set; } = null!;
     public RelayCommand OpenLogFolderCommand { get; private set; } = null!;
     public RelayCommand OpenFeedbackCommand { get; private set; } = null!;
     public RelayCommand OpenProjectCommand { get; private set; } = null!;
@@ -70,6 +75,14 @@ public sealed partial class MainWindowViewModel
     public bool HasLicenseText => !string.IsNullOrEmpty(LicenseText);
     public string ProductVersion => settingsSupport.ProductVersion;
     public IReadOnlyList<DiagnosticLog> DiagnosticLogs => diagnosticLogs;
+    public string LatestScanTiming
+    {
+        get => latestScanTiming;
+        private set
+        {
+            if (SetProperty(ref latestScanTiming, value)) UpdateScanTimingPresentation(value);
+        }
+    }
     public bool HasNoDiagnosticErrors => !diagnosticLogs.Any(log => log.HasContent || log.ReadFailed);
     public DefaultFolderCandidate? FolderCandidate => defaultFolderCandidate;
     public bool HasModsFolderCandidate => defaultFolderCandidate?.Kind == "Mods";
@@ -104,6 +117,12 @@ public sealed partial class MainWindowViewModel
             await RefreshDiagnosticsAsync();
             RunSettingsOperation(() => settingsSupport.CopyDiagnosticText(diagnosticLogs),
                 message => DiagnosticsFeedback = message, "诊断信息已复制", "无法复制，请重试");
+        }, _ => DiagnosticsFeedback = "无法复制，请重试", () => !IsBusy);
+        CopyScanTimingCommand = new AsyncRelayCommand(async () =>
+        {
+            LatestScanTiming = await settingsSupport.ReadLatestScanTimingAsync();
+            RunSettingsOperation(() => settingsSupport.CopyScanTiming(ScanTimingText),
+                message => DiagnosticsFeedback = message, "扫描计时已复制", "无法复制，请重试");
         }, _ => DiagnosticsFeedback = "无法复制，请重试", () => !IsBusy);
         OpenLogFolderCommand = SettingsCommand(() => RunSettingsOperation(() => settingsSupport.OpenFolder(settingsSupport.LogDirectory),
             message => DiagnosticsFeedback = message, string.Empty, "无法打开日志文件夹"));
@@ -211,8 +230,27 @@ public sealed partial class MainWindowViewModel
     public async Task RefreshDiagnosticsAsync()
     {
         diagnosticLogs = await settingsSupport.ReadDiagnosticsAsync();
+        LatestScanTiming = await settingsSupport.ReadLatestScanTimingAsync();
         OnPropertyChanged(nameof(DiagnosticLogs));
         OnPropertyChanged(nameof(HasNoDiagnosticErrors));
+    }
+
+    private bool HasVisibleResultWindow => Application.Current?.Dispatcher.CheckAccess() == true
+        && Application.Current.Windows.Cast<Window>().Any(window => window.IsVisible && ReferenceEquals(window.DataContext, this));
+
+    private ScanPerformance.Stage? BeginResultRenderingTiming() => ScanPerformance.Measure(HasVisibleResultWindow
+        ? "界面 · 绑定、首屏布局和绘制提交"
+        : "界面 · 结果绑定（无可见窗口，未测渲染）");
+
+    private async Task FinishScanTimingAsync(ScanPerformance performance, string outcome,
+        ScanPerformance.Stage? renderingTiming, IEnumerable<string> sources)
+    {
+        // Render 优先级先于 ContextIdle；只等待首次可见列表，不遍历虚拟化的全部行。
+        if (renderingTiming is not null && HasVisibleResultWindow)
+            await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
+        renderingTiming?.Dispose();
+        var summary = performance.Finish(outcome, SettingsSupportService.DescribeScanStorage(sources));
+        LatestScanTiming = await settingsSupport.WriteScanTimingAsync(summary);
     }
 
     private void SetFolderFeedback(string kind, string message)
@@ -242,5 +280,6 @@ public sealed partial class MainWindowViewModel
             OpenFeedbackCommand, OpenProjectCommand, OpenLicenseCommand }) command?.RaiseCanExecuteChanged();
         RefreshDiagnosticsCommand?.RaiseCanExecuteChanged();
         CopyDiagnosticsCommand?.RaiseCanExecuteChanged();
+        CopyScanTimingCommand?.RaiseCanExecuteChanged();
     }
 }

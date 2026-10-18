@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using ICSharpCode.SharpZipLib;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using Sims4ModSieve.Core.Conflicts;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
 
@@ -418,9 +419,13 @@ public sealed class DbpfResourceContentHasher(
             stream.Seek(entry.Position, SeekOrigin.Begin);
             using var stored = new BoundedReadStream(stream, entry.StoredSize, budget, cancellationToken,
                 entry.Compression == CompressionNone ? 2 : 1);
-            return entry.Compression == CompressionNone
+            ScanPerformance.CurrentStage?.BeginContentRead(entry.Compression != CompressionNone);
+            var result = entry.Compression == CompressionNone
                 ? await HashStoredAsync(stored, target, entry, cancellationToken).ConfigureAwait(false)
                 : await HashZlibAsync(stored, target, entry, limits, budget, cancellationToken).ConfigureAwait(false);
+            if (entry.Compression != CompressionNone && result.IsSuccess)
+                ScanPerformance.CurrentStage?.CompleteDecompression();
+            return result;
         }
         catch (OperationCanceledException)
         {

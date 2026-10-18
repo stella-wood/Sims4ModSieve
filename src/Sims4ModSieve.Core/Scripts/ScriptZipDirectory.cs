@@ -5,6 +5,8 @@ using ICSharpCode.SharpZipLib.Checksum;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using Sims4ModSieve.Core.Conflicts;
 
+using Sims4ModSieve.Core.Diagnostics;
+
 namespace Sims4ModSieve.Core.Scripts;
 
 /// <summary>A bounded ZIP directory reader for script archives; never executes entry contents.</summary>
@@ -104,6 +106,7 @@ internal sealed class ScriptZipDirectory
             var crc = new Crc32();
             var output = new byte[ChunkBytes];
             long total;
+            ScanPerformance.CurrentStage?.BeginContentRead(entry.CompressionMethod != 0);
             if (entry.CompressionMethod == 0)
             {
                 if (entry.CompressedLength != entry.Length)
@@ -134,6 +137,7 @@ internal sealed class ScriptZipDirectory
                 throw Error(ScriptArchiveIssueCode.EntryCorrupt, "Output length or CRC-32 differs from central directory.");
             if ((entry.Flags & 8) != 0)
                 await ValidateDescriptorAsync(stream, entry, dataEnd, cancellationToken).ConfigureAwait(false);
+            if (entry.CompressionMethod != 0) ScanPerformance.CurrentStage?.CompleteDecompression();
             return total;
         }
         catch (Exception exception) when (exception is EndOfStreamException or SharpZipBaseException)

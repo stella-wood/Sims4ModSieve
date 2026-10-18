@@ -1,3 +1,5 @@
+using Sims4ModSieve.Core.Diagnostics;
+
 namespace Sims4ModSieve.Core.Duplicates;
 
 public sealed class DuplicateScanner(
@@ -35,6 +37,7 @@ public sealed class DuplicateScanner(
             DuplicateScanPhase.Starting,
             "正在准备扫描…"));
 
+        using var discoveryTiming = ScanPerformance.Measure("整文件核对 · 枚举目录和文件信息");
         var startedAt = DateTime.UtcNow;
         var issues = new List<ScanIssue>();
         var sources = SourceFileDiscovery.NormalizeSources(request.Sources, issues);
@@ -54,6 +57,14 @@ public sealed class DuplicateScanner(
             cancellationToken);
         var modsRoot = NormalizeOptionalPath(request.ModsRoot, issues);
 
+        if (discoveryTiming is not null)
+        {
+            discoveryTiming.Files = candidates.Count;
+            discoveryTiming.Bytes = candidates.Values.Sum(candidate => candidate.DiscoveredStamp.Length);
+        }
+        discoveryTiming?.Dispose();
+
+        using var preparationTiming = ScanPerformance.Measure("整文件核对 · 按长度筛选哈希候选");
         var hashedFiles = 0;
         var hashedCandidates = new List<HashedCandidate>();
         var hashCandidates = candidates.Values
@@ -62,6 +73,22 @@ public sealed class DuplicateScanner(
             .OrderBy(group => group.Key)
             .SelectMany(group => group.OrderBy(item => item.Path, PathRules.Comparer))
             .ToArray();
+
+        if (preparationTiming is not null)
+        {
+            preparationTiming.Files = candidates.Count;
+            preparationTiming.Bytes = candidates.Values.Sum(candidate => candidate.DiscoveredStamp.Length);
+            preparationTiming.SkippedFiles = candidates.Count - hashCandidates.Length;
+            preparationTiming.ResultItems = hashCandidates.Length;
+        }
+        preparationTiming?.Dispose();
+        using var hashingTiming = ScanPerformance.Measure("整文件核对 · 整文件 SHA-256");
+        if (hashingTiming is not null)
+        {
+            hashingTiming.Files = hashCandidates.Length;
+            hashingTiming.Bytes = hashCandidates.Sum(candidate => candidate.DiscoveredStamp.Length);
+            hashingTiming.SkippedFiles = candidates.Count - hashCandidates.Length;
+        }
 
         progress?.Report(new DuplicateScanProgress(
             DuplicateScanPhase.Hashing,
@@ -109,6 +136,13 @@ public sealed class DuplicateScanner(
                 candidates.Count));
         }
 
+        if (hashingTiming is not null)
+        {
+            hashingTiming.ResultItems = hashedFiles;
+            hashingTiming.ProcessedBytes = hashedCandidates.Sum(candidate => candidate.Hash.Stamp.Length);
+        }
+        hashingTiming?.Dispose();
+        using var groupingTiming = ScanPerformance.Measure("整文件核对 · 分组和生成报告");
         var groups = BuildGroups(hashedCandidates, validSources, modsRoot);
         var report = new DuplicateReport(
             startedAt,
@@ -126,6 +160,12 @@ public sealed class DuplicateScanner(
             hashCandidates.Length,
             candidates.Count));
 
+        if (groupingTiming is not null)
+        {
+            groupingTiming.Files = hashedCandidates.Count;
+            groupingTiming.Bytes = hashedCandidates.Sum(candidate => candidate.Hash.Stamp.Length);
+            groupingTiming.ResultItems = groups.Count;
+        }
         return report;
     }
 
