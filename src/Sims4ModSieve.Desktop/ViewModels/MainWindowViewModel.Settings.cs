@@ -19,6 +19,7 @@ public sealed partial class MainWindowViewModel
     private string diagnosticsFeedback = string.Empty;
     private string aboutFeedback = string.Empty;
     private string licenseText = string.Empty;
+    private string? licenseDocument;
     private IReadOnlyList<DiagnosticLog> diagnosticLogs = [];
     private string latestScanTiming = "尚无扫描计时";
     private DefaultFolderCandidate? defaultFolderCandidate;
@@ -136,7 +137,16 @@ public sealed partial class MainWindowViewModel
             if (IsBusy || document is not ("LICENSE" or "THIRD-PARTY-NOTICES.md")) return;
             RunSettingsOperation(() =>
             {
-                LicenseText = settingsSupport.OpenLicenseDocument((string)document);
+                if (licenseDocument == (string)document)
+                {
+                    LicenseText = string.Empty;
+                    licenseDocument = null;
+                }
+                else
+                {
+                    LicenseText = settingsSupport.OpenLicenseDocument((string)document);
+                    licenseDocument = (string)document;
+                }
                 OnPropertyChanged(nameof(HasLicenseText));
             }, message => AboutFeedback = message, string.Empty, "无法读取许可文件");
         }, _ => !IsBusy);

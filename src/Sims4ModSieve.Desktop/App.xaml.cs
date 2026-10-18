@@ -1,10 +1,14 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace Sims4ModSieve.Desktop;
 
 public partial class App : Application
 {
+    static App() => ToolTipService.InitialShowDelayProperty.OverrideMetadata(
+        typeof(FrameworkElement), new FrameworkPropertyMetadata(650));
+
     protected override void OnStartup(StartupEventArgs eventArgs)
     {
         base.OnStartup(eventArgs);

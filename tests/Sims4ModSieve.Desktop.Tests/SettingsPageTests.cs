@@ -18,6 +18,79 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class SettingsPageTests
 {
     [TestMethod]
+    public Task AboutDocumentsToggleSwitchAndScrollWithKeyboardAndClick() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var support = new SettingsSupportService(files.Root);
+        var model = files.Model(support: support);
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        window.Activate();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("about");
+        await WpfTestHost.LayoutAsync(window);
+        var page = Descendants<SettingsPage>(window).Single();
+        var license = (Button)page.FindName("LicenseButton");
+        var notices = (Button)page.FindName("ThirdPartyNoticesButton");
+        var frame = (Border)page.FindName("LicenseFrame");
+        var summary = (TextBox)page.FindName("LicenseSummary");
+        Assert.IsFalse(frame.IsVisible);
+        AssertHitRectangle(license);
+        AssertHitRectangle(notices);
+
+        PressSpace(license);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(frame.IsVisible);
+        Assert.AreEqual(support.OpenLicenseDocument("LICENSE"), summary.Text);
+        SaveReview(window, "about-license-expanded.png");
+        PressSpace(license);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(frame.IsVisible);
+        Assert.IsFalse(model.HasLicenseText);
+
+        async Task InvokeAsync(Button button)
+        {
+            button.BringIntoView();
+            await WpfTestHost.LayoutAsync(window);
+            ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();
+            await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
+            await WpfTestHost.LayoutAsync(window);
+        }
+        await InvokeAsync(notices);
+        Assert.IsTrue(frame.IsVisible && summary.IsReadOnly);
+        Assert.AreEqual(support.OpenLicenseDocument("THIRD-PARTY-NOTICES.md"), summary.Text);
+        summary.BringIntoView();
+        summary.Focus();
+        await WpfTestHost.LayoutAsync(window);
+        var scrollbar = Descendants<ScrollBar>(summary).Single(bar => bar.IsVisible);
+        ScrollBar.PageDownCommand.Execute(null, scrollbar);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsGreaterThan(0, summary.VerticalOffset);
+        summary.SelectAll();
+        Assert.AreEqual(summary.Text, summary.SelectedText);
+        summary.Select(0, 0);
+        SaveReview(window, "about-notices-scrolled.png");
+        await InvokeAsync(notices);
+        Assert.IsFalse(frame.IsVisible);
+        Assert.AreEqual(string.Empty, summary.Text);
+
+        await InvokeAsync(license);
+        await InvokeAsync(notices);
+        Assert.IsTrue(frame.IsVisible);
+        Assert.AreEqual(support.OpenLicenseDocument("THIRD-PARTY-NOTICES.md"), summary.Text);
+        await InvokeAsync(license);
+        Assert.AreEqual(support.OpenLicenseDocument("LICENSE"), summary.Text);
+        model.GoHomeCommand.Execute(null);
+        model.OpenSettingsCommand.Execute(null);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(frame.IsVisible && model.IsAboutSettings);
+        await InvokeAsync(license);
+        Assert.IsFalse(frame.IsVisible);
+        SaveReview(window, "about-documents-collapsed.png");
+        window.Close();
+    });
+
+    [TestMethod]
     public Task DiagnosticHeaderActionsOpenLogDirectoryAndRefreshBothPanels() => WpfTestHost.RunAsync(async () =>
     {
         using var files = new Scenario();
@@ -199,6 +272,8 @@ public sealed class SettingsPageTests
             Assert.IsTrue(model.HasLicenseText);
             Assert.AreEqual(support.OpenLicenseDocument("LICENSE"), model.LicenseText);
             SaveReview(window, $"about-{width}x{height}.png");
+            PressSpace((Button)page.FindName("LicenseButton"));
+            Assert.IsFalse(model.HasLicenseText);
         }
         model.SelectSettingsSectionCommand.Execute("folders");
         await WpfTestHost.LayoutAsync(window);
@@ -218,8 +293,6 @@ public sealed class SettingsPageTests
         SaveReview(window, "folders-candidate-920x640.png");
         PressSpace(Descendants<Button>(page).Single(button => button.IsVisible && Equals(button.Content, "取消")));
         Assert.IsNull(model.FolderCandidate);
-        PressSpace((Button)page.FindName("ClearTrayButton"));
-        Assert.IsFalse(model.HasTrayRoot);
         Directory.Delete(mods);
         model.GoHomeCommand.Execute(null);
         model.OpenSettingsCommand.Execute(null);
@@ -275,7 +348,7 @@ public sealed class SettingsPageTests
             }
             finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell); }
         }
-        Assert.IsTrue(files.Model().HasNoTrayRoot);
+        Assert.AreEqual(tray, files.Model().TrayRoot);
         window.Close();
     });
 
