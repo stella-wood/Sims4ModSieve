@@ -84,6 +84,7 @@ public sealed partial class MainWindowViewModel
         }
     }
     public bool HasNoDiagnosticErrors => !diagnosticLogs.Any(log => log.HasContent || log.ReadFailed);
+    public string DiagnosticText => HasNoDiagnosticErrors ? "暂时没有错误记录" : settingsSupport.BuildDiagnosticText(diagnosticLogs);
     public DefaultFolderCandidate? FolderCandidate => defaultFolderCandidate;
     public bool HasModsFolderCandidate => defaultFolderCandidate?.Kind == "Mods";
     public bool HasTrayFolderCandidate => defaultFolderCandidate?.Kind == "Tray";
@@ -233,6 +234,7 @@ public sealed partial class MainWindowViewModel
         LatestScanTiming = await settingsSupport.ReadLatestScanTimingAsync();
         OnPropertyChanged(nameof(DiagnosticLogs));
         OnPropertyChanged(nameof(HasNoDiagnosticErrors));
+        OnPropertyChanged(nameof(DiagnosticText));
     }
 
     private bool HasVisibleResultWindow => Application.Current?.Dispatcher.CheckAccess() == true

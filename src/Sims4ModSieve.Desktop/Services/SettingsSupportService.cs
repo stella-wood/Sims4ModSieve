@@ -87,7 +87,17 @@ public sealed partial class SettingsSupportService
 
     public string BuildDiagnosticText(IReadOnlyList<DiagnosticLog> logs) => RedactDiagnosticPaths(
         $"Sims 4 Mod Sieve {ProductVersion}\n系统：{SystemVersion}\n\n" +
-        string.Join("\n\n", logs.Select(log => $"{log.Name}\n{(log.HasContent || log.ReadFailed ? log.Content : "暂时没有错误记录" + "（" + log.Content + "）")}")));
+        string.Join("\n\n", logs.Select(log =>
+        {
+            var kind = log.Name switch
+            {
+                "application-error.log" => " · 运行错误",
+                "startup-error.log" => " · 启动错误",
+                _ => string.Empty,
+            };
+            var content = log.HasContent || log.ReadFailed ? log.Content : "暂时没有错误记录（" + log.Content + "）";
+            return $"[{log.Name}{kind}]\n{content}";
+        })));
 
     public void OpenFolder(string path)
     {

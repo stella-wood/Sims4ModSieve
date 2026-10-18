@@ -1,9 +1,12 @@
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Desktop.Services;
 using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
@@ -14,6 +17,143 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class SettingsPageTests
 {
+    [TestMethod]
+    public Task DiagnosticHeaderActionsOpenLogDirectoryAndRefreshBothPanels() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var targets = new List<string>();
+        var support = new SettingsSupportService(files.Root, openTarget: targets.Add);
+        var logs = files.Folder("Sims4ModSieve");
+        var model = files.Model(support: support);
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("diagnostics");
+        await model.RefreshDiagnosticsAsync();
+        var page = Descendants<SettingsPage>(window).Single();
+        var timing = (TextBox)page.FindName("ScanTimingSummary");
+        var errors = (TextBox)page.FindName("DiagnosticLogSummary");
+        async Task InvokeAsync(string name)
+        {
+            var button = (Button)page.FindName(name);
+            button.BringIntoView();
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsTrue(button.IsVisible && button.IsEnabled);
+            foreach (var x in new[] { 0.05, 0.5, 0.95 })
+            foreach (var y in new[] { 0.05, 0.5, 0.95 })
+            {
+                var hit = page.InputHitTest(button.TranslatePoint(new Point(button.ActualWidth * x, button.ActualHeight * y), page)) as DependencyObject;
+                while (hit is not null && !ReferenceEquals(hit, button)) hit = VisualTreeHelper.GetParent(hit);
+                Assert.AreSame(button, hit);
+            }
+            ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();
+            await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
+        }
+        await InvokeAsync("OpenScanTimingFolderButton");
+        await InvokeAsync("OpenDiagnosticLogFolderButton");
+        CollectionAssert.AreEqual(new[] { logs, logs }, targets);
+        foreach (var name in new[] { "RefreshScanTimingButton", "RefreshDiagnosticLogsButton" })
+        {
+            await support.WriteScanTimingAsync(name);
+            File.WriteAllText(Path.Combine(logs, "application-error.log"), "测试错误：" + name);
+            await InvokeAsync(name);
+            for (var attempt = 0; attempt < 100 && (timing.Text != name || !errors.Text.Contains(name, StringComparison.Ordinal)); attempt++)
+                await Task.Delay(10);
+            Assert.AreEqual(name, timing.Text);
+            StringAssert.Contains(errors.Text, "测试错误：" + name);
+        }
+        Assert.IsFalse(Descendants<Button>(page).Any(button => Equals(button.Content, "打开日志文件夹")));
+        window.Close();
+    });
+
+    [TestMethod]
+    public Task ErrorLogFrameRefreshesScrollsAndCopiesRedactedDiagnostics() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        string? copied = null;
+        var support = new SettingsSupportService(files.Root, copyText: value => copied = value);
+        var model = files.Model(support: support);
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("diagnostics");
+        await model.RefreshDiagnosticsAsync();
+        var page = Descendants<SettingsPage>(window).Single();
+        var summary = (TextBox)page.FindName("DiagnosticLogSummary");
+        var frame = (Border)page.FindName("DiagnosticLogFrame");
+        var button = (Button)page.FindName("CopyDiagnosticsButton");
+        async Task CopyFromIconAsync()
+        {
+            button.BringIntoView();
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsTrue(button.IsVisible && button.IsEnabled);
+            foreach (var x in new[] { 0.05, 0.5, 0.95 })
+            foreach (var y in new[] { 0.05, 0.5, 0.95 })
+            {
+                var hit = page.InputHitTest(button.TranslatePoint(new Point(button.ActualWidth * x, button.ActualHeight * y), page)) as DependencyObject;
+                while (hit is not null && !ReferenceEquals(hit, button)) hit = VisualTreeHelper.GetParent(hit);
+                Assert.AreSame(button, hit);
+            }
+            copied = null;
+            ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();
+            for (var attempt = 0; attempt < 100 && copied is null; attempt++)
+                await Task.Delay(10);
+            Assert.AreEqual(support.BuildDiagnosticText(model.DiagnosticLogs), copied);
+            StringAssert.Contains(model.DiagnosticsFeedback, "诊断信息已复制");
+        }
+        Assert.IsTrue(model.HasNoDiagnosticErrors);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual("暂时没有错误记录", summary.Text);
+        await CopyFromIconAsync();
+        SaveReview(window, "error-logs-applied-empty.png");
+
+        var logs = files.Folder("Sims4ModSieve");
+        var applicationLog = Path.Combine(logs, "application-error.log");
+        var startupLog = Path.Combine(logs, "startup-error.log");
+        var raw = "[2026-10-18T17:42:08+08:00] 扫描失败\nSystem.IO.IOException: 文件正由另一进程使用。\n" +
+            @"文件：C:\Users\SecretUiName\Documents\Mods\demo.package" + "\n" +
+            string.Join("\n", Enumerable.Range(1, 40).Select(index => $"   at Demo.Scanner.ReadResource{index}(String path)"));
+        File.WriteAllText(applicationLog, raw);
+        File.WriteAllText(startupLog, "System.InvalidOperationException: 演示启动异常。\n   at Demo.App.OnStartup()");
+        await model.RefreshDiagnosticsCommand.ExecuteAsync();
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(model.HasNoDiagnosticErrors);
+        Assert.IsTrue(summary.IsVisible && summary.IsReadOnly);
+        Assert.AreEqual(model.DiagnosticText, summary.Text);
+        StringAssert.Contains(summary.Text, "[application-error.log · 运行错误]");
+        StringAssert.Contains(summary.Text, "[startup-error.log · 启动错误]");
+        Assert.IsFalse(summary.Text.Contains("SecretUiName", StringComparison.Ordinal));
+        Assert.IsFalse(Descendants<Expander>(page).Any());
+        SaveReview(window, "error-logs-applied-filled.png");
+        var position = button.TranslatePoint(new Point(), frame);
+        var scrollbar = Descendants<ScrollBar>(summary).Single(bar => bar.IsVisible);
+        ScrollBar.PageDownCommand.Execute(null, scrollbar);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsGreaterThan(0, summary.VerticalOffset);
+        Assert.AreEqual(position, button.TranslatePoint(new Point(), frame));
+        await CopyFromIconAsync();
+        Assert.AreEqual(summary.Text, copied);
+        Assert.AreEqual(raw, File.ReadAllText(applicationLog));
+
+        using (File.Open(applicationLog, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            await model.RefreshDiagnosticsCommand.ExecuteAsync();
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsFalse(model.HasNoDiagnosticErrors);
+            StringAssert.Contains(summary.Text, "无法读取此日志");
+            StringAssert.Contains(summary.Text, "演示启动异常");
+            await CopyFromIconAsync();
+        }
+        File.WriteAllText(applicationLog, string.Empty);
+        File.Delete(startupLog);
+        await model.RefreshDiagnosticsCommand.ExecuteAsync();
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(model.HasNoDiagnosticErrors);
+        Assert.AreEqual("暂时没有错误记录", summary.Text);
+        await CopyFromIconAsync();
+        window.Close();
+    });
+
     [TestMethod]
     public Task SettingsControlsSupportKeyboardAndRectangularHitTargets() => WpfTestHost.RunAsync(async () =>
     {
@@ -95,18 +235,10 @@ public sealed class SettingsPageTests
         File.WriteAllText(Path.Combine(logs, "application-error.log"), @"测试错误 C:\Users\SecretUiName\Documents\Mods\test.package");
         await model.RefreshDiagnosticsCommand.ExecuteAsync();
         await WpfTestHost.LayoutAsync(window);
-        var expander = Descendants<Expander>(page).Single(item => item.IsVisible);
-        var toggle = Descendants<ToggleButton>(expander).Single();
-        AssertHitRectangle(toggle);
-        PressSpace(toggle);
-        await WpfTestHost.LayoutAsync(window);
-        Assert.IsTrue(expander.IsExpanded);
-        var logContent = Descendants<TextBox>(expander).Single();
+        var logContent = (TextBox)page.FindName("DiagnosticLogSummary");
         Assert.IsTrue(logContent.IsVisible);
         Assert.IsFalse(logContent.Text.Contains("SecretUiName", StringComparison.Ordinal));
-        SaveReview(window, "diagnostics-expanded-920x640.png");
-        PressSpace(toggle);
-        Assert.IsFalse(expander.IsExpanded);
+        SaveReview(window, "diagnostics-filled-920x640.png");
         await model.CopyDiagnosticsCommand.ExecuteAsync();
         Assert.IsNotNull(copied);
         StringAssert.Contains(copied, "<用户>");

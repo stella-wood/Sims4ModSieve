@@ -81,6 +81,9 @@
                                 <DataTrigger Binding="{Binding IsSettingsVisible}" Value="True">
                                     <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
                                 </DataTrigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource HoverTextBrush}" />
+                                </Trigger>
                             </Style.Triggers>
                         </Style>
                     </Button.Style>

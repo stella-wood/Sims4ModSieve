@@ -90,13 +90,13 @@
                     <Border x:Name="Underline" Height="2" Background="{StaticResource AccentBrush}" VerticalAlignment="Bottom" Margin="8,0,8,0" Visibility="Collapsed" IsHitTestVisible="False" />
                 </Grid>
                 <ControlTemplate.Triggers>
+                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></Trigger>
+                    <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></DataTrigger>
                     <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                        <Setter Property="Foreground" Value="{StaticResource HoverTextBrush}" />
                         <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="HoverUnderline" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" /></Storyboard></BeginStoryboard></Trigger.EnterActions>
                         <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="HoverUnderline" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" /></Storyboard></BeginStoryboard></Trigger.ExitActions>
                     </Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></Trigger>
-                    <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></DataTrigger>
                 </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
         </Style>
@@ -109,13 +109,13 @@
                     <Border x:Name="Underline" Height="2" Background="{StaticResource AccentBrush}" VerticalAlignment="Bottom" Margin="-3,0,5,0" Visibility="Collapsed" IsHitTestVisible="False" />
                 </Grid>
                 <ControlTemplate.Triggers>
+                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></Trigger>
+                    <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></DataTrigger>
                     <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                        <Setter Property="Foreground" Value="{StaticResource HoverTextBrush}" />
                         <Trigger.EnterActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="HoverUnderline" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" /></Storyboard></BeginStoryboard></Trigger.EnterActions>
                         <Trigger.ExitActions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetName="HoverUnderline" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" /></Storyboard></BeginStoryboard></Trigger.ExitActions>
                     </Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></Trigger>
-                    <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /><Setter TargetName="Underline" Property="Visibility" Value="Visible" /></DataTrigger>
                 </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
         </Style>

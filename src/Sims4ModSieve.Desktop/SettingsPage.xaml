@@ -99,37 +99,95 @@
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="Margin" Value="0,0,14,0" />
         </Style>
-        <Style x:Key="SettingsLogExpander" TargetType="Expander">
+        <Style x:Key="DiagnosticText" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="Padding" Value="14,12,42,12" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#44403C" />
+            <Setter Property="FontFamily" Value="Consolas, Microsoft YaHei UI" />
+            <Setter Property="FontSize" Value="12" />
+            <Style.Resources>
+                <Style TargetType="{x:Type ScrollBar}">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                <Grid Width="6" HorizontalAlignment="Right" Margin="0,3,2,3" Background="Transparent">
+                                    <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True"
+                                           Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                                           Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
+                                        <Track.DecreaseRepeatButton>
+                                            <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0" Focusable="False" />
+                                        </Track.DecreaseRepeatButton>
+                                        <Track.Thumb>
+                                            <Thumb MinHeight="24">
+                                                <Thumb.Style>
+                                                    <Style TargetType="Thumb">
+                                                        <Setter Property="Background" Value="#CEC9C3" />
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#B2ABA3" /></Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Thumb.Style>
+                                                <Thumb.Template>
+                                                    <ControlTemplate TargetType="Thumb"><Border Background="{TemplateBinding Background}" CornerRadius="3" /></ControlTemplate>
+                                                </Thumb.Template>
+                                            </Thumb>
+                                        </Track.Thumb>
+                                        <Track.IncreaseRepeatButton>
+                                            <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0" Focusable="False" />
+                                        </Track.IncreaseRepeatButton>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Style.Resources>
+        </Style>
+        <Style x:Key="DiagnosticFrame" TargetType="Border" BasedOn="{StaticResource SettingsGroup}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Height" Value="280" />
+        </Style>
+        <Style x:Key="DiagnosticCopyButton" TargetType="Button" BasedOn="{StaticResource BareIconButtonStyle}">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Margin" Value="0,9,16,0" />
+        </Style>
+        <Style x:Key="DiagnosticFolderButton" TargetType="Button" BasedOn="{StaticResource BareIconButtonStyle}">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="DiagnosticRefreshButton" TargetType="Button">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="Padding" Value="0,5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="Expander">
-                        <StackPanel>
-                            <ToggleButton Content="{TemplateBinding Header}" HorizontalContentAlignment="Stretch"
-                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Border x:Name="Host" Background="Transparent" Padding="2,5" BorderBrush="Transparent" BorderThickness="1">
-                                            <Grid IsHitTestVisible="False">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                <Path x:Name="Arrow" Data="M 1,1 L 5,5 L 9,1" Stroke="{StaticResource MutedBrush}" StrokeThickness="1.5" Width="10" Height="6" VerticalAlignment="Center" />
-                                                <ContentPresenter Grid.Column="1" />
-                                            </Grid>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="Arrow" Property="Data" Value="M 1,5 L 5,1 L 9,5" /></Trigger>
-                                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Host" Property="BorderBrush" Value="{StaticResource AccentBrush}" /></Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                            </ToggleButton>
-                            <ContentPresenter x:Name="LogContent" ContentSource="Content" Visibility="Collapsed" />
-                        </StackPanel>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsExpanded" Value="True"><Setter TargetName="LogContent" Property="Visibility" Value="Visible" /></Trigger>
-                        </ControlTemplate.Triggers>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource HoverTextBrush}" /></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+            </Style.Triggers>
         </Style>
         <DataTemplate x:Key="FolderCandidateTemplate">
             <StackPanel Margin="0,8,0,0">
@@ -172,7 +230,19 @@
             </StackPanel>
         </Border>
         <ScrollViewer x:Name="SettingsContentScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
-            <Grid Margin="36,50" MaxWidth="760">
+            <Grid>
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Margin" Value="36,50" />
+                        <Setter Property="MaxWidth" Value="760" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsDiagnosticsSettings}" Value="True">
+                                <Setter Property="Margin" Value="88,52,88,50" />
+                                <Setter Property="MaxWidth" Value="Infinity" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <StackPanel Visibility="{Binding IsFoldersSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="文件夹" Style="{StaticResource SettingsTitle}" />
                     <TextBlock Text="游戏文件夹" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,15" />
@@ -231,11 +301,21 @@
                 </StackPanel>
                 <StackPanel Visibility="{Binding IsDiagnosticsSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="诊断与反馈" Style="{StaticResource SettingsTitle}" />
-                    <TextBlock Text="最近一次扫描计时" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,15" />
-                    <Border x:Name="ScanTimingFrame" Padding="0" Margin="0,0,0,28">
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="最近一次扫描计时" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button x:Name="OpenScanTimingFolderButton" Grid.Column="1" Style="{StaticResource DiagnosticFolderButton}" Command="{Binding OpenLogFolderCommand}"
+                                AutomationProperties.Name="打开扫描计时日志文件夹" ToolTip="打开扫描计时日志文件夹">
+                            <Path Width="16" Height="16" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.25" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False"
+                                  Data="M 2,18 L 2,5 L 7,5 L 9,7 L 18,7 L 18,10 M 2,18 L 5.5,10 L 21,10 L 17.5,18 Z" />
+                        </Button>
+                        <Button x:Name="RefreshScanTimingButton" Grid.Column="2" Content="刷新" Style="{StaticResource DiagnosticRefreshButton}"
+                                HorizontalAlignment="Right" Command="{Binding RefreshDiagnosticsCommand}" AutomationProperties.Name="刷新扫描计时" />
+                    </Grid>
+                    <Border x:Name="ScanTimingFrame" Margin="0,0,0,28">
                         <Border.Style>
-                            <Style TargetType="Border" BasedOn="{StaticResource SettingsGroup}">
-                                <Setter Property="Height" Value="280" />
+                            <Style TargetType="Border" BasedOn="{StaticResource DiagnosticFrame}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsScanTimingEmpty}" Value="True">
                                         <Setter Property="Height" Value="Auto" />
@@ -244,77 +324,47 @@
                             </Style>
                         </Border.Style>
                         <Grid>
-                            <Grid.Resources>
-                                <Style TargetType="{x:Type ScrollBar}">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="{x:Type ScrollBar}">
-                                                <Grid Width="6" HorizontalAlignment="Right" Margin="0,3,2,3" Background="Transparent">
-                                                    <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True"
-                                                           Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
-                                                           Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
-                                                        <Track.DecreaseRepeatButton>
-                                                            <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0" Focusable="False" />
-                                                        </Track.DecreaseRepeatButton>
-                                                        <Track.Thumb>
-                                                            <Thumb MinHeight="24">
-                                                                <Thumb.Style>
-                                                                    <Style TargetType="Thumb">
-                                                                        <Setter Property="Background" Value="#CEC9C3" />
-                                                                        <Style.Triggers>
-                                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#B2ABA3" /></Trigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </Thumb.Style>
-                                                                <Thumb.Template>
-                                                                    <ControlTemplate TargetType="Thumb"><Border Background="{TemplateBinding Background}" CornerRadius="3" /></ControlTemplate>
-                                                                </Thumb.Template>
-                                                            </Thumb>
-                                                        </Track.Thumb>
-                                                        <Track.IncreaseRepeatButton>
-                                                            <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0" Focusable="False" />
-                                                        </Track.IncreaseRepeatButton>
-                                                    </Track>
-                                                </Grid>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </Grid.Resources>
-                            <TextBox x:Name="ScanTimingSummary" Text="{Binding ScanTimingText, Mode=OneWay}" IsReadOnly="True"
-                                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                                     Padding="14,12,42,12" BorderThickness="0" Background="White" Foreground="#44403C"
-                                     FontFamily="Consolas, Microsoft YaHei UI" FontSize="12" />
-                            <Button x:Name="CopyScanTimingButton" Style="{StaticResource BareIconButtonStyle}" Command="{Binding CopyScanTimingCommand}"
-                                    AutomationProperties.Name="复制扫描计时" ToolTip="复制扫描计时" Background="White" Cursor="Hand"
-                                    Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,9,16,0">
+                            <TextBox x:Name="ScanTimingSummary" Text="{Binding ScanTimingText, Mode=OneWay}" Style="{StaticResource DiagnosticText}" />
+                            <Button x:Name="CopyScanTimingButton" Style="{StaticResource DiagnosticCopyButton}" Command="{Binding CopyScanTimingCommand}"
+                                    AutomationProperties.Name="复制扫描计时" ToolTip="复制扫描计时">
                                 <Path Width="16" Height="16" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                       StrokeThickness="1.25" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False"
                                       Data="M 5.5,5.5 L 13.5,5.5 L 13.5,14.5 L 5.5,14.5 Z M 10.5,3.5 L 10.5,1.5 L 1.5,1.5 L 1.5,10.5 L 3.5,10.5" />
                             </Button>
                         </Grid>
                     </Border>
-                    <TextBlock Text="错误记录" FontSize="15" FontWeight="SemiBold" />
-                    <TextBlock Text="本工具的运行与启动错误" Style="{StaticResource SettingsDescription}" Margin="0,6,0,15" />
-                    <TextBlock Text="暂时没有错误记录" Foreground="{StaticResource MutedBrush}" Margin="0,6,0,16" Visibility="{Binding HasNoDiagnosticErrors, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <ItemsControl ItemsSource="{Binding DiagnosticLogs}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Style="{StaticResource SettingsGroup}" Padding="14,10" Margin="0,0,0,10" Visibility="{Binding ShowEntry, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                    <Expander Header="{Binding Name}" HorizontalContentAlignment="Stretch" Style="{StaticResource SettingsLogExpander}">
-                                        <TextBox Text="{Binding Content, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="260"
-                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" BorderThickness="0"
-                                                 Background="Transparent" Foreground="{StaticResource MutedBrush}" FontFamily="Consolas, Microsoft YaHei UI" FontSize="12" Margin="0,10,0,0" />
-                                    </Expander>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <WrapPanel Margin="0,14,0,0">
-                        <Button x:Name="CopyDiagnosticsButton" Content="复制诊断信息" Style="{StaticResource SettingsButton}" Command="{Binding CopyDiagnosticsCommand}" Margin="0,0,10,10" />
-                        <Button Content="打开日志文件夹" Style="{StaticResource SettingsButton}" Command="{Binding OpenLogFolderCommand}" Margin="0,0,10,10" />
-                        <Button Content="刷新" Style="{StaticResource SettingsTextButton}" Command="{Binding RefreshDiagnosticsCommand}" Margin="0,0,0,10" />
-                    </WrapPanel>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="错误记录" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button x:Name="OpenDiagnosticLogFolderButton" Grid.Column="1" Style="{StaticResource DiagnosticFolderButton}" Command="{Binding OpenLogFolderCommand}"
+                                AutomationProperties.Name="打开错误日志文件夹" ToolTip="打开错误日志文件夹">
+                            <Path Width="16" Height="16" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.25" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False"
+                                  Data="M 2,18 L 2,5 L 7,5 L 9,7 L 18,7 L 18,10 M 2,18 L 5.5,10 L 21,10 L 17.5,18 Z" />
+                        </Button>
+                        <Button x:Name="RefreshDiagnosticLogsButton" Grid.Column="2" Content="刷新" Style="{StaticResource DiagnosticRefreshButton}"
+                                HorizontalAlignment="Right" Command="{Binding RefreshDiagnosticsCommand}" AutomationProperties.Name="刷新错误记录" />
+                    </Grid>
+                    <Border x:Name="DiagnosticLogFrame">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource DiagnosticFrame}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasNoDiagnosticErrors}" Value="True">
+                                        <Setter Property="Height" Value="Auto" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <TextBox x:Name="DiagnosticLogSummary" Text="{Binding DiagnosticText, Mode=OneWay}" Style="{StaticResource DiagnosticText}" />
+                            <Button x:Name="CopyDiagnosticsButton" Style="{StaticResource DiagnosticCopyButton}" Command="{Binding CopyDiagnosticsCommand}"
+                                    AutomationProperties.Name="复制诊断信息" ToolTip="复制诊断信息">
+                                <Path Width="16" Height="16" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.25" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False"
+                                      Data="M 5.5,5.5 L 13.5,5.5 L 13.5,14.5 L 5.5,14.5 Z M 10.5,3.5 L 10.5,1.5 L 1.5,1.5 L 1.5,10.5 L 3.5,10.5" />
+                            </Button>
+                        </Grid>
+                    </Border>
                     <TextBlock Text="{Binding DiagnosticsFeedback}" Style="{StaticResource SettingsFeedback}" />
                     <TextBlock Text="反馈问题" FontSize="15" FontWeight="SemiBold" Margin="0,32,0,0" />
                     <TextBlock Text="可附上诊断信息，帮助定位问题" Style="{StaticResource SettingsDescription}" />
