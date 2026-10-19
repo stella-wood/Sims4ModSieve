@@ -22,6 +22,32 @@ public sealed class PackageConflictScannerTests
         temp.WriteFile(Path.Combine(parts), "fake reader ignores content");
 
     [TestMethod]
+    public async Task ReaderClassifiedToolingTypesNeverBecomeCandidatesAndKeepOriginalOrdinals()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var first = Placeholder(temp, "Mods", "a.package");
+        var second = Placeholder(temp, "Mods", "b.package");
+        var tooling = new ResourceKey(0xF00DBA5E, 0, 1);
+        var reader = new FakePackageIndexReader { ToolingMetadataTypes = new HashSet<uint> { tooling.Type } }
+            .WithIndex("a.package", tooling, Hair)
+            .WithIndex("b.package", tooling, Hair);
+
+        var report = await CreateScanner(reader).ScanAsync(new([new ScanSource("mods", mods)]));
+
+        Assert.AreEqual(Hair, report.Candidates.Single().Key);
+        Assert.IsTrue(report.Candidates.Single().Occurrences.All(item => item.Ordinal == 1));
+        Assert.IsTrue(report.ResourceInventories.All(item => item.ResourceCount == 2 && item.ResourceTypeCounts![tooling.Type] == 1));
+        Assert.IsTrue(report.ToolingMetadataTypes.SetEquals(new[] { tooling.Type }));
+        var hasher = new FakeResourceContentHasher().WithContent(first, 1, "a").WithContent(second, 1, "b");
+        var contents = await new ResourceContentComparer(hasher).CompareAsync(new(report.Candidates));
+        var input = new PackageConflictGroupingBuilder().Prepare(report, contents);
+        Assert.IsTrue(hasher.Requests.SelectMany(request => request.Targets).All(target => target.Ordinal == 1));
+        Assert.IsTrue(input.Files.All(file => file.ResourceCount == 1));
+        Assert.AreEqual(0, input.ExcludedFiles.Count);
+    }
+
+    [TestMethod]
     public async Task SameTgiInTwoPackagesProducesOneCandidate()
     {
         using var temp = new TempDirectory();

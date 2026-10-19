@@ -15,6 +15,39 @@ public sealed class ConflictPairSummaryBuilderTests
     private static readonly ConflictPairSummaryBuilder Builder = new();
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ToolingComparisonsDoNotAffectContainmentOrPairFacts(bool failed)
+    {
+        const uint toolingType = 0xF00DBA5E;
+        var same = Resource(1, ("a", "same"), ("b", "same"));
+        var tooling = Resource(2, ("a", "first"), ("b", failed ? null : "second")) with { Key = new(toolingType, 0, 2) };
+        var scan = Scan(("a", 2), ("b", 2)) with
+        {
+            ToolingMetadataTypes = new HashSet<uint> { toolingType },
+            ResourceInventories = new[] { "a", "b" }.Select(path => new PackageResourceInventory(path, Stamp, 2)
+            {
+                ResourceTypeCounts = new Dictionary<uint, int> { [1] = 1, [toolingType] = 1 },
+            }).ToArray(),
+        };
+        var pair = Build(scan, same, tooling).Single();
+
+        Assert.IsTrue(pair.FirstContainedInSecond && pair.SecondContainedInFirst);
+        Assert.AreEqual(1, pair.IdenticalResourceCount);
+        Assert.AreEqual(0, pair.DifferentResourceCount);
+        Assert.AreEqual(0, pair.IncompleteResourceCount);
+        Assert.AreSame(same, pair.Resources.Single().Comparison);
+        Assert.IsTrue(scan.ResourceInventories.All(inventory => inventory.ResourceCount == 2));
+    }
+
+    [TestMethod]
+    public void MissingTypeCountsCannotProveContainmentWhenToolingTypesAreDeclared()
+    {
+        var scan = Scan(("a", 1), ("b", 1)) with { ToolingMetadataTypes = new HashSet<uint> { 0xF00DBA5E } };
+        Assert.AreEqual(0, Build(scan, Resource(1, ("a", "same"), ("b", "same"))).Count);
+    }
+
+    [TestMethod]
     public void SeveralResourcesMergeIntoOnePairWithIndependentFactsAndSharedDetails()
     {
         var same = Resource(3, ("b", "x"), ("a", "x"));

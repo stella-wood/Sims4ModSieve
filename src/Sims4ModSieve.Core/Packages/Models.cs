@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Core.Packages;
@@ -61,6 +62,15 @@ public sealed record PackageIndexSummary(
     FileStamp Stamp,
     IReadOnlyList<PackageResourceEntry> Resources)
 {
+    private readonly IReadOnlySet<uint> toolingMetadataTypes = FrozenSet<uint>.Empty;
+
+    /// <summary>读取器识别的工具元数据类型；完整索引仍保留这些资源。</summary>
+    public IReadOnlySet<uint> ToolingMetadataTypes
+    {
+        get => toolingMetadataTypes;
+        init => toolingMetadataTypes = value.ToFrozenSet();
+    }
+
     public int ResourceCount => Resources.Count;
 
     public string DbpfVersion => $"{DbpfMajorVersion}.{DbpfMinorVersion}";

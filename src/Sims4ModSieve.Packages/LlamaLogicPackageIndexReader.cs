@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+using System.Reflection;
 using LlamaLogic.Packages;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
@@ -24,6 +26,12 @@ public sealed class LlamaLogicPackageIndexReader(
     IFileSystemAccess fileSystem,
     PackageSafetyLimits? limits = null) : IPackageIndexReader
 {
+    private static readonly FrozenSet<uint> ToolingMetadataTypes = typeof(ResourceType)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(field => field.IsDefined(typeof(ResourceToolingMetadataAttribute), inherit: false))
+        .Select(field => (uint)(ResourceType)field.GetValue(null)!)
+        .ToFrozenSet();
+
     private readonly PackageSafetyLimits _limits = limits ?? PackageSafetyLimits.Default;
 
     public static LlamaLogicPackageIndexReader CreateDefault()
@@ -117,7 +125,10 @@ public sealed class LlamaLogicPackageIndexReader(
                 version.Minor,
                 precheck.StampBefore.Length,
                 precheck.StampBefore,
-                resources));
+                resources)
+            {
+                ToolingMetadataTypes = ToolingMetadataTypes,
+            });
         }
         catch (OperationCanceledException)
         {

@@ -13,6 +13,24 @@ public sealed class LlamaLogicPackageIndexReaderTests
         new(new PackagePrechecker(fileSystem), fileSystem);
 
     [TestMethod]
+    public async Task ToolingClassificationKeepsCompleteIndexAndDoesNotClassifyNameMapOrUnknownTypes()
+    {
+        using var temp = new TempDirectory();
+        var path = temp.WriteBytes("metadata.package", new DbpfFixtureBuilder()
+            .AddResource(type: 0x7FB6AD8A).AddResource(type: 0x6BF15BBE)
+            .AddResource(type: 0x01357924).AddResource(type: 0x0166038C)
+            .AddResource(type: 0xF00DBA5E).Build());
+        var result = await LlamaLogicPackageIndexReader.CreateDefault().ReadIndexAsync(path);
+
+        Assert.IsNotNull(result.Summary);
+        Assert.AreEqual(5, result.Summary.ResourceCount);
+        Assert.IsTrue(new[] { 0x7FB6AD8Au, 0x6BF15BBEu, 0x01357924u }.All(result.Summary.ToolingMetadataTypes.Contains));
+        Assert.IsFalse(result.Summary.ToolingMetadataTypes.Contains(0x0166038C));
+        Assert.IsFalse(result.Summary.ToolingMetadataTypes.Contains(0xF00DBA5E));
+        CollectionAssert.AreEqual(new[] { 0, 1, 2, 3, 4 }, result.Summary.Resources.Select(entry => entry.Ordinal).ToArray());
+    }
+
+    [TestMethod]
     public async Task ReportsEveryResourceKeyInIndexOrder()
     {
         using var temp = new TempDirectory();

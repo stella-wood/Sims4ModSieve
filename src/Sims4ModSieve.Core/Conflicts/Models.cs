@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
@@ -134,6 +135,14 @@ public sealed record PackageConflictScanReport(
     IReadOnlyList<PackageConflictCandidate> Candidates,
     IReadOnlyList<PackageConflictScanIssue> Issues)
 {
+    private readonly IReadOnlySet<uint> toolingMetadataTypes = FrozenSet<uint>.Empty;
+
+    public IReadOnlySet<uint> ToolingMetadataTypes
+    {
+        get => toolingMetadataTypes;
+        init => toolingMetadataTypes = value.ToFrozenSet();
+    }
+
     public IReadOnlyList<PackageResourceInventory> ResourceInventories { get; init; } =
         ReadOnlyLists.Freeze(Array.Empty<PackageResourceInventory>());
 

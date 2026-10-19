@@ -14,7 +14,7 @@ public sealed class PackageConflictGroupingBuilder
         cancellationToken.ThrowIfCancellationRequested();
         if (scanReport.ResourceInventories.Count != scanReport.AnalyzedPackageCount)
             throw new ArgumentException("分组输入缺数据：成功索引的完整资源清单不齐。", nameof(scanReport));
-        var excludedTypes = new HashSet<uint> { 0x7FB6AD8A, 0x6BF15BBE, 0x01357924 };
+        var excludedTypes = new HashSet<uint>(scanReport.ToolingMetadataTypes);
         if (excludeNameMap) excludedTypes.Add(0x0166038C);
         var exits = new Dictionary<string, Exclusion>(PathRules.Comparer);
         Exclusion Exit(string path)

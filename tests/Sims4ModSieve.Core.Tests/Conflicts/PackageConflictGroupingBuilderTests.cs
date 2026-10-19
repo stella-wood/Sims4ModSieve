@@ -21,6 +21,7 @@ public sealed class PackageConflictGroupingBuilderTests
         var name = Resource(2, ("a", "same"), ("b", "same")) with { Key = new(0x0166038C, 0, 0) };
         var scan = Scan(("a", 7), ("b", 7)) with
         {
+            ToolingMetadataTypes = new HashSet<uint> { 0x7FB6AD8A, 0x6BF15BBE, 0x01357924 },
             ResourceInventories = new[] { "a", "b" }.Select(path => new PackageResourceInventory(path, Stamp, 7)
             {
                 ResourceTypeCounts = new Dictionary<uint, int> { [1] = 3, [0x0166038C] = 1,

@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Packages;
@@ -142,6 +143,8 @@ public sealed class PackageConflictScanner(
             candidates,
             OrderIssues(issues))
         {
+            ToolingMetadataTypes = EnumerateWithCancellation(analyzed, cancellationToken)
+                .SelectMany(package => package.Summary.ToolingMetadataTypes).ToFrozenSet(),
             ResourceInventories = ReadOnlyLists.Freeze(EnumerateWithCancellation(analyzed, cancellationToken)
                 .Select(package => new PackageResourceInventory(
                     package.Path, package.Summary.Stamp, package.Summary.ResourceCount)
@@ -266,6 +269,7 @@ public sealed class PackageConflictScanner(
             foreach (var entry in package.Summary.Resources)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (package.Summary.ToolingMetadataTypes.Contains(entry.Key.Type)) continue;
                 if (!byKey.TryGetValue(entry.Key, out var occurrences))
                 {
                     occurrences = [];

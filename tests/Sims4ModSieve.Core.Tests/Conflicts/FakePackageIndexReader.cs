@@ -21,6 +21,8 @@ internal sealed class FakePackageIndexReader : IPackageIndexReader
 
     public int MaxInFlight => _maxInFlight;
 
+    public IReadOnlySet<uint> ToolingMetadataTypes { get; init; } = new HashSet<uint>();
+
     /// <summary>每次读取开始时调用；测试用它在读取中途触发取消。</summary>
     public Action<string>? OnRead { get; set; }
 
@@ -96,7 +98,10 @@ internal sealed class FakePackageIndexReader : IPackageIndexReader
                 1,
                 FileSize: 1,
                 new FileStamp(1, DateTime.UnixEpoch),
-                entries));
+                entries)
+            {
+                ToolingMetadataTypes = ToolingMetadataTypes,
+            });
         }
         finally
         {

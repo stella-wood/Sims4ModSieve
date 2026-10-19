@@ -14,6 +14,108 @@ namespace Sims4ModSieve.Packages.Tests;
 public sealed class ConflictScanIntegrationTests
 {
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task LegacyContainmentUsesGameResourcesAndStillRejectsUniqueResources(bool hasUniqueResource)
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var small = new DbpfFixtureBuilder().AddContent([1], type: 0x7FB6AD8A, instanceLo: 0);
+        var bundle = new DbpfFixtureBuilder().AddContent([2], type: 0x7FB6AD8A, instanceLo: 0);
+        for (uint instance = 1; instance <= 3; instance++)
+        {
+            small.AddContent([(byte)instance], instanceLo: instance);
+            bundle.AddContent([(byte)instance], instanceLo: instance);
+        }
+        if (hasUniqueResource) small.AddContent([5], instanceLo: 5);
+        bundle.AddContent([4], instanceLo: 4);
+        var smallPath = temp.WriteBytes(Path.Combine("Mods", "a.package"), small.Build());
+        temp.WriteBytes(Path.Combine("Mods", "b.package"), bundle.Build());
+        var scan = await new PackageConflictScanner(new PhysicalFileSystemAccess(), LlamaLogicPackageIndexReader.CreateDefault())
+            .ScanAsync(new([new ScanSource("mods", mods)]));
+        var contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault()).CompareAsync(new(scan.Candidates));
+        var pairs = new ConflictPairSummaryBuilder().BuildPackagePairs(scan, contents);
+
+        Assert.AreEqual(hasUniqueResource ? 5 : 4, scan.ResourceInventories.Single(file => file.Path == smallPath).ResourceCount);
+        Assert.AreEqual(3, contents.Comparisons.Count);
+        if (hasUniqueResource)
+            Assert.AreEqual(0, pairs.Count);
+        else
+        {
+            var pair = pairs.Single();
+            Assert.AreEqual(smallPath, pair.FirstPath);
+            Assert.IsTrue(pair.FirstContainedInSecond);
+            Assert.IsFalse(pair.SecondContainedInFirst);
+            Assert.AreEqual(3, pair.IdenticalResourceCount);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(0x7FB6AD8Au)]
+    [DataRow(0x6BF15BBEu)]
+    [DataRow(0x01357924u)]
+    public async Task ToolingOnlyCollisionsProduceNoComparisonsOrConflictGroups(uint toolingType)
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        temp.WriteBytes(Path.Combine("Mods", "a.package"), new DbpfFixtureBuilder()
+            .AddContent([1, 2], compression: DbpfFixtureBuilder.CompressionZlib, declaredSize: 20, type: toolingType, instanceLo: 0).Build());
+        temp.WriteBytes(Path.Combine("Mods", "b.package"), new DbpfFixtureBuilder()
+            .AddContent([3, 4], compression: DbpfFixtureBuilder.CompressionZlib, declaredSize: 20, type: toolingType, instanceLo: 0).Build());
+        var scan = await new PackageConflictScanner(new PhysicalFileSystemAccess(), LlamaLogicPackageIndexReader.CreateDefault())
+            .ScanAsync(new([new ScanSource("mods", mods)]));
+        var contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault()).CompareAsync(new(scan.Candidates));
+        var builder = new PackageConflictGroupingBuilder();
+        var input = builder.Prepare(scan, contents);
+        var result = builder.Build(input, new PackageConflictGroupingOptions());
+
+        Assert.AreEqual(2, scan.AnalyzedPackageCount);
+        Assert.AreEqual(0, scan.Candidates.Count);
+        Assert.IsTrue(scan.ResourceInventories.All(item => item.ResourceCount == 1));
+        Assert.AreEqual(0, contents.Comparisons.Count);
+        Assert.AreEqual(0, contents.Packages.Count);
+        Assert.AreEqual(0L, contents.ProcessedBytes);
+        Assert.IsTrue(input.Files.All(file => file.ResourceCount == 0));
+        Assert.AreEqual(0, input.ExcludedFiles.Count);
+        Assert.AreEqual(0, result.Groups.Count);
+        Assert.AreEqual(0, new ConflictPairSummaryBuilder().BuildPackagePairs(scan, contents).Count);
+    }
+
+    [TestMethod]
+    [DataRow(0x034AEECBu)]
+    [DataRow(0xF00DBA5Eu)]
+    public async Task MixedToolingAndResourceCollisionsOnlyCompareAndCountTheResource(uint resourceType)
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        foreach (var (name, content) in new[] { ("a.package", (byte)1), ("b.package", (byte)2) })
+        {
+            temp.WriteBytes(Path.Combine("Mods", name), new DbpfFixtureBuilder()
+                .AddContent([content], type: 0x7FB6AD8A, instanceLo: 0)
+                .AddContent([content], type: 0x6BF15BBE, instanceLo: 0)
+                .AddContent([content], type: 0x01357924, instanceLo: 0)
+                .AddContent([content], type: resourceType, instanceLo: 1).Build());
+        }
+        var scan = await new PackageConflictScanner(new PhysicalFileSystemAccess(), LlamaLogicPackageIndexReader.CreateDefault())
+            .ScanAsync(new([new ScanSource("mods", mods)]));
+        var contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault()).CompareAsync(new(scan.Candidates));
+        var builder = new PackageConflictGroupingBuilder();
+        var input = builder.Prepare(scan, contents);
+        var result = builder.Build(input, new PackageConflictGroupingOptions());
+
+        Assert.AreEqual(resourceType, scan.Candidates.Single().Key.Type);
+        Assert.IsTrue(scan.Candidates.Single().Occurrences.All(item => item.Ordinal == 3));
+        Assert.IsTrue(scan.ResourceInventories.All(item => item.ResourceCount == 4));
+        Assert.AreEqual(resourceType, contents.Comparisons.Single().Key.Type);
+        Assert.IsTrue(contents.Comparisons.Single().HasConfirmedDifference);
+        Assert.IsTrue(input.Files.All(file => file.ResourceCount == 1));
+        Assert.AreEqual(0, input.ExcludedFiles.Count);
+        var group = result.Groups.Single();
+        Assert.AreEqual(resourceType, group.ResourceKeys.Single().Type);
+        Assert.IsTrue(group.Members.All(member => member.ResourceCount == 1 && member.SharedResourceCount == 1));
+    }
+
+    [TestMethod]
     public async Task GroupingCanRecalculateAfterTemporaryPackagesHaveBeenMovedAway()
     {
         using var temp = new TempDirectory();

@@ -151,9 +151,15 @@ public sealed class ConflictPairSummaryBuilder
     {
         cancellationToken.ThrowIfCancellationRequested();
         var inventories = new Dictionary<string, PackageResourceInventory>(PathRules.Comparer);
+        var resourceCounts = new Dictionary<string, int>(PathRules.Comparer);
         foreach (var inventory in Walk(scanReport.ResourceInventories, cancellationToken))
         {
             inventories.Add(inventory.Path, inventory);
+            if (scanReport.ToolingMetadataTypes.Count == 0)
+                resourceCounts.Add(inventory.Path, inventory.ResourceCount);
+            else if (inventory.ResourceTypeCounts is { } counts)
+                resourceCounts.Add(inventory.Path, inventory.ResourceCount - Walk(counts, cancellationToken)
+                    .Where(item => scanReport.ToolingMetadataTypes.Contains(item.Key)).Sum(item => item.Value));
         }
 
         var stableStamps = new Dictionary<string, FileStamp>(PathRules.Comparer);
@@ -176,12 +182,14 @@ public sealed class ConflictPairSummaryBuilder
             stableStamps.Remove(path);
         }
 
-        var paths = CanonicalPaths(Walk(comparisonReport.Comparisons, cancellationToken)
+        var resourceComparisons = Walk(comparisonReport.Comparisons, cancellationToken)
+            .Where(comparison => !scanReport.ToolingMetadataTypes.Contains(comparison.Key.Type));
+        var paths = CanonicalPaths(resourceComparisons
             .SelectMany(comparison => PackageOccurrences(comparison, cancellationToken))
             .Select(occurrence => occurrence.PackagePath), cancellationToken);
         var comparisons = new List<PackageComparisonData>();
         var candidates = new HashSet<(string First, string Second)>();
-        foreach (var comparison in Walk(comparisonReport.Comparisons, cancellationToken))
+        foreach (var comparison in resourceComparisons)
         {
             var participants = new Dictionary<string, Participant>(PathRules.Comparer);
             for (var group = 0; group < comparison.ContentGroups.Count; group++)
@@ -206,7 +214,7 @@ public sealed class ConflictPairSummaryBuilder
             }
         }
 
-        AddContainmentCandidates(comparisons, inventories, candidates, cancellationToken);
+        AddContainmentCandidates(comparisons, resourceCounts, candidates, cancellationToken);
         var neighbors = CandidateNeighbors(candidates, cancellationToken);
         var pairs = new Dictionary<(string First, string Second), PackagePairData>();
         foreach (var data in Walk(comparisons, cancellationToken))
@@ -257,8 +265,8 @@ public sealed class ConflictPairSummaryBuilder
             }
             bool IsContained(string path) => pair.HasStableStamps && different == 0 && incomplete == 0
                 && stableStamps.ContainsKey(path)
-                && inventories.TryGetValue(path, out var inventory)
-                && inventory.ResourceCount > 0 && identical == inventory.ResourceCount;
+                && resourceCounts.TryGetValue(path, out var resourceCount)
+                && resourceCount > 0 && identical == resourceCount;
 
             var firstContained = IsContained(pathsPair.First);
             var secondContained = IsContained(pathsPair.Second);
@@ -423,7 +431,7 @@ public sealed class ConflictPairSummaryBuilder
 
     private static void AddContainmentCandidates(
         IReadOnlyList<PackageComparisonData> comparisons,
-        Dictionary<string, PackageResourceInventory> inventories,
+        Dictionary<string, int> resourceCounts,
         HashSet<(string First, string Second)> candidates,
         CancellationToken cancellationToken)
     {
@@ -451,9 +459,8 @@ public sealed class ConflictPairSummaryBuilder
 
         foreach (var (path, keys) in Walk(coverage, cancellationToken))
         {
-            var resourceCount = inventories[path].ResourceCount;
             // 连可用的重叠资源总数都不足时，不为这个文件展开一致配对。
-            if (resourceCount <= 0 || keys.Count < resourceCount) continue;
+            if (!resourceCounts.TryGetValue(path, out var resourceCount) || resourceCount <= 0 || keys.Count < resourceCount) continue;
             var required = Order(Walk(keys, cancellationToken).Select(key =>
                 (Rows: byKey[key], ParticipantCount: Walk(byKey[key], cancellationToken)
                     .Sum(data => (long)data.Participants.Count))),

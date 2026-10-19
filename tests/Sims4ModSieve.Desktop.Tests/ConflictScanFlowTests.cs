@@ -16,6 +16,38 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ConflictScanFlowTests
 {
     [TestMethod]
+    [DataRow(0x7FB6AD8Au)]
+    [DataRow(0x6BF15BBEu)]
+    [DataRow(0x01357924u)]
+    public Task ToolingOnlyPackagesLeaveConflictResultsEmpty(uint toolingType) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var mods = files.Directory("Mods");
+        WritePackage(mods, "a.package", 0, "first", toolingType);
+        WritePackage(mods, "b.package", 0, "second", toolingType);
+        var model = CreateViewModel(mods);
+        var window = new MainWindow(model);
+        window.Show();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await model.StartConflictScanCommand.ExecuteAsync();
+        await WpfTestHost.LayoutAsync(window);
+
+        Assert.AreEqual("complete", model.ConflictRunState);
+        Assert.AreEqual(0, model.ConflictResources.Count);
+        Assert.AreEqual(0, model.ConflictProblems.Count);
+        Assert.IsFalse(model.HasConflictMatches);
+        Assert.IsTrue(model.ShowConflictWarning);
+        foreach (var filter in new[] { "all", "different", "same", "incomplete" })
+        {
+            model.SelectConflictFilterCommand.Execute(filter);
+            await model.ConflictRowsRefreshTask;
+            Assert.AreEqual(0, model.VisibleConflictParentCount);
+            Assert.AreEqual(0, model.ConflictRows.Count);
+        }
+    });
+
+    [TestMethod]
     public void RepeatedStatusClicksKeepSelectionAndAllRestoresStatesWithoutChangingTypeChoices()
     {
         var model = CreateViewModel(Path.GetTempPath());
@@ -636,7 +668,7 @@ public sealed class ConflictScanFlowTests
         $"range={string.Join(" | ", viewModel.ConflictRangeProblems.Select(problem =>
             $"{problem.Path}: {problem.Code} {problem.Detail}"))}";
 
-    private static void WritePackage(string directory, string name, uint instance, string payload)
+    private static void WritePackage(string directory, string name, uint instance, string payload, uint type = 0x0904DF10)
     {
         var content = Encoding.UTF8.GetBytes(payload);
         const int headerLength = 96;
@@ -651,7 +683,7 @@ public sealed class ConflictScanFlowTests
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(0x40), (ulong)indexOffset);
         content.CopyTo(bytes.AsSpan(headerLength));
         Put(bytes, indexOffset + 0, 0);                 // index type
-        Put(bytes, indexOffset + 4, 0x0904DF10);        // type
+        Put(bytes, indexOffset + 4, type);              // type
         Put(bytes, indexOffset + 8, 0);                 // group
         Put(bytes, indexOffset + 12, 0);                // instance high
         Put(bytes, indexOffset + 16, instance);         // instance low
