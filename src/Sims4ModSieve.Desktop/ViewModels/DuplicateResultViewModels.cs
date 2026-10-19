@@ -96,7 +96,7 @@ public sealed class DuplicateGroupViewModel : ObservableObject
         _ => "普通重复",
     };
 
-    public bool HasSectionLabel => Model.Section != DuplicateSection.Ordinary;
+    public bool HasSectionLabel => Model.Section is DuplicateSection.FocusInternal or DuplicateSection.ReferenceInternal;
 
     public int SelectedCount => Files.Count(file => file.IsSelected);
 

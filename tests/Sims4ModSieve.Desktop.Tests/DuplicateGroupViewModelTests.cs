@@ -8,6 +8,24 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class DuplicateGroupViewModelTests
 {
     [TestMethod]
+    [DataRow(DuplicateSection.FocusCrossScope, false)]
+    [DataRow(DuplicateSection.FocusInternal, true)]
+    [DataRow(DuplicateSection.ReferenceInternal, true)]
+    [DataRow(DuplicateSection.Ordinary, false)]
+    public void SectionLabelOmitsCrossScopeAndKeepsInternalLabels(DuplicateSection section, bool expected)
+    {
+        DuplicateFile[] files =
+        [
+            CreateFile(@"D:\Mods\keep.package", isInsideMods: true, directoryDepth: 2),
+            CreateFile(@"D:\Downloads\copy.package", isInsideMods: false, directoryDepth: 2),
+        ];
+        var selection = new DuplicateSelectionService().Select(files);
+        var group = new DuplicateGroup("test-hash", 100, section, files, selection.KeepPath, selection.DeletePaths);
+
+        Assert.AreEqual(expected, new DuplicateGroupViewModel(group, 1).HasSectionLabel);
+    }
+
+    [TestMethod]
     public void GroupSelectionUsesCoreSuggestionAndKeepsExactlyOneFile()
     {
         var modsCopy = CreateFile(@"D:\Mods\chair.package", isInsideMods: true, directoryDepth: 2);

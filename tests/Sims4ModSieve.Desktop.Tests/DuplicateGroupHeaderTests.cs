@@ -27,7 +27,7 @@ public sealed class DuplicateGroupHeaderTests
                     new(@"D:\Mods\" + name, 100, DateTime.UnixEpoch, ["test"], ["test"], true, 2),
                 ];
                 var suggestion = new DuplicateSelectionService().Select(files);
-                return new DuplicateGroupViewModel(new DuplicateGroup($"hash-{index}", 100, DuplicateSection.Ordinary,
+                return new DuplicateGroupViewModel(new DuplicateGroup($"hash-{index}", 100, DuplicateSection.FocusCrossScope,
                     files, suggestion.KeepPath, suggestion.DeletePaths), index + 1);
             }).ToArray();
         var model = new MainWindowViewModel(new DuplicateRunService(DuplicateScanner.CreateDefault()),
@@ -54,6 +54,7 @@ public sealed class DuplicateGroupHeaderTests
                 Assert.AreEqual(group.Files.Single(file => file.IsSuggestedKeep).FileName, title.Text);
                 Assert.AreEqual(group.Title, title.ToolTip);
                 Assert.IsTrue(count.IsVisible);
+                Assert.IsFalse(Descendants<TextBlock>(header).Single(text => text.Text == group.SectionTitle).IsVisible);
                 Assert.IsTrue(title.TranslatePoint(new Point(title.ActualWidth, 0), header).X <= count.TranslatePoint(new Point(), header).X);
                 Assert.IsTrue(count.TranslatePoint(new Point(count.ActualWidth, 0), header).X <= header.ActualWidth);
 
