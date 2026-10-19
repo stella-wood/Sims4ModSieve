@@ -467,6 +467,7 @@
                                         Grid.Column="0"
                                         Width="24"
                                         Height="24"
+                                        Cursor="Hand"
                                         Command="{Binding ToggleAllGroupsCommand}"
                                         ToolTip="{Binding ExpandCollapseToolTip}"
                                         Style="{StaticResource BareIconButtonStyle}">
