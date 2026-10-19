@@ -324,8 +324,12 @@ public sealed partial class ConflictResultSession
                 {
                     var index = comparison.ContentGroups.ToList().FindIndex(group => group.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.PackagePath, file.Path)));
                     var group = index < 0 ? null : comparison.ContentGroups[index];
-                    return new ConflictTechnicalCell(file.Name, index < 0 ? "—" : $"版本 {index + 1}",
-                        file.Path + (group is null ? "" : $"\nSHA256 {group.Sha256} · 解压大小 {group.DecompressedLength} 字节"));
+                    var failed = comparison.Uncompared.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.PackagePath, file.Path));
+                    var version = group is not null ? $"版本 {index + 1}" : failed is not null ? $"未完成：{failed.Issue!.Message}" : "—";
+                    var evidence = file.Path + "\n" + file.TechnicalMetadata;
+                    if (group is not null) evidence += $"\nSHA256 {group.Sha256} · 资源解压大小 {group.DecompressedLength} 字节";
+                    if (failed is not null) evidence += $"\n{failed.Issue!.Code} · {failed.Issue.Stage} · {failed.Issue.Detail ?? failed.Issue.Message}";
+                    return new ConflictTechnicalCell(file.Name, version, evidence);
                 }).ToArray();
                 return new ConflictTechnicalEntry(key.Tgi, ResourceTypeName(key.Type), cells);
             }).ToArray();
@@ -335,9 +339,11 @@ public sealed partial class ConflictResultSession
             {
                 var index = module.ContentGroups.ToList().FindIndex(group => group.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path)));
                 var occurrence = module.Occurrences.First(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path));
-                return new ConflictTechnicalCell(file.Name, index < 0 ? "未完成" : $"版本 {index + 1}",
-                    file.Path + "\n" + occurrence.EntryName + $"\nSHA256 {occurrence.Sha256} · 解压大小 {occurrence.ContentLength} 字节"
-                    + (occurrence.Issue is null ? "" : "\n" + occurrence.Issue.Code + " · " + occurrence.Issue.Detail));
+                var version = index >= 0 ? $"版本 {index + 1}" : occurrence.Issue is { } failure ? $"未完成：{failure.Message}" : "未完成";
+                var evidence = file.Path + "\n" + file.TechnicalMetadata + "\n" + occurrence.EntryName;
+                if (occurrence.IsSuccess) evidence += $"\nSHA256 {occurrence.Sha256} · 模块解压大小 {occurrence.ContentLength} 字节";
+                if (occurrence.Issue is { } issue) evidence += $"\n{issue.Code} · {issue.Stage} · {issue.Detail ?? issue.Message}";
+                return new ConflictTechnicalCell(file.Name, version, evidence);
             }).ToArray())];
         return [];
     }

@@ -14,6 +14,9 @@ public sealed record ConflictFile(string Path, FileStamp? Stamp)
     public string Metadata => Stamp is { } stamp
         ? $"{stamp.LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm} · {DuplicateGroupViewModel.FormatBytes(stamp.Length)}"
         : "修改时间未知 · 大小未知";
+    public string TechnicalMetadata => Stamp is { } stamp
+        ? $"修改时间：{stamp.LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss} · 文件大小：{stamp.Length:N0} 字节"
+        : "修改时间未知 · 文件大小未知";
 }
 
 public sealed record ConflictCard(string Key, string Type, string Title, ConflictPairPriority Priority,
@@ -27,7 +30,7 @@ public sealed record ConflictCard(string Key, string Type, string Title, Conflic
 public sealed record ConflictTechnicalCell(string FileName, string Version, string Evidence);
 public sealed record ConflictTechnicalEntry(string Identifier, string TypeName, IReadOnlyList<ConflictTechnicalCell> Cells)
 {
-    public string CopyText => Identifier + "\t" + TypeName + "\n" + string.Join("\n", Cells.Select(cell =>
+    public string CopyText => Identifier + "\t" + TypeName + "\n\n" + string.Join("\n\n", Cells.Select(cell =>
         cell.FileName + "\t" + cell.Version + "\t" + cell.Evidence));
 }
 

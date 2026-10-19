@@ -1,6 +1,8 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
@@ -368,6 +370,111 @@ public sealed class ConflictV2SessionTests
         Assert.IsTrue(copy.CopyText.Contains(entries[0].Identifier, StringComparison.Ordinal));
         Assert.IsFalse(copy.CopyText.Contains(Resource(1).Key.Tgi, StringComparison.Ordinal));
     }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void CopiedTechnicalDetailsKeepVersionsAndScannedFileMetadata(bool scripts)
+    {
+        const string old = @"C:\Mods\Old\a.package";
+        var session = scripts
+            ? V2([], [], scripts: Scripts([Collision("pkg.mod", (A, "same"), (old, "same"), (C, "other"))]))
+            : V2([Resource(1, (A, "same"), (old, "same"), (C, "other"))], [(A, 1), (old, 1), (C, 1)]);
+        var card = session.Cards.Single();
+        var entry = session.TechnicalEntries(card).Single();
+        foreach (var file in card.Files)
+        {
+            var cell = entry.Cells.Single(cell => cell.Evidence.StartsWith(file.Path + "\n", StringComparison.Ordinal));
+            Assert.AreEqual(file.Path == C ? "版本 2" : "版本 1", cell.Version);
+            StringAssert.Contains(cell.Evidence, $"修改时间：{Stamp.LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+            StringAssert.Contains(cell.Evidence, "文件大小：10 字节");
+            StringAssert.Contains(cell.Evidence, "SHA256 " + (file.Path == C ? "other" : "same"));
+            StringAssert.Contains(cell.Evidence, (scripts ? "模块" : "资源") + "解压大小 1 字节");
+        }
+        session.ToggleExpanded(card.Key);
+        session.ToggleExpanded(Rows(session, "all").Single(row => row.IsTechnicalToggle).Key);
+        var copy = Rows(session, "all").Single(row => row.Kind == ConflictRowKind.CopyDetails);
+        StringAssert.Contains(copy.CopyText, entry.Identifier + "\t" + entry.TypeName);
+        foreach (var cell in entry.Cells) StringAssert.Contains(copy.CopyText, cell.FileName + "\t" + cell.Version + "\t" + cell.Evidence);
+        Assert.IsFalse(copy.CopyText.Contains("结论：", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void ResourceTechnicalDetailsDistinguishMissingResourcesFromFailedComparisons()
+    {
+        const string failedPath = @"C:\Mods\failed.package";
+        var first = Resource(1, (A, "same"), (B, "same"), (failedPath, null));
+        var issue = new ResourceContentIssue(ResourceContentIssueCode.Corrupt, ResourceContentStage.Decompress,
+            "资源解压失败", "invalid zlib data");
+        first = first with { Uncompared = [first.Uncompared.Single() with { Issue = issue }] };
+        var session = V2([first, Resource(2, (A, "same"), (B, "same"), (C, "same"))], [(A, 2), (B, 2), (C, 1), (failedPath, 1)]);
+        var card = session.Cards.Single();
+        var entries = session.TechnicalEntries(card);
+        var firstEntry = entries.Single(entry => entry.Identifier == first.Key.Tgi);
+        Assert.AreEqual("—", firstEntry.Cells.Single(cell => cell.FileName == "c.package").Version);
+        Assert.IsFalse(firstEntry.Cells.Single(cell => cell.FileName == "c.package").Evidence.Contains("SHA256", StringComparison.Ordinal));
+        Assert.IsFalse(card.Files.Any(file => file.Path == failedPath));
+        Assert.IsTrue(session.Problems.Single(problem => problem.Path == failedPath).Reasons.Any(reason => reason.Code == issue.Code));
+        // 原始失败证据仍可被技术投影解释，不将缺席资源误标为失败。
+        var withFailedFile = card with { Files = card.Files.Append(new ConflictFile(failedPath, Stamp)).ToArray() };
+        var failed = session.TechnicalEntries(withFailedFile).Single(entry => entry.Identifier == first.Key.Tgi).Cells.Last();
+        Assert.AreEqual("未完成：资源解压失败", failed.Version);
+        StringAssert.Contains(failed.Evidence, issue.Code);
+        StringAssert.Contains(failed.Evidence, "Decompress");
+        StringAssert.Contains(failed.Evidence, issue.Detail!);
+        Assert.IsFalse(failed.Evidence.Contains("SHA256", StringComparison.Ordinal));
+        Assert.IsFalse(failed.Evidence.Contains("资源解压大小", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public Task ScriptFailureReasonRendersAndCopyButtonUsesCompleteDetails() => WpfTestHost.RunAsync(async () =>
+    {
+        var issue = new ScriptArchiveIssue(ScriptArchiveIssueCode.EntryCorrupt, ScriptArchiveIssueStage.Entry,
+            C, "脚本条目损坏", EntryName: "pkg/mod.pyc", Detail: "CRC mismatch");
+        var collision = Collision("pkg.mod", (A, "same"), (B, "same"), (C, null));
+        collision = collision with { Uncompared = [collision.Uncompared.Single() with { Issue = issue }] };
+        var session = V2([], [], scripts: Scripts([collision], [issue]));
+        var card = session.Cards.Single();
+        session.ToggleExpanded(card.Key);
+        session.ToggleExpanded(Rows(session, "scripts").Single(row => row.IsTechnicalToggle).Key);
+        string? copied = null;
+        var model = CreateModel(text => copied = text);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "scripts");
+        var list = Descendants<ListBox>(window).Single(item => item.Name == "ConflictRowsList");
+        var technical = model.ConflictRows.Single(row => row.TechnicalEntry?.Identifier == "pkg.mod");
+        list.ScrollIntoView(technical);
+        await WpfTestHost.LayoutAsync(window);
+        var reason = Descendants<TextBlock>(list).Single(text => text.Text == "未完成：脚本条目损坏");
+        Assert.IsTrue(reason.IsVisible);
+        var evidence = reason.ToolTip!.ToString()!;
+        StringAssert.Contains(evidence, issue.Code);
+        StringAssert.Contains(evidence, issue.Detail!);
+        StringAssert.Contains(evidence, "修改时间：");
+        StringAssert.Contains(evidence, "文件大小：10 字节");
+        Assert.IsFalse(evidence.Contains("SHA256", StringComparison.Ordinal));
+        Assert.IsFalse(evidence.Contains("模块解压大小", StringComparison.Ordinal));
+        Save(window, "issue9-script-failure.png");
+        var copy = model.ConflictRows.Single(row => row.Kind == ConflictRowKind.CopyDetails);
+        list.ScrollIntoView(copy);
+        await WpfTestHost.LayoutAsync(window);
+        var button = Descendants<Button>(list).Single(item => ReferenceEquals(item.DataContext, copy));
+        var center = new Point(button.ActualWidth / 2, button.ActualHeight / 2);
+        var hit = window.InputHitTest(button.TranslatePoint(center, window)) as DependencyObject;
+        while (hit is not null && !ReferenceEquals(hit, button)) hit = System.Windows.Media.VisualTreeHelper.GetParent(hit);
+        Assert.AreSame(button, hit);
+        var invoke = (IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!;
+        invoke.Invoke();
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(copy.CopyText, copied);
+        StringAssert.Contains(copied!, "未完成：脚本条目损坏");
+        StringAssert.Contains(copied!, "SHA256 same");
+        StringAssert.Contains(copied!, C);
+        var output = Environment.GetEnvironmentVariable("SIMS4_CONFLICT_REVIEW_DIR");
+        if (!string.IsNullOrWhiteSpace(output)) System.IO.File.WriteAllText(System.IO.Path.Combine(output, "issue9-copied-details.txt"), copied);
+    });
 
     [TestMethod]
     public void CachedDeletionAndPartialRestoreRebuildGroupsWithoutReadingFiles()
