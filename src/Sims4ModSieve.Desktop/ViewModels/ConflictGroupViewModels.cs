@@ -27,11 +27,40 @@ public sealed record ConflictCard(string Key, string Type, string Title, Conflic
     public IReadOnlyList<ResourceKey> ResourceKeys => Package?.ResourceKeys ?? [];
 }
 
-public sealed record ConflictTechnicalCell(string FileName, string Version, string Evidence);
+public sealed record ConflictTechnicalCell(string FileName, string Version, string Evidence, ConflictTechnicalTableState? Table = null);
 public sealed record ConflictTechnicalEntry(string Identifier, string TypeName, IReadOnlyList<ConflictTechnicalCell> Cells)
 {
+    public string TableIdentifier => Identifier.Count(character => character == ':') == 2
+        ? Identifier.Insert(Identifier.LastIndexOf(':') + 1, "\n") : Identifier;
     public string CopyText => Identifier + "\t" + TypeName + "\n\n" + string.Join("\n\n", Cells.Select(cell =>
         cell.FileName + "\t" + cell.Version + "\t" + cell.Evidence));
+}
+
+public sealed class ConflictTechnicalTableState(int fileCount) : ObservableObject
+{
+    public const double ColumnWidth = 96;
+    private double horizontalOffset;
+    private double viewportWidth;
+
+    public double HorizontalOffset
+    {
+        get => horizontalOffset;
+        set => SetProperty(ref horizontalOffset, value);
+    }
+
+    public double ViewportWidth
+    {
+        get => viewportWidth;
+        set
+        {
+            if (!SetProperty(ref viewportWidth, value)) return;
+            OnPropertyChanged(nameof(ScrollableWidth));
+            OnPropertyChanged(nameof(CellWidth));
+        }
+    }
+
+    public double CellWidth => Math.Max(ColumnWidth, ViewportWidth / fileCount);
+    public double ScrollableWidth => Math.Max(0, fileCount * ColumnWidth - ViewportWidth);
 }
 
 public sealed record ConflictGroupLink(string Key, int GroupIndex)

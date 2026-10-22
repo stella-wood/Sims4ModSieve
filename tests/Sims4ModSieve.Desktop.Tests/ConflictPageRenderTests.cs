@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -23,6 +25,82 @@ public sealed class ConflictPageRenderTests
 
     [DllImport("user32.dll")]
     private static extern bool SetCursorPos(int x, int y);
+
+    [TestMethod]
+    public Task IncompleteReasonsSitBesideGroupNumbersAboveFilesAndSupportActions() => WpfTestHost.RunAsync(async () =>
+    {
+        var package = @"C:\Mods\人物（男）\0274\妆容皮肤\brovi_cheta_s_sima_kotika_packageHQ.package";
+        var script = @"C:\Mods\未完成脚本.ts4script";
+        var session = Session([Resource(1, (package, null))], [(package, 1)],
+            Scripts(issues: [new(ScriptArchiveIssueCode.NotZip, ScriptArchiveIssueStage.Structure, script, "ignored")]));
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
+        {
+            window.Width = width;
+            window.Height = height;
+            await WpfTestHost.LayoutAsync(window);
+            var list = Descendants<ListBox>(window).Single(list => list.Name == "ConflictRowsList");
+            var headers = model.ConflictRows.Where(row => row.IsCardStart).ToArray();
+            Assert.AreEqual(2, headers.Length);
+            Assert.IsFalse(Descendants<Button>(list).Any(button => button.Name == "ExpandButton" && button.IsVisible));
+            foreach (var header in headers)
+            {
+                Assert.IsFalse(header.IsExpandable);
+                var file = model.ConflictRows.Single(row => row.OwnerKey == header.Key && row.Kind == ConflictRowKind.File);
+                var title = Descendants<TextBlock>(list).Single(text => ReferenceEquals(text.DataContext, file) && text.Name == "Title");
+                var number = Descendants<TextBlock>(list).Single(text => ReferenceEquals(text.DataContext, header) && text.Name == "GroupLabel");
+                var reason = Descendants<TextBlock>(list).Single(text => ReferenceEquals(text.DataContext, header) && text.Name == "ProblemReason");
+                Assert.IsTrue(number.IsVisible);
+                Assert.AreEqual(header.GroupLabel, number.Text);
+                Assert.AreEqual(header.Annotation, reason.Text);
+                var numberOrigin = number.TranslatePoint(new Point(), window);
+                var reasonOrigin = reason.TranslatePoint(new Point(), window);
+                Assert.IsTrue(numberOrigin.X + number.ActualWidth <= reasonOrigin.X, "原因应在组号右侧");
+                Assert.IsTrue(numberOrigin.Y < reasonOrigin.Y + reason.ActualHeight && reasonOrigin.Y < numberOrigin.Y + number.ActualHeight,
+                    "组号与原因应位于同一行");
+                Assert.IsTrue(reasonOrigin.Y + reason.ActualHeight <= title.TranslatePoint(new Point(), window).Y, "文件应在原因下方");
+                Assert.AreEqual(1, Descendants<TextBlock>(list).Count(text => text.IsVisible && text.Text == header.Annotation));
+                Assert.AreEqual(1, Descendants<TextBlock>(list).Count(text => text.IsVisible && text.Text == file.Title));
+                foreach (var action in Descendants<Button>(list).Where(button => ReferenceEquals(button.DataContext, file) && button.IsVisible && button.IsEnabled))
+                    foreach (var fraction in new[] { 0.1, 0.5, 0.9 })
+                        Assert.IsTrue(IsInside(action.InputHitTest(new Point(action.ActualWidth * fraction, action.ActualHeight * fraction)) as DependencyObject, action));
+            }
+            AssertNoTechnicalValues(window);
+            Save(window, $"incomplete-reasons-above-files-{width}x{height}.png");
+            var detailRow = model.ConflictRows.First(row => row.IsTechnicalToggle);
+            var details = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, detailRow));
+            for (var click = 0; click < 2; click++)
+            {
+                ((IInvokeProvider)new ButtonAutomationPeer(details).GetPattern(PatternInterface.Invoke)!).Invoke();
+                await WpfTestHost.LayoutAsync(window);
+                await model.ConflictRowsRefreshTask;
+                await WpfTestHost.LayoutAsync(window);
+                Assert.AreEqual(click == 0, model.ConflictRows.Single(row => row.Key == detailRow.Key).IsExpanded);
+                Assert.AreEqual(click == 0, model.ConflictRows.Any(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable));
+                if (click == 0) Save(window, $"incomplete-files-technical-{width}x{height}.png");
+                details = Descendants<Button>(list).Single(button => button.DataContext is ConflictResultRow row && row.Key == detailRow.Key);
+            }
+        }
+        var target = model.ConflictRows.First(row => row.IsCardStart);
+        var ignore = Descendants<Button>(window).Single(button => button.DataContext is ConflictResultRow row
+            && row.OwnerKey == target.Key && button.Name == "FileIgnoreButton");
+        ((IInvokeProvider)new ButtonAutomationPeer(ignore).GetPattern(PatternInterface.Invoke)!).Invoke();
+        await WpfTestHost.LayoutAsync(window);
+        await model.ConflictRowsRefreshTask;
+        Assert.IsFalse(model.ConflictRows.Any(row => row.OwnerKey == target.Key));
+        model.ShowIgnoredConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        var restored = model.ConflictRows.Single(row => row.Key == target.Key);
+        Assert.IsTrue(restored.IsIgnored);
+        Assert.AreEqual(target.GroupIndex, restored.GroupIndex);
+        model.IgnoreConflictCommand.Execute(restored);
+        await model.ConflictRowsRefreshTask;
+        Assert.IsFalse(model.ConflictRows.Single(row => row.Key == target.Key).IsIgnored);
+    });
 
     [TestMethod]
     public Task ResourceAnnotationHoverShowsCountsWithoutOpeningFileRelationships() => WpfTestHost.RunAsync(async () =>

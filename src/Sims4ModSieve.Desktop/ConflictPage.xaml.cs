@@ -1,6 +1,9 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Sims4ModSieve.Desktop.ViewModels;
 
@@ -30,6 +33,61 @@ public partial class ConflictPage : UserControl
         if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is ListBoxItem item)
             item.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.First));
     }, DispatcherPriority.Loaded);
+
+    private void TechnicalColumns_Loaded(object sender, RoutedEventArgs e) => SubscribeTechnicalColumns((ScrollViewer)sender);
+
+    private void TechnicalColumns_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        var scroll = (ScrollViewer)sender;
+        TechnicalColumns_Unloaded(scroll, new RoutedEventArgs());
+        if (scroll.IsLoaded) SubscribeTechnicalColumns(scroll);
+    }
+
+    private void SubscribeTechnicalColumns(ScrollViewer scroll)
+    {
+        TechnicalColumns_Unloaded(scroll, new RoutedEventArgs());
+        if (scroll.DataContext is not ConflictResultRow { TechnicalTable: { } table }) return;
+        PropertyChangedEventHandler handler = (_, args) =>
+        {
+            if (args.PropertyName == nameof(ConflictTechnicalTableState.HorizontalOffset))
+                scroll.ScrollToHorizontalOffset(table.HorizontalOffset);
+        };
+        scroll.Tag = (table, handler);
+        table.PropertyChanged += handler;
+        scroll.ScrollToHorizontalOffset(table.HorizontalOffset);
+    }
+
+    private void TechnicalColumns_Unloaded(object sender, RoutedEventArgs e)
+    {
+        var scroll = (ScrollViewer)sender;
+        if (scroll.Tag is ValueTuple<ConflictTechnicalTableState, PropertyChangedEventHandler> subscription)
+            subscription.Item1.PropertyChanged -= subscription.Item2;
+        scroll.Tag = null;
+    }
+
+    private void TechnicalColumns_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (!ReferenceEquals(sender, e.OriginalSource)) return;
+        if (((ScrollViewer)sender).DataContext is not ConflictResultRow { TechnicalTable: { } table }) return;
+        if (e.ViewportWidth > 0) table.ViewportWidth = e.ViewportWidth;
+        if (e.HorizontalChange != 0) table.HorizontalOffset = e.HorizontalOffset;
+    }
+
+    private void TechnicalColumns_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        // 横向 ScrollViewer 也会吞掉上下滚轮，交给外层结果列表按系统滚动设置处理。
+        for (var parent = VisualTreeHelper.GetParent((ScrollViewer)sender); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (parent is not ScrollViewer outer) continue;
+            e.Handled = true;
+            outer.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+            {
+                RoutedEvent = Mouse.MouseWheelEvent,
+                Source = outer
+            });
+            return;
+        }
+    }
 
     private void ConflictOverviewViewport_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {

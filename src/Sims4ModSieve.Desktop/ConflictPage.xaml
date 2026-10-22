@@ -207,6 +207,17 @@
                 <DataTrigger Binding="{Binding IsIgnored}" Value="True"><Setter TargetName="Title" Property="FontWeight" Value="Normal" /><Setter TargetName="GroupLabel" Property="FontWeight" Value="Normal" /></DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+        <DataTemplate x:Key="ConflictProblemHeaderTemplate">
+            <Grid Margin="6,6,0,4">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Ellipse Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                <TextBlock x:Name="GroupLabel" Grid.Column="1" Text="{Binding GroupLabel}" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,0,9,0" VerticalAlignment="Center" />
+                <TextBlock x:Name="ProblemReason" Grid.Column="2" Text="{Binding Annotation}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" VerticalAlignment="Center" />
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsIgnored}" Value="True"><Setter TargetName="GroupLabel" Property="FontWeight" Value="Normal" /></DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
         <DataTemplate x:Key="ConflictFileTemplate">
             <Border x:Name="FileSurface" Background="#F3F1ED" Margin="20,0,0,0" Padding="38,10,10,10">
                 <Grid>
@@ -236,7 +247,7 @@
                         <Button Style="{StaticResource ConflictRowActionStyle}" ToolTip="打开所在文件夹" AutomationProperties.Name="打开所在文件夹" Command="{Binding DataContext.OpenConflictFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                             <Path Width="16" Height="16" IsHitTestVisible="False" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Data="M1,4 L6,4 L8,6 L15,6 L15,14 L1,14 Z M1,6 L1,2 L6,2 L8,4 L14,4 L14,6" />
                         </Button>
-                        <Button Style="{StaticResource ConflictRowActionStyle}" ToolTip="忽略文件（仅本组）" AutomationProperties.Name="忽略文件（仅本组）" Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
+                        <Button x:Name="FileIgnoreButton" Style="{StaticResource ConflictRowActionStyle}" ToolTip="忽略文件（仅本组）" AutomationProperties.Name="忽略文件（仅本组）" Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
                         <Button Style="{StaticResource ConflictRowActionStyle}" IsEnabled="{Binding File.HasStamp}" ToolTip="移动到回收站" AutomationProperties.Name="移动到回收站" Command="{Binding DataContext.DeleteConflictFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                             <Path Width="16" Height="16" IsHitTestVisible="False" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Data="M2,4 L14,4 M6,4 L6,2 L10,2 L10,4 M4,4 L5,14 L11,14 L12,4 M7,6 L7,12 M9,6 L9,12" />
                         </Button>
@@ -244,13 +255,14 @@
                 </Grid>
             </Border>
             <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsProblemFileContent}" Value="True"><Setter TargetName="FileSurface" Property="Margin" Value="0" /><Setter TargetName="FileSurface" Property="Padding" Value="38,4,10,10" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsBundle}" Value="True"><Setter TargetName="FileSurface" Property="Background" Value="#E5E0D9" /><Setter TargetName="FileSurface" Property="Margin" Value="20,0,0,12" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsIgnored}" Value="True"><Setter TargetName="Title" Property="FontWeight" Value="Normal" /></DataTrigger>
                 <DataTrigger Binding="{Binding AnnotationTooltip}" Value="{x:Null}"><Setter TargetName="AnnotationSurface" Property="ToolTipService.IsEnabled" Value="False" /></DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="ConflictTextTemplate">
-            <Grid Margin="26,6,0,7">
+            <Grid x:Name="TextLayout" Margin="26,6,0,7">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                 <TextBlock x:Name="Title" Grid.ColumnSpan="2" Text="{Binding Title}" FontSize="11" FontWeight="Normal" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" ToolTip="{Binding Tooltip}" />
                 <Button x:Name="DuplicateNavigation" Grid.Column="1" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Center" Style="{StaticResource EntranceActionStyle}" Padding="0" Foreground="#A892C5" FontSize="11"
@@ -259,6 +271,7 @@
                 </Button>
             </Grid>
             <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsProblemFileContent}" Value="True"><Setter TargetName="TextLayout" Property="Margin" Value="6,6,0,7" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsDuplicateExplanation}" Value="True"><Setter TargetName="Title" Property="Grid.ColumnSpan" Value="1" /><Setter TargetName="DuplicateNavigation" Property="Visibility" Value="Visible" /></DataTrigger>
                 <DataTrigger Binding="{Binding Tooltip}" Value=""><Setter TargetName="Title" Property="ToolTip" Value="{x:Null}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Technical"><Setter TargetName="Title" Property="FontSize" Value="10" /></DataTrigger>
@@ -270,13 +283,20 @@
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalTableTemplate">
             <Grid Margin="26,5,0,5" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="3*" /></Grid.ColumnDefinitions>
-                <TextBlock x:Name="Identifier" Text="{Binding TechnicalEntry.Identifier}" TextWrapping="Wrap" Margin="0,0,8,0" />
+                <Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="80" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock x:Name="Identifier" Text="{Binding TechnicalEntry.TableIdentifier}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,0,8,0" />
                 <TextBlock x:Name="TypeName" Grid.Column="1" Text="{Binding TechnicalEntry.TypeName}" TextWrapping="Wrap" Margin="0,0,8,0" />
-                <ItemsControl Grid.Column="2" ItemsSource="{Binding TechnicalEntry.Cells}">
-                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl Grid.Column="2" ItemsSource="{Binding TechnicalEntry.Cells}" FontSize="10" Foreground="{StaticResource MutedBrush}" FontWeight="Normal"
+                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0">
+                    <ItemsControl.Template><ControlTemplate TargetType="ItemsControl">
+                        <ScrollViewer x:Name="TechnicalColumnsScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" CanContentScroll="True" Focusable="False"
+                                      Loaded="TechnicalColumns_Loaded" Unloaded="TechnicalColumns_Unloaded" DataContextChanged="TechnicalColumns_DataContextChanged" ScrollChanged="TechnicalColumns_ScrollChanged" PreviewMouseWheel="TechnicalColumns_PreviewMouseWheel">
+                            <ItemsPresenter />
+                        </ScrollViewer>
+                    </ControlTemplate></ItemsControl.Template>
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate><DataTemplate>
-                        <StackPanel Margin="0,0,6,0"><TextBlock x:Name="FileName" Text="{Binding FileName}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" /><TextBlock x:Name="Version" Text="{Binding Version}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" /></StackPanel>
+                        <Border Width="{Binding Table.CellWidth, Mode=OneWay}"><StackPanel Margin="0,0,12,0"><TextBlock x:Name="FileName" Text="{Binding FileName}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" /><TextBlock x:Name="Version" Text="{Binding Version}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" /></StackPanel></Border>
                         <DataTemplate.Triggers><DataTrigger Binding="{Binding FileName}" Value=""><Setter TargetName="FileName" Property="Visibility" Value="Collapsed" /></DataTrigger><DataTrigger Binding="{Binding Version}" Value=""><Setter TargetName="Version" Property="Visibility" Value="Collapsed" /></DataTrigger></DataTemplate.Triggers>
                     </DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
@@ -284,6 +304,48 @@
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding Kind}" Value="TechnicalHeader"><Setter TargetName="Identifier" Property="Text" Value="TGI／模块" /><Setter TargetName="TypeName" Property="Text" Value="种类" /></DataTrigger>
             </DataTemplate.Triggers>
+        </DataTemplate>
+        <DataTemplate x:Key="ConflictTechnicalListHeaderTemplate">
+            <StackPanel Margin="26,16,0,8" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
+                <TextBlock x:Name="IdentifierLabel" Text="TGI" />
+                <TextBlock Text="{Binding TechnicalEntry.Identifier}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                <TextBlock Margin="0,6,0,18"><Run Text="种类  " /><Run Text="{Binding TechnicalEntry.TypeName, Mode=OneWay}" /></TextBlock>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions><TextBlock Text="文件" /><TextBlock Grid.Column="1" Text="资源版本" /></Grid>
+            </StackPanel>
+            <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalEntry.TypeName}" Value="脚本模块"><Setter TargetName="IdentifierLabel" Property="Text" Value="模块" /></DataTrigger></DataTemplate.Triggers>
+        </DataTemplate>
+        <DataTemplate x:Key="ConflictTechnicalListFileTemplate">
+            <Grid Margin="26,0,0,8" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
+                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding TechnicalEntry.Cells[0].FileName}" TextTrimming="CharacterEllipsis" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" Margin="0,0,20,0" />
+                <TextBlock Grid.Column="1" Text="{Binding TechnicalEntry.Cells[0].Version}" TextWrapping="Wrap" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" />
+            </Grid>
+        </DataTemplate>
+        <Style x:Key="ConflictTechnicalScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Height" Value="12" /><Setter Property="SmallChange" Value="16" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+                <Grid Background="Transparent">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="12" /><ColumnDefinition /><ColumnDefinition Width="12" /></Grid.ColumnDefinitions>
+                    <RepeatButton x:Name="LeftArrow" Focusable="False" Command="{x:Static ScrollBar.LineLeftCommand}" CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" AutomationProperties.Name="向左滚动文件列">
+                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"><Path Data="M4,0 L1,3 L4,6" Stroke="#8E857D" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="5" Height="7" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" /></Border></ControlTemplate></RepeatButton.Template>
+                    </RepeatButton>
+                    <Border Grid.Column="1" Height="6" VerticalAlignment="Center" Background="#F0EDE8" CornerRadius="2" />
+                    <Track x:Name="PART_Track" Grid.Column="1" Orientation="Horizontal" IsDirectionReversed="False" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                        <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageLeftCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+                        <Track.Thumb><Thumb x:Name="ScrollThumb" Focusable="False"><Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Border Height="6" VerticalAlignment="Center" Background="#AAA198" CornerRadius="2" /></Grid></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                        <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageRightCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+                    </Track>
+                    <RepeatButton x:Name="RightArrow" Grid.Column="2" Focusable="False" Command="{x:Static ScrollBar.LineRightCommand}" CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" AutomationProperties.Name="向右滚动文件列">
+                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"><Path Data="M1,0 L4,3 L1,6" Stroke="#8E857D" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="5" Height="7" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False" /></Border></ControlTemplate></RepeatButton.Template>
+                    </RepeatButton>
+                </Grid>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <DataTemplate x:Key="ConflictTechnicalScrollTemplate">
+            <ScrollBar x:Name="TechnicalTableScrollBar" Margin="26,8,0,8" Orientation="Horizontal" Style="{StaticResource ConflictTechnicalScrollBarStyle}" Minimum="0"
+                       Maximum="{Binding TechnicalTable.ScrollableWidth, Mode=OneWay}" ViewportSize="{Binding TechnicalTable.ViewportWidth, Mode=OneWay}" Value="{Binding TechnicalTable.HorizontalOffset, Mode=TwoWay}" AutomationProperties.Name="横向滚动技术详情" />
+            <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalTable.ScrollableWidth}" Value="0"><Setter TargetName="TechnicalTableScrollBar" Property="Visibility" Value="Collapsed" /></DataTrigger></DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="ConflictCopyTemplate">
             <Button Content="复制详情" Style="{StaticResource ConflictTechnicalButtonStyle}" Margin="26,4,0,6" HorizontalAlignment="Right"
@@ -295,7 +357,7 @@
         </DataTemplate>
         <DataTemplate x:Key="ConflictRowTemplate">
             <Border x:Name="Row" Background="{StaticResource SurfaceBrush}">
-                <Grid>
+                <Grid x:Name="RowContent">
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <ContentControl Content="{Binding}" HorizontalContentAlignment="Stretch">
                         <ContentControl.Style><Style TargetType="ContentControl">
@@ -303,8 +365,12 @@
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsCardStart}" Value="True"><Setter Property="ContentTemplate" Value="{StaticResource ConflictHeaderTemplate}" /></DataTrigger>
                                 <DataTrigger Binding="{Binding Kind}" Value="File"><Setter Property="ContentTemplate" Value="{StaticResource ConflictFileTemplate}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding Kind}" Value="Problem"><Setter Property="ContentTemplate" Value="{StaticResource ConflictProblemHeaderTemplate}" /></DataTrigger>
                                 <DataTrigger Binding="{Binding Kind}" Value="Technical"><Setter Property="ContentTemplate" Value="{StaticResource ConflictTechnicalTableTemplate}" /></DataTrigger>
                                 <DataTrigger Binding="{Binding Kind}" Value="TechnicalHeader"><Setter Property="ContentTemplate" Value="{StaticResource ConflictTechnicalTableTemplate}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding Kind}" Value="TechnicalListHeader"><Setter Property="ContentTemplate" Value="{StaticResource ConflictTechnicalListHeaderTemplate}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding Kind}" Value="TechnicalListFile"><Setter Property="ContentTemplate" Value="{StaticResource ConflictTechnicalListFileTemplate}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding Kind}" Value="TechnicalScroll"><Setter Property="ContentTemplate" Value="{StaticResource ConflictTechnicalScrollTemplate}" /></DataTrigger>
                                 <DataTrigger Binding="{Binding IsTechnicalToggle}" Value="True"><Setter Property="ContentTemplate" Value="{StaticResource ConflictTechnicalToggleTemplate}" /></DataTrigger>
                                 <DataTrigger Binding="{Binding Kind}" Value="CopyDetails"><Setter Property="ContentTemplate" Value="{StaticResource ConflictCopyTemplate}" /></DataTrigger>
                                 <DataTrigger Binding="{Binding Kind}" Value="GroupReference"><Setter Property="ContentTemplate" Value="{StaticResource ConflictReferenceTemplate}" /></DataTrigger>
@@ -316,6 +382,7 @@
                 </Grid>
             </Border>
             <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsProblemFileContent}" Value="True"><Setter TargetName="RowContent" Property="Background" Value="#F3F1ED" /><Setter TargetName="RowContent" Property="Margin" Value="20,0,0,0" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsIgnored}" Value="True"><Setter TargetName="Row" Property="Opacity" Value="0.75" /></DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>

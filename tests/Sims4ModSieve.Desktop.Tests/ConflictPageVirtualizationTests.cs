@@ -13,7 +13,7 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ConflictPageVirtualizationTests
 {
     [TestMethod]
-    public Task ExpandedProblemsRangesAndSourcesStayBoundedAndSurviveRecycling() => WpfTestHost.RunAsync(async () =>
+    public Task StandaloneProblemsRangesAndSourcesStayBoundedAndSurviveRecycling() => WpfTestHost.RunAsync(async () =>
     {
         var issues = Enumerable.Range(0, 500).Select(index => new ScriptArchiveIssue(ScriptArchiveIssueCode.EntryCorrupt,
             ScriptArchiveIssueStage.Entry, $@"C:\Mods\file-{index:D4}.ts4script", "ignored", EntryName: "initial.pyc"))
@@ -32,26 +32,29 @@ public sealed class ConflictPageVirtualizationTests
         window.Height = 640;
         await SetSessionAsync(model, session, "problems");
         var list = Descendants<ListBox>(window).Single(list => list.Name == "ConflictRowsList");
-        Assert.AreEqual(1000, model.ConflictRows.Count);
-        await CheckScrollAsync(window, list, "未完成父行");
-        model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
-        await model.ConflictRowsRefreshTask;
-        Assert.AreEqual(11003, model.ConflictRows.Count);
+        Assert.AreEqual(1000, model.ConflictRows.Count(row => row.IsCardStart));
+        Assert.AreEqual(12000, model.ConflictRows.Count);
+        Assert.IsFalse(model.ConflictRows[0].IsExpandable);
         AssertOrdinaryRows(model.ConflictRows);
-        await CheckScrollAsync(window, list, "未完成展开");
-        Assert.IsTrue(model.ConflictRows[0].IsExpanded);
+        await CheckScrollAsync(window, list, "未完成文件与原因");
+        var details = model.ConflictRows.First(row => row.IsTechnicalToggle);
+        model.ToggleConflictExpandedCommand.Execute(details);
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(22002, model.ConflictRows.Count);
+        await CheckScrollAsync(window, list, "未完成技术详情展开");
+        Assert.IsTrue(model.ConflictRows.Single(row => row.Key == details.Key).IsExpanded);
         Assert.AreEqual("file-0000.ts4script", ((ConflictResultRow)((ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0)).DataContext).Title);
         var range = model.ConflictRows.First(row => row.Kind == ConflictRowKind.RangeProblem);
         model.ToggleConflictExpandedCommand.Execute(range);
         await model.ConflictRowsRefreshTask;
-        Assert.AreEqual(11005, model.ConflictRows.Count);
+        Assert.AreEqual(22004, model.ConflictRows.Count);
         await CheckScrollAsync(window, list, "范围问题");
         var sources = Descendants<ListBox>(window).Single(list => list.Name == "ConflictSourcesList");
         Assert.AreEqual(501, sources.Items.Count);
         await CheckScrollAsync(window, sources, "来源");
-        model.ToggleConflictExpandedCommand.Execute(model.ConflictRows[0]);
+        model.ToggleConflictExpandedCommand.Execute(details);
         await model.ConflictRowsRefreshTask;
-        Assert.AreEqual(1002, model.ConflictRows.Count);
+        Assert.AreEqual(12002, model.ConflictRows.Count);
         await CheckScrollAsync(window, list, "收起后");
     });
 
@@ -162,11 +165,11 @@ public sealed class ConflictPageVirtualizationTests
         await CheckScrollAsync(window, list, "千份文件技术详情展开");
         model.SelectConflictViewCommand.Execute("problems");
         await model.ConflictRowsRefreshTask;
-        var problem = model.ConflictRows.Single(row => row.Tooltip == A);
+        var problem = model.ConflictRows.Single(row => row.IsCardStart && row.Tooltip == A);
         model.ToggleConflictExpandedCommand.Execute(problem);
         await model.ConflictRowsRefreshTask;
         AssertOrdinaryRows(model.ConflictRows);
-        Assert.AreEqual(1000, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.Explanation));
+        Assert.AreEqual(1000, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.Explanation || row.Kind == ConflictRowKind.Problem && row.HasAnnotation));
         await CheckScrollAsync(window, list, "千条普通原因");
         await ExpandAsync(model, ConflictRowKind.Technical);
         await CheckScrollAsync(window, list, "千条技术原因");

@@ -6,7 +6,7 @@ using Sims4ModSieve.Core.Scripts;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
 
-public enum ConflictRowKind { PackagePair, ScriptPair, Resource, Module, Content, File, Technical, Explanation, Problem, RangeProblem, TechnicalHeader, CopyDetails, Duplicate, GroupReference }
+public enum ConflictRowKind { PackagePair, ScriptPair, Resource, Module, Content, File, Technical, Explanation, Problem, RangeProblem, TechnicalHeader, CopyDetails, Duplicate, GroupReference, TechnicalListHeader, TechnicalListFile, TechnicalScroll }
 
 public sealed record ConflictResultRow(
     string Key, ConflictRowKind Kind, int Depth, string Title,
@@ -17,7 +17,7 @@ public sealed record ConflictResultRow(
     bool IsIgnored = false, bool IsBundle = false,
     ConflictGroupLink? DuplicateLink = null, int CopyCount = 0,
     ConflictTechnicalEntry? TechnicalEntry = null, string CopyText = "", ConflictGroupLink? RelatedLink = null,
-    string? AnnotationTooltip = null)
+    string? AnnotationTooltip = null, ConflictTechnicalTableState? TechnicalTable = null)
 {
     public string StateText => Priority switch
     {
@@ -30,6 +30,8 @@ public sealed record ConflictResultRow(
     public bool HasSecondTitle => SecondTitle.Length > 0;
     public bool HasDetail => Detail.Length > 0;
     public bool IsCardStart => Depth == 0;
+    public bool IsProblemFileContent => OwnerKey.StartsWith("problem/", StringComparison.Ordinal)
+        && Kind is ConflictRowKind.Problem or ConflictRowKind.Explanation or ConflictRowKind.File;
     public bool IsTechnicalToggle => Kind == ConflictRowKind.Technical && IsExpandable;
     public bool HasAnnotation => Annotation.Length > 0;
     public bool HasTag => Tag.Length > 0;
@@ -248,14 +250,6 @@ public sealed partial class ConflictResultSession
             var index = 0;
             foreach (var value in values()) Technical(key + "/technical" + index++, value);
         }
-        void File(string owner, string path, FileStamp? stamp, string? issue = null)
-        {
-            var metadata = stamp is { } value
-                ? $"{value.LastWriteTimeUtc.ToLocalTime():yyyy-MM-dd HH:mm} · {DuplicateGroupViewModel.FormatBytes(value.Length)}"
-                : "修改时间未知 · 大小未知";
-            Add(new(owner + "/file" + Identity(path.ToUpperInvariant()), ConflictRowKind.File, 1,
-                Path.GetFileName(path), Path.GetDirectoryName(path) + "\n" + metadata + (issue is null ? "" : "\n" + issue), Tooltip: path, OwnerKey: owner, File: new(path, stamp)));
-        }
         void Explanation(string owner, string text) => Add(new(owner + "/explanation", ConflictRowKind.Explanation, 1, text));
         void Card(ConflictPairPriority priority, string key, bool included, Action build) => cards.Add((priority, key, included, build));
 
@@ -281,14 +275,18 @@ public sealed partial class ConflictResultSession
             var key = "problem" + Identity(problem.Path.ToUpperInvariant());
             Card(ConflictPairPriority.Incomplete, key, view is "all" or "problems" || view == (isScript ? "scripts" : "resources"), () =>
             {
-                if (!Add(new(key, ConflictRowKind.Problem, 0, problem.Name, Tooltip: problem.Path,
-                    Priority: ConflictPairPriority.Incomplete, IsExpandable: true))) return;
-                File(key, problem.Path, PackageReport?.ResourceInventories.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, problem.Path))?.ScannedStamp);
-                foreach (var (reason, index) in reasons.Select((reason, index) => (reason, index)))
+                var file = new ConflictFile(problem.Path, PackageReport?.ResourceInventories
+                    .FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, problem.Path))?.ScannedStamp);
+                var reasonTexts = reasons.Select(reason => ProblemEntryText(reason.Category,
+                    reason.ResourceType is { } type ? GetResourceTypeDisplayName(type) : reason.EntryName)).Distinct(StringComparer.Ordinal).ToArray();
+                Add(new(key, ConflictRowKind.Problem, 0, problem.Name, Tooltip: problem.Path,
+                    Priority: ConflictPairPriority.Incomplete, Annotation: reasonTexts[0]));
+                foreach (var (text, index) in reasonTexts.Select((text, index) => (text, index)).Skip(1))
                 {
-                    var subject = reason.ResourceType is { } type ? GetResourceTypeDisplayName(type) : reason.EntryName;
-                    Add(new(key + "/reason" + index, ConflictRowKind.Explanation, 1, ProblemEntryText(reason.Category, subject)));
+                    Add(new(key + "/reason" + index, ConflictRowKind.Explanation, 1, text));
                 }
+                Add(new(key + "/file" + Identity(problem.Path.ToUpperInvariant()), ConflictRowKind.File, 1, problem.Name,
+                    problem.Path + "\n" + file.Metadata, Tooltip: problem.Path, File: file));
                 Detail(key, () => new[] { problem.Path }.Concat(reasons.Select(reason =>
                     ProblemReasonText(reason.Code, reason.Detail, reason.Category, reason.ResourceType, reason.EntryName))));
             });

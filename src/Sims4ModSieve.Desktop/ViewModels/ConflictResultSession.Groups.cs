@@ -55,8 +55,10 @@ public sealed partial class ConflictResultSession
 
     public void ToggleIgnored(ConflictResultRow row)
     {
-        var set = row.File is null ? ignoredGroups : ignoredFiles;
-        var key = row.File is null ? row.Key : FileKey(row.OwnerKey, row.File.Path);
+        var ignoreWholeCard = row.File is null || row.OwnerKey.StartsWith("problem/", StringComparison.Ordinal);
+        var set = ignoreWholeCard ? ignoredGroups : ignoredFiles;
+        var groupKey = row.IsCardStart ? row.Key : row.OwnerKey;
+        var key = ignoreWholeCard ? groupKey : FileKey(row.OwnerKey, row.File!.Path);
         if (!set.Remove(key)) set.Add(key);
     }
 
@@ -272,20 +274,36 @@ public sealed partial class ConflictResultSession
                 var copyText = card.Title + " · 第 " + card.GroupIndex + " 组\n" + string.Join("\n\n", entries.Select(entry => entry.CopyText))
                     + string.Concat(references.Select(other => $"\n相关依据也见第 {other.GroupIndex} 组"));
                 var index = 0;
-                // 文件很多时按列分段，分段仍是同一虚拟化列表的行，避免一次创建所有版本控件。
-                for (var start = 0; start < card.Files.Count; start += 6)
+                if (entries.Count <= 5 && card.Files.Count >= 15)
                 {
-                    var count = Math.Min(6, card.Files.Count - start);
-                    var headers = card.Files.Skip(start).Take(count).Select(file => new ConflictTechnicalCell(file.Name, "", file.Path)).ToArray();
-                    add(new(technicalKey + "/header" + start, ConflictRowKind.TechnicalHeader, 1, "TGI／模块", OwnerKey: card.Key,
-                        IsIgnored: ignored, TechnicalEntry: new("TGI／模块", "种类", headers)));
                     foreach (var entry in entries)
                     {
                         token.ThrowIfCancellationRequested();
-                        var part = entry with { Cells = entry.Cells.Skip(start).Take(count).Select(cell => cell with { FileName = "" }).ToArray() };
-                        add(new(technicalKey + "/value" + index++, ConflictRowKind.Technical, 1, part.Identifier,
-                            Tooltip: part.CopyText, OwnerKey: card.Key, TechnicalEntry: part, IsIgnored: ignored));
+                        add(new(technicalKey + "/listheader" + index++, ConflictRowKind.TechnicalListHeader, 1, entry.Identifier,
+                            OwnerKey: card.Key, TechnicalEntry: entry, IsIgnored: ignored));
+                        foreach (var cell in entry.Cells)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            add(new(technicalKey + "/listfile" + index++, ConflictRowKind.TechnicalListFile, 1, cell.FileName,
+                                OwnerKey: card.Key, TechnicalEntry: entry with { Cells = [cell] }, IsIgnored: ignored));
+                        }
                     }
+                }
+                else
+                {
+                    var table = new ConflictTechnicalTableState(card.Files.Count);
+                    var headers = card.Files.Select(file => new ConflictTechnicalCell(file.Name, "", file.Path, table)).ToArray();
+                    add(new(technicalKey + "/header", ConflictRowKind.TechnicalHeader, 1, "TGI／模块", OwnerKey: card.Key,
+                        IsIgnored: ignored, TechnicalEntry: new("TGI／模块", "种类", headers), TechnicalTable: table));
+                    foreach (var entry in entries)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        add(new(technicalKey + "/value" + index++, ConflictRowKind.Technical, 1, entry.Identifier,
+                            OwnerKey: card.Key, TechnicalEntry: entry with { Cells = entry.Cells.Select(cell => cell with { FileName = "", Table = table }).ToArray() },
+                            IsIgnored: ignored, TechnicalTable: table));
+                    }
+                    add(new(technicalKey + "/scroll", ConflictRowKind.TechnicalScroll, 1, "横向滚动技术详情",
+                        OwnerKey: card.Key, IsIgnored: ignored, TechnicalTable: table));
                 }
                 foreach (var reference in references)
                     add(new(technicalKey + "/reference/" + reference.Key, ConflictRowKind.GroupReference, 1,

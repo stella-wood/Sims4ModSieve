@@ -295,7 +295,7 @@ public sealed class ConflictRelationshipsDialogTests
     });
 
     [TestMethod]
-    public Task MinimumWindowWrapsLongTechnicalNamesAndKeysWithoutNestedScrolling() => WpfTestHost.RunAsync(async () =>
+    public Task MinimumWindowWrapsLongTechnicalNamesAndKeysWithOnlyHorizontalInnerScrolling() => WpfTestHost.RunAsync(async () =>
     {
         var first = @"C:\Mods\很长的目录\" + string.Concat(Enumerable.Repeat("自定义睫毛与五官替换说明", 8)) + ".package";
         var second = @"D:\Inbox\另一个目录\" + string.Concat(Enumerable.Repeat("另一版文件完整名称", 8)) + ".package";
@@ -319,8 +319,11 @@ public sealed class ConflictRelationshipsDialogTests
             || text.Text == System.IO.Path.GetFileName(second)).ToArray();
         Assert.IsTrue(names.Length >= 2);
         Assert.IsTrue(names.All(text => text.TextWrapping == TextWrapping.Wrap));
-        Assert.AreEqual(1, Descendants<ScrollViewer>(list).Count());
-        Assert.IsTrue(Descendants<ScrollViewer>(list).Single().ScrollableWidth == 0);
+        var scrolls = Descendants<ScrollViewer>(list).ToArray();
+        Assert.AreEqual(1, scrolls.Count(scroll => scroll.Name != "TechnicalColumnsScroll"));
+        Assert.IsTrue(scrolls.Where(scroll => scroll.Name == "TechnicalColumnsScroll")
+            .All(scroll => scroll.VerticalScrollBarVisibility == ScrollBarVisibility.Disabled));
+        Assert.IsTrue(scrolls.Single(scroll => scroll.Name != "TechnicalColumnsScroll").ScrollableWidth == 0);
         Save(window, "v2-long-technical-header-920x640.png");
         var last = model.ConflictRows.Last();
         list.ScrollIntoView(last);
