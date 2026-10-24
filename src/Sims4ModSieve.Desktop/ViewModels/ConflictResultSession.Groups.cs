@@ -136,6 +136,7 @@ public sealed partial class ConflictResultSession
                 _ => ("suspected", "疑似同一 mod"),
             };
             var files = group.Members.OrderByDescending(member => member.IsBundle)
+                .ThenByDescending(member => type == "suspected" ? member.ScannedStamp.LastWriteTimeUtc : DateTime.MinValue)
                 .ThenBy(member => member.Path, StringComparer.OrdinalIgnoreCase).Select(member => new ConflictFile(member.Path, member.ScannedStamp)).ToArray();
             var key = type + "/" + ConflictIgnoreKeyBuilder.Build(files.Select(file => RelativeIdentity(file.Path)), group.ResourceKeys);
             var different = group.Relations.SelectMany(relation => relation.Pair.Resources)
@@ -257,7 +258,7 @@ public sealed partial class ConflictResultSession
                         : null;
                     var tag = member?.IsBundle == true ? "合集"
                         : card.Type == "suspected" && representative.Stamp?.LastWriteTimeUtc == card.Files.Max(item => item.Stamp?.LastWriteTimeUtc) ? "最新"
-                        : card.Duplicate is not null && StringComparer.OrdinalIgnoreCase.Equals(representative.Path, card.Duplicate.SuggestedKeepPath) ? "建议保留" : "";
+                        : "";
                     add(new(key, ConflictRowKind.File, 1, representative.Name, representative.Path + "\n" + representative.Metadata,
                         Tooltip: representative.Path, OwnerKey: card.Key, File: representative, Annotation: annotation, Tag: tag,
                         IsIgnored: ignored || fileIgnored, IsBundle: member?.IsBundle == true,

@@ -27,6 +27,45 @@ public sealed class ConflictPageRenderTests
     private static extern bool SetCursorPos(int x, int y);
 
     [TestMethod]
+    public Task LatestAndCollectionTagsPrecedeAnnotations() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        foreach (var session in new[] { ConflictV2SessionTests.VersionSession(), ConflictV2SessionTests.ContainmentSession() })
+        {
+            var card = session.Cards.Single(card => card.Type is "suspected" or "collection");
+            session.ToggleExpanded(card.Key);
+            await SetSessionAsync(model, session, "all");
+            foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
+            {
+                window.Width = width;
+                window.Height = height;
+                await WpfTestHost.LayoutAsync(window);
+                var row = model.ConflictRows.First(row => row.OwnerKey == card.Key && row.Kind == ConflictRowKind.File);
+                Assert.AreEqual(card.Type == "suspected" ? "最新" : "合集", row.Tag);
+                var title = Descendants<TextBlock>(window).Single(text => ReferenceEquals(text.DataContext, row) && text.Name == "Title");
+                var tag = Descendants<Border>(window).Single(border => ReferenceEquals(border.DataContext, row) && border.Name == "FileTag");
+                var annotation = Descendants<Border>(window).Single(border => ReferenceEquals(border.DataContext, row) && border.Name == "AnnotationSurface");
+                var panel = (Panel)VisualTreeHelper.GetParent(title);
+                Assert.IsTrue(panel.Children.IndexOf(title) < panel.Children.IndexOf(tag));
+                Assert.IsTrue(panel.Children.IndexOf(tag) < panel.Children.IndexOf(annotation));
+                Assert.IsTrue(tag.IsVisible);
+                var titleOrigin = title.TranslatePoint(new Point(), window);
+                var tagOrigin = tag.TranslatePoint(new Point(), window);
+                var annotationOrigin = annotation.TranslatePoint(new Point(), window);
+                Assert.IsTrue(titleOrigin.X + title.ActualWidth <= tagOrigin.X);
+                Assert.IsTrue(tagOrigin.X + tag.ActualWidth <= annotationOrigin.X);
+                var details = Descendants<Button>(window).Single(button => ReferenceEquals(button.DataContext, row) && button.Name == "FileDetailsButton");
+                Assert.IsTrue(IsInside(window.InputHitTest(details.TranslatePoint(new Point(details.ActualWidth / 2, details.ActualHeight / 2), window)) as DependencyObject, details));
+                Assert.IsFalse(IsInside(window.InputHitTest(annotation.TranslatePoint(new Point(annotation.ActualWidth / 2, annotation.ActualHeight / 2), window)) as DependencyObject, details));
+                Save(window, $"{card.Type}-tags-before-counts-{width}x{height}.png");
+            }
+        }
+    });
+
+    [TestMethod]
     public Task IncompleteReasonsSitBesideGroupNumbersAboveFilesAndSupportActions() => WpfTestHost.RunAsync(async () =>
     {
         var package = @"C:\Mods\人物（男）\0274\妆容皮肤\brovi_cheta_s_sima_kotika_packageHQ.package";
@@ -205,6 +244,7 @@ public sealed class ConflictPageRenderTests
             window.Height = height;
             await WpfTestHost.LayoutAsync(window);
             var explanation = model.ConflictRows.Single(row => row.IsDuplicateExplanation);
+            Assert.IsFalse(Descendants<Border>(window).Any(border => border.Name == "FileTag" && border.IsVisible));
             var title = Descendants<TextBlock>(window).Single(text => ReferenceEquals(text.DataContext, explanation) && text.Name == "Title");
             var link = Descendants<Button>(window).Single(button => ReferenceEquals(button.DataContext, explanation) && button.Name == "DuplicateNavigation");
             var titleOrigin = title.TranslatePoint(new Point(), window);

@@ -230,10 +230,10 @@
                         <StackPanel>
                             <WrapPanel>
                                 <TextBlock x:Name="Title" MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}" Text="{Binding Title}" FontFamily="等线" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" IsHitTestVisible="False" />
+                                <Border x:Name="FileTag" Background="#EEE9F3" CornerRadius="2" Padding="5,1" Margin="8,1,0,0" IsHitTestVisible="False" Visibility="{Binding HasTag, Converter={StaticResource BooleanToVisibilityConverter}}"><TextBlock Text="{Binding Tag}" Foreground="#8B769F" FontSize="10" /></Border>
                                 <Border x:Name="AnnotationSurface" Background="Transparent" Margin="10,3,0,0" ToolTip="{Binding AnnotationTooltip}" Visibility="{Binding HasAnnotation, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                    <TextBlock Text="{Binding Annotation}" Foreground="#A892C5" FontSize="11" IsHitTestVisible="False" />
+                                    <TextBlock x:Name="AnnotationText" Text="{Binding Annotation}" Foreground="{StaticResource MutedBrush}" FontSize="11" IsHitTestVisible="False" />
                                 </Border>
-                                <Border Background="#EEE9F3" CornerRadius="2" Padding="5,1" Margin="8,1,0,0" IsHitTestVisible="False" Visibility="{Binding HasTag, Converter={StaticResource BooleanToVisibilityConverter}}"><TextBlock Text="{Binding Tag}" Foreground="#8B769F" FontSize="10" /></Border>
                             </WrapPanel>
                             <TextBlock Text="{Binding File.Path}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False" />
                             <WrapPanel>
@@ -259,6 +259,9 @@
                 <DataTrigger Binding="{Binding IsBundle}" Value="True"><Setter TargetName="FileSurface" Property="Background" Value="#E5E0D9" /><Setter TargetName="FileSurface" Property="Margin" Value="20,0,0,12" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsIgnored}" Value="True"><Setter TargetName="Title" Property="FontWeight" Value="Normal" /></DataTrigger>
                 <DataTrigger Binding="{Binding AnnotationTooltip}" Value="{x:Null}"><Setter TargetName="AnnotationSurface" Property="ToolTipService.IsEnabled" Value="False" /></DataTrigger>
+                <DataTrigger Binding="{Binding Annotation}" Value="内容完全相同"><Setter TargetName="AnnotationText" Property="Foreground" Value="#A892C5" /></DataTrigger>
+                <DataTrigger Binding="{Binding Annotation}" Value="存在不同"><Setter TargetName="AnnotationText" Property="Foreground" Value="#A892C5" /></DataTrigger>
+                <DataTrigger Binding="{Binding Annotation}" Value="已被包含"><Setter TargetName="AnnotationText" Property="Foreground" Value="#A892C5" /></DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="ConflictTextTemplate">
@@ -383,6 +386,7 @@
             </Border>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsProblemFileContent}" Value="True"><Setter TargetName="RowContent" Property="Background" Value="#F3F1ED" /><Setter TargetName="RowContent" Property="Margin" Value="20,0,0,0" /></DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Problem"><Setter TargetName="RowContent" Property="Background" Value="{StaticResource SurfaceBrush}" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsIgnored}" Value="True"><Setter TargetName="Row" Property="Opacity" Value="0.75" /></DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>

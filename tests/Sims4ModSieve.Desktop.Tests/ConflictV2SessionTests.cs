@@ -43,6 +43,49 @@ public sealed class ConflictV2SessionTests
         Resource(1, (A, "a"), (B, "a")), Resource(2, (A, "b"), (B, "b")), Resource(3, (A, "c"), (B, "c")),
         Resource(4, (B, "d"), (C, "e"))], [(A, 3), (B, 10), (C, 4)]);
 
+    internal static ConflictResultSession VersionSession(bool tiedLatest = false)
+    {
+        var stamps = new Dictionary<string, FileStamp>
+        {
+            [A] = Stamp,
+            [B] = Stamp with { LastWriteTimeUtc = Stamp.LastWriteTimeUtc.AddDays(tiedLatest ? 2 : 1) },
+            [C] = Stamp with { LastWriteTimeUtc = Stamp.LastWriteTimeUtc.AddDays(2) },
+        };
+        var comparison = Resource(1, (C, "new"), (A, "old"), (B, "middle"));
+        comparison = comparison with { ContentGroups = comparison.ContentGroups.Select(group => group with
+        {
+            Occurrences = group.Occurrences.Select(item => item with { PackageStamp = stamps[item.PackagePath] }).ToArray(),
+        }).ToArray() };
+        var packages = ConflictResultSessionTests.Packages([(A, 2), (B, 2), (C, 2)]);
+        packages = packages with { ResourceInventories = packages.ResourceInventories.Select(item =>
+            item with { ScannedStamp = stamps[item.Path] }).ToArray() };
+        var contents = Contents(comparison);
+        contents = contents with { Packages = stamps.Select(item => new ResourceContentPackageVersion(item.Key, item.Value, item.Value, true)).ToArray() };
+        var session = new ConflictResultSession();
+        session.Replace(packages, contents, Scripts());
+        return session;
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void SuspectedFilesSortNewestFirstWithStablePathTies(bool tiedLatest)
+    {
+        var session = VersionSession(tiedLatest);
+        var card = session.Cards.Single();
+        Assert.AreEqual("suspected", card.Type);
+        session.ToggleExpanded(card.Key);
+        var files = Rows(session).Where(row => row.Kind == ConflictRowKind.File).ToArray();
+        CollectionAssert.AreEqual(tiedLatest ? new[] { B, C, A } : new[] { C, B, A }, files.Select(row => row.File!.Path).ToArray());
+        CollectionAssert.AreEquivalent(tiedLatest ? new[] { B, C } : new[] { C }, files.Where(row => row.Tag == "最新").Select(row => row.File!.Path).ToArray());
+        session.ApplyDeletedPaths([A]);
+        session.ApplyRestoredPaths([A]);
+        var restored = session.Cards.Single();
+        Assert.AreEqual(card.Key, restored.Key);
+        Assert.AreEqual(card.GroupIndex, restored.GroupIndex);
+        CollectionAssert.AreEqual(files.Select(row => row.File!.Path).ToArray(), Rows(session).Where(row => row.Kind == ConflictRowKind.File).Select(row => row.File!.Path).ToArray());
+    }
+
     [TestMethod]
     public void V2CountsAndStableNumbersUseFormalCoreCards()
     {
@@ -159,6 +202,7 @@ public sealed class ConflictV2SessionTests
         var duplicateFiles = rows.Where(item => item.OwnerKey == duplicate.Key && item.File is not null).ToArray();
         Assert.AreEqual("", duplicateFiles[0].Annotation);
         Assert.AreEqual("内容完全相同", duplicateFiles[1].Annotation);
+        Assert.IsTrue(duplicateFiles.All(file => !file.HasTag));
         Assert.IsFalse(rows.Any(item => item.OwnerKey == duplicate.Key && item.IsTechnicalToggle));
         exact.ToggleIgnored(duplicateFiles[0]);
         Assert.AreEqual("", exact.BuildVisibleRows("all", "all", exact.GetExpandedKeysSnapshot())
