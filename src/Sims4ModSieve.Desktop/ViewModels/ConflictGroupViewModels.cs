@@ -27,20 +27,38 @@ public sealed record ConflictCard(string Key, string Type, string Title, Conflic
     public IReadOnlyList<ResourceKey> ResourceKeys => Package?.ResourceKeys ?? [];
 }
 
-public sealed record ConflictTechnicalCell(string FileName, string Version, string Evidence, ConflictTechnicalTableState? Table = null);
+public sealed record ConflictTechnicalCell(string FileName, string Version, string Evidence, ConflictTechnicalTableState? Table = null)
+{
+    public bool IsType { get; init; }
+    public bool IsHeader { get; init; }
+    public bool IsRelated { get; init; }
+    public bool IsIdenticalVersion { get; init; }
+    public bool IsFile => !IsType && !IsRelated;
+    public IReadOnlyList<ConflictGroupLink> RelatedGroups { get; init; } = [];
+}
 public sealed record ConflictTechnicalEntry(string Identifier, string TypeName, IReadOnlyList<ConflictTechnicalCell> Cells)
 {
+    public bool HasDifferentVersions { get; init; }
+    public bool HasIdenticalVersions { get; init; }
+    public IReadOnlyList<ConflictGroupLink> RelatedGroups { get; init; } = [];
     public string TableIdentifier => Identifier.Count(character => character == ':') == 2
         ? Identifier.Insert(Identifier.LastIndexOf(':') + 1, "\n") : Identifier;
     public string CopyText => Identifier + "\t" + TypeName + "\n\n" + string.Join("\n\n", Cells.Select(cell =>
         cell.FileName + "\t" + cell.Version + "\t" + cell.Evidence));
 }
 
-public sealed class ConflictTechnicalTableState(int fileCount) : ObservableObject
+public sealed class ConflictTechnicalTableState(int fileCount, bool hasRelatedGroups) : ObservableObject
 {
     public const double ColumnWidth = 96;
+    public const double TypeWidth = 80;
+    public const double RelatedWidth = 224;
     private double horizontalOffset;
     private double viewportWidth;
+    private double headerHeight = 64;
+
+    public ConflictResultRow? HeaderRow { get; set; }
+    public bool HasRelatedGroups { get; } = hasRelatedGroups;
+    public double HeaderHeight { get => headerHeight; set => SetProperty(ref headerHeight, value); }
 
     public double HorizontalOffset
     {
@@ -59,12 +77,13 @@ public sealed class ConflictTechnicalTableState(int fileCount) : ObservableObjec
         }
     }
 
-    public double CellWidth => Math.Max(ColumnWidth, ViewportWidth / fileCount);
-    public double ScrollableWidth => Math.Max(0, fileCount * ColumnWidth - ViewportWidth);
+    public double CellWidth => Math.Max(ColumnWidth, (ViewportWidth - TypeWidth - (HasRelatedGroups ? RelatedWidth : 0)) / fileCount);
+    public double ScrollableWidth => Math.Max(0, TypeWidth + fileCount * ColumnWidth + (HasRelatedGroups ? RelatedWidth : 0) - ViewportWidth);
 }
 
 public sealed record ConflictGroupLink(string Key, int GroupIndex)
 {
+    public string TechnicalLabel => $"第 {GroupIndex} 组";
     public string Label => $"查看第 {GroupIndex} 组 →";
     public string CopyLabel => $"去第{GroupIndex}组 →";
 }

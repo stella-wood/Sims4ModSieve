@@ -284,72 +284,99 @@
             <Button Margin="26,5,0,0" HorizontalAlignment="Right" Content="技术详情" Style="{StaticResource ConflictTechnicalButtonStyle}"
                     Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
         </DataTemplate>
+        <DataTemplate x:Key="ConflictTechnicalRelatedLinkTemplate">
+            <Button Content="{Binding TechnicalLabel}" Style="{StaticResource ConflictTechnicalButtonStyle}" Foreground="#8B72A0" Padding="0" Margin="0,0,12,6" FontSize="10"
+                    Command="{Binding DataContext.JumpToConflictGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+        </DataTemplate>
+        <DataTemplate x:Key="ConflictTechnicalRelatedGroupsTemplate">
+            <ItemsControl ItemsSource="{Binding}" ItemTemplate="{StaticResource ConflictTechnicalRelatedLinkTemplate}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
+        </DataTemplate>
+        <DataTemplate x:Key="ConflictTechnicalCellTemplate">
+            <Border x:Name="Cell" Width="{Binding Table.CellWidth, Mode=OneWay}">
+                <StackPanel x:Name="CellContent" Margin="0,0,12,0" VerticalAlignment="Top">
+                    <TextBlock x:Name="FileName" Text="{Binding FileName}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" />
+                    <TextBlock x:Name="Version" Text="{Binding Version}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" />
+                    <ContentControl x:Name="RelatedContent" HorizontalContentAlignment="Stretch" />
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding FileName}" Value=""><Setter TargetName="FileName" Property="Visibility" Value="Collapsed" /></DataTrigger>
+                <DataTrigger Binding="{Binding Version}" Value=""><Setter TargetName="Version" Property="Visibility" Value="Collapsed" /></DataTrigger>
+                <DataTrigger Binding="{Binding IsType}" Value="True"><Setter TargetName="Cell" Property="Width" Value="80" /></DataTrigger>
+                <DataTrigger Binding="{Binding IsRelated}" Value="True"><Setter TargetName="Cell" Property="Width" Value="224" /><Setter TargetName="RelatedContent" Property="Content" Value="{Binding RelatedGroups}" /><Setter TargetName="RelatedContent" Property="ContentTemplate" Value="{StaticResource ConflictTechnicalRelatedGroupsTemplate}" /></DataTrigger>
+                <DataTrigger Binding="{Binding IsHeader}" Value="True"><Setter TargetName="CellContent" Property="VerticalAlignment" Value="Center" /></DataTrigger>
+                <DataTrigger Binding="{Binding IsIdenticalVersion}" Value="True"><Setter TargetName="CellContent" Property="TextBlock.Foreground" Value="#A39E98" /></DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalTableTemplate">
-            <Grid Margin="26,5,0,5" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="80" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Grid x:Name="TableRow" Margin="26,8,0,8" MinHeight="26" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                 <TextBlock x:Name="Identifier" Text="{Binding TechnicalEntry.TableIdentifier}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,0,8,0" />
-                <TextBlock x:Name="TypeName" Grid.Column="1" Text="{Binding TechnicalEntry.TypeName}" TextWrapping="Wrap" Margin="0,0,8,0" />
-                <ItemsControl Grid.Column="2" ItemsSource="{Binding TechnicalEntry.Cells}" FontSize="10" Foreground="{StaticResource MutedBrush}" FontWeight="Normal"
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding TechnicalEntry.Cells}" ItemTemplate="{StaticResource ConflictTechnicalCellTemplate}" FontSize="10" Foreground="{StaticResource MutedBrush}" FontWeight="Normal"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0">
                     <ItemsControl.Template><ControlTemplate TargetType="ItemsControl">
-                        <ScrollViewer x:Name="TechnicalColumnsScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" CanContentScroll="True" Focusable="False"
-                                      Loaded="TechnicalColumns_Loaded" Unloaded="TechnicalColumns_Unloaded" DataContextChanged="TechnicalColumns_DataContextChanged" ScrollChanged="TechnicalColumns_ScrollChanged" PreviewMouseWheel="TechnicalColumns_PreviewMouseWheel">
-                            <ItemsPresenter />
-                        </ScrollViewer>
+                        <ScrollViewer x:Name="TechnicalColumnsScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" CanContentScroll="True" Focusable="False" Background="Transparent"
+                                      Loaded="TechnicalColumns_Loaded" Unloaded="TechnicalColumns_Unloaded" DataContextChanged="TechnicalColumns_DataContextChanged" ScrollChanged="TechnicalColumns_ScrollChanged" PreviewMouseWheel="TechnicalColumns_PreviewMouseWheel"><ItemsPresenter /></ScrollViewer>
                     </ControlTemplate></ItemsControl.Template>
                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate><DataTemplate>
-                        <Border Width="{Binding Table.CellWidth, Mode=OneWay}"><StackPanel Margin="0,0,12,0"><TextBlock x:Name="FileName" Text="{Binding FileName}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" /><TextBlock x:Name="Version" Text="{Binding Version}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" /></StackPanel></Border>
-                        <DataTemplate.Triggers><DataTrigger Binding="{Binding FileName}" Value=""><Setter TargetName="FileName" Property="Visibility" Value="Collapsed" /></DataTrigger><DataTrigger Binding="{Binding Version}" Value=""><Setter TargetName="Version" Property="Visibility" Value="Collapsed" /></DataTrigger></DataTemplate.Triggers>
-                    </DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
             </Grid>
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding Kind}" Value="TechnicalHeader"><Setter TargetName="Identifier" Property="Text" Value="TGI／模块" /><Setter TargetName="TypeName" Property="Text" Value="种类" /></DataTrigger>
-            </DataTemplate.Triggers>
+            <DataTemplate.Triggers><DataTrigger Binding="{Binding Kind}" Value="TechnicalHeader">
+                <Setter TargetName="TableRow" Property="Height" Value="{Binding TechnicalTable.HeaderHeight, Mode=OneWay}" />
+                <Setter TargetName="Identifier" Property="Text" Value="TGI／模块" /><Setter TargetName="Identifier" Property="VerticalAlignment" Value="Center" />
+            </DataTrigger></DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalListHeaderTemplate">
             <StackPanel Margin="26,16,0,8" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
                 <TextBlock x:Name="IdentifierLabel" Text="TGI" />
                 <TextBlock Text="{Binding TechnicalEntry.Identifier}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
                 <TextBlock Margin="0,6,0,18"><Run Text="种类  " /><Run Text="{Binding TechnicalEntry.TypeName, Mode=OneWay}" /></TextBlock>
+                <ItemsControl ItemsSource="{Binding TechnicalEntry.RelatedGroups}" ItemTemplate="{StaticResource ConflictTechnicalRelatedLinkTemplate}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions><TextBlock Text="文件" /><TextBlock Grid.Column="1" Text="资源版本" /></Grid>
             </StackPanel>
             <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalEntry.TypeName}" Value="脚本模块"><Setter TargetName="IdentifierLabel" Property="Text" Value="模块" /></DataTrigger></DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalListFileTemplate">
-            <Grid Margin="26,0,0,8" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
+            <Grid x:Name="ListFile" Margin="26,0,0,8" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
                 <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
                 <TextBlock Text="{Binding TechnicalEntry.Cells[0].FileName}" TextTrimming="CharacterEllipsis" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" Margin="0,0,20,0" />
                 <TextBlock Grid.Column="1" Text="{Binding TechnicalEntry.Cells[0].Version}" TextWrapping="Wrap" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" />
             </Grid>
+            <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalEntry.HasIdenticalVersions}" Value="True"><Setter TargetName="ListFile" Property="TextBlock.Foreground" Value="#A39E98" /></DataTrigger></DataTemplate.Triggers>
         </DataTemplate>
-        <Style x:Key="ConflictTechnicalScrollBarStyle" TargetType="ScrollBar">
-            <Setter Property="Height" Value="12" /><Setter Property="SmallChange" Value="16" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Style x:Key="ConflictResultVerticalScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Width" Value="12" />
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
                 <Grid Background="Transparent">
+                    <Border Width="6" HorizontalAlignment="Center" Background="#F0EDE8" CornerRadius="2" />
+                    <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                        <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+                        <Track.Thumb><Thumb x:Name="ScrollThumb" Focusable="False"><Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Border Width="6" HorizontalAlignment="Center" Background="#AAA198" CornerRadius="2" /></Grid></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                        <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+                    </Track>
+                </Grid>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="ConflictTechnicalScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Height" Value="11" /><Setter Property="MinHeight" Value="0" /><Setter Property="SmallChange" Value="16" /><Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+                <Grid Background="#F0F0F0">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="12" /><ColumnDefinition /><ColumnDefinition Width="12" /></Grid.ColumnDefinitions>
-                    <RepeatButton x:Name="LeftArrow" Focusable="False" Command="{x:Static ScrollBar.LineLeftCommand}" CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" AutomationProperties.Name="向左滚动文件列">
-                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"><Path Data="M4,0 L1,3 L4,6" Stroke="#8E857D" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="5" Height="7" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" /></Border></ControlTemplate></RepeatButton.Template>
+                    <RepeatButton x:Name="LeftArrow" Focusable="False" AutomationProperties.Name="向左滚动文件列" Command="{x:Static ScrollBar.LineLeftCommand}" CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}">
+                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"><Path Data="M4,0 L1,3 L4,6" Stroke="#9C9C9C" StrokeThickness="1.2" Width="5" Height="7" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" /></Border></ControlTemplate></RepeatButton.Template>
                     </RepeatButton>
-                    <Border Grid.Column="1" Height="6" VerticalAlignment="Center" Background="#F0EDE8" CornerRadius="2" />
                     <Track x:Name="PART_Track" Grid.Column="1" Orientation="Horizontal" IsDirectionReversed="False" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                         <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageLeftCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
-                        <Track.Thumb><Thumb x:Name="ScrollThumb" Focusable="False"><Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Border Height="6" VerticalAlignment="Center" Background="#AAA198" CornerRadius="2" /></Grid></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                        <Track.Thumb><Thumb x:Name="ScrollThumb" Focusable="False"><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="#CCCCCC" /></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
                         <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageRightCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
                     </Track>
-                    <RepeatButton x:Name="RightArrow" Grid.Column="2" Focusable="False" Command="{x:Static ScrollBar.LineRightCommand}" CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" AutomationProperties.Name="向右滚动文件列">
-                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"><Path Data="M1,0 L4,3 L1,6" Stroke="#8E857D" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="5" Height="7" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False" /></Border></ControlTemplate></RepeatButton.Template>
+                    <RepeatButton x:Name="RightArrow" Grid.Column="2" Focusable="False" AutomationProperties.Name="向右滚动文件列" Command="{x:Static ScrollBar.LineRightCommand}" CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}">
+                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"><Path Data="M1,0 L4,3 L1,6" Stroke="#9C9C9C" StrokeThickness="1.2" Width="5" Height="7" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" /></Border></ControlTemplate></RepeatButton.Template>
                     </RepeatButton>
                 </Grid>
             </ControlTemplate></Setter.Value></Setter>
         </Style>
-        <DataTemplate x:Key="ConflictTechnicalScrollTemplate">
-            <ScrollBar x:Name="TechnicalTableScrollBar" Margin="26,8,0,8" Orientation="Horizontal" Style="{StaticResource ConflictTechnicalScrollBarStyle}" Minimum="0"
-                       Maximum="{Binding TechnicalTable.ScrollableWidth, Mode=OneWay}" ViewportSize="{Binding TechnicalTable.ViewportWidth, Mode=OneWay}" Value="{Binding TechnicalTable.HorizontalOffset, Mode=TwoWay}" AutomationProperties.Name="横向滚动技术详情" />
-            <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalTable.ScrollableWidth}" Value="0"><Setter TargetName="TechnicalTableScrollBar" Property="Visibility" Value="Collapsed" /></DataTrigger></DataTemplate.Triggers>
-        </DataTemplate>
+        <DataTemplate x:Key="ConflictTechnicalScrollTemplate"><Border Height="1" Margin="26,8,0,8" /></DataTemplate>
         <DataTemplate x:Key="ConflictCopyTemplate">
             <Button Content="复制详情" Style="{StaticResource ConflictTechnicalButtonStyle}" Margin="26,4,0,6" HorizontalAlignment="Right"
                     Command="{Binding DataContext.CopyConflictDetailsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
@@ -531,9 +558,12 @@
                         </Popup>
                         </Grid>
                     </Border>
-                    <Grid Grid.Row="2">
+                    <Grid x:Name="TechnicalViewport" Grid.Row="2" ClipToBounds="True">
                         <TextBlock Text="{Binding ConflictStatus}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowConflictPlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" ItemTemplate="{StaticResource ConflictRowTemplate}" Style="{StaticResource ConflictListStyle}">
+                        <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" ItemTemplate="{StaticResource ConflictRowTemplate}" Style="{StaticResource ConflictListStyle}" VirtualizingPanel.ScrollUnit="Pixel"
+                                 PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel" PreviewMouseDown="TechnicalResults_PreviewMouseDown" PreviewKeyDown="TechnicalResults_PreviewKeyDown"
+                                 Loaded="TechnicalResults_Loaded" Unloaded="TechnicalResults_Unloaded" LayoutUpdated="TechnicalResults_LayoutUpdated">
+                            <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ConflictResultVerticalScrollBarStyle}" /></ListBox.Resources>
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">
                                     <Setter Property="AutomationProperties.Name" Value="{Binding Title, Mode=OneWay}" />
@@ -544,6 +574,17 @@
                                 </Style>
                             </ListBox.ItemContainerStyle>
                         </ListBox>
+                        <Canvas x:Name="TechnicalOverlay">
+                            <Border x:Name="StickyTechnicalHeader" Background="{StaticResource SurfaceBrush}" Visibility="Collapsed" PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel">
+                                <ContentControl x:Name="StickyTechnicalContent" ContentTemplate="{StaticResource ConflictTechnicalTableTemplate}" HorizontalContentAlignment="Stretch" />
+                            </Border>
+                            <Border x:Name="FloatingTechnicalScroll" Height="30" Opacity="0.25" Visibility="Collapsed" PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel">
+                                <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#00FFFFFF" Offset="0" /><GradientStop Color="#EEFFFFFF" Offset="0.6" /><GradientStop Color="#F8FFFFFF" Offset="1" /></LinearGradientBrush></Border.Background>
+                                <ScrollBar x:Name="TechnicalTableScrollBar" Orientation="Horizontal" Style="{StaticResource ConflictTechnicalScrollBarStyle}" VerticalAlignment="Bottom" Margin="0,0,0,6" Minimum="0"
+                                           MouseEnter="TechnicalTableScrollBar_MouseOverChanged" MouseLeave="TechnicalTableScrollBar_MouseOverChanged" IsMouseCaptureWithinChanged="TechnicalTableScrollBar_IsMouseCaptureWithinChanged"
+                                           Maximum="{Binding ScrollableWidth, Mode=OneWay}" ViewportSize="{Binding ViewportWidth, Mode=OneWay}" Value="{Binding HorizontalOffset, Mode=TwoWay}" AutomationProperties.Name="横向滚动技术详情" />
+                            </Border>
+                        </Canvas>
                         <TextBlock Text="{Binding EmptyConflictText}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowEmptyConflictRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </Grid>
                     <StackPanel Grid.Row="3" Margin="20,10,20,12"><WrapPanel><TextBlock Text="{Binding ConflictFileActionStatusText}" FontSize="11" Foreground="{StaticResource MutedBrush}" /><Button Content="撤回最近一次删除" Command="{Binding UndoLastDeleteCommand}" Style="{StaticResource EntranceActionStyle}" FontSize="11" Padding="8,0" Visibility="{Binding CanUndoConflictDelete, Converter={StaticResource BooleanToVisibilityConverter}}" /></WrapPanel><TextBlock Text="没查出冲突不代表没有冲突" Visibility="{Binding ShowConflictWarning, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#9A6A32" FontSize="11" /></StackPanel>

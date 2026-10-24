@@ -270,12 +270,26 @@ public sealed partial class ConflictResultSession
                 var technicalKey = card.Key + "/technical";
                 if (!add(new(technicalKey, ConflictRowKind.Technical, 1, TechnicalDetailTitle, IsExpandable: true,
                     OwnerKey: card.Key, IsIgnored: ignored))) return;
-                var entries = TechnicalEntries(card);
-                var references = Cards.Where(other => other.Key != card.Key && other.ResourceKeys.Intersect(card.ResourceKeys).Any()).ToArray();
+                var references = Cards.Where(other => other.Key != card.Key && other.ResourceKeys.Intersect(card.ResourceKeys).Any()).OrderBy(other => other.GroupIndex).ToArray();
+                var cardKeys = card.ResourceKeys.ToHashSet();
+                var relatedByTgi = new Dictionary<string, List<ConflictGroupLink>>(StringComparer.Ordinal);
+                foreach (var reference in references)
+                {
+                    token.ThrowIfCancellationRequested();
+                    foreach (var key in reference.ResourceKeys.Where(cardKeys.Contains))
+                    {
+                        if (!relatedByTgi.TryGetValue(key.Tgi, out var links)) relatedByTgi.Add(key.Tgi, links = []);
+                        links.Add(Link(reference));
+                    }
+                }
+                var entries = TechnicalEntries(card).Select(entry => entry with
+                {
+                    RelatedGroups = relatedByTgi.TryGetValue(entry.Identifier, out var links) ? links.ToArray() : []
+                }).OrderByDescending(entry => entry.HasDifferentVersions).ToArray();
                 var copyText = card.Title + " · 第 " + card.GroupIndex + " 组\n" + string.Join("\n\n", entries.Select(entry => entry.CopyText))
-                    + string.Concat(references.Select(other => $"\n相关依据也见第 {other.GroupIndex} 组"));
+                    + string.Concat(references.Select(other => $"\n相关组：第 {other.GroupIndex} 组"));
                 var index = 0;
-                if (entries.Count <= 5 && card.Files.Count >= 15)
+                if (entries.Length <= 5 && card.Files.Count >= 15)
                 {
                     foreach (var entry in entries)
                     {
@@ -292,23 +306,26 @@ public sealed partial class ConflictResultSession
                 }
                 else
                 {
-                    var table = new ConflictTechnicalTableState(card.Files.Count);
-                    var headers = card.Files.Select(file => new ConflictTechnicalCell(file.Name, "", file.Path, table)).ToArray();
-                    add(new(technicalKey + "/header", ConflictRowKind.TechnicalHeader, 1, "TGI／模块", OwnerKey: card.Key,
-                        IsIgnored: ignored, TechnicalEntry: new("TGI／模块", "种类", headers), TechnicalTable: table));
+                    var table = new ConflictTechnicalTableState(card.Files.Count, entries.Any(entry => entry.RelatedGroups.Count > 0));
+                    ConflictTechnicalCell[] headers = [new("种类", "", "", table) { IsType = true, IsHeader = true },
+                        .. card.Files.Select(file => new ConflictTechnicalCell(file.Name, "", file.Path, table) { IsHeader = true }),
+                        .. table.HasRelatedGroups ? new ConflictTechnicalCell[] { new("相关组", "", "", table) { IsRelated = true, IsHeader = true } } : []];
+                    var headerRow = new ConflictResultRow(technicalKey + "/header", ConflictRowKind.TechnicalHeader, 1, "TGI／模块", OwnerKey: card.Key,
+                        IsIgnored: ignored, TechnicalEntry: new("TGI／模块", "种类", headers), TechnicalTable: table);
+                    table.HeaderRow = headerRow;
+                    add(headerRow);
                     foreach (var entry in entries)
                     {
                         token.ThrowIfCancellationRequested();
                         add(new(technicalKey + "/value" + index++, ConflictRowKind.Technical, 1, entry.Identifier,
-                            OwnerKey: card.Key, TechnicalEntry: entry with { Cells = entry.Cells.Select(cell => cell with { FileName = "", Table = table }).ToArray() },
+                            OwnerKey: card.Key, TechnicalEntry: entry with { Cells = [new("", entry.TypeName, "", table) { IsType = true },
+                                .. entry.Cells.Select(cell => cell with { FileName = "", Table = table }),
+                                .. table.HasRelatedGroups ? new ConflictTechnicalCell[] { new("", "", "", table) { IsRelated = true, RelatedGroups = entry.RelatedGroups } } : []] },
                             IsIgnored: ignored, TechnicalTable: table));
                     }
                     add(new(technicalKey + "/scroll", ConflictRowKind.TechnicalScroll, 1, "横向滚动技术详情",
                         OwnerKey: card.Key, IsIgnored: ignored, TechnicalTable: table));
                 }
-                foreach (var reference in references)
-                    add(new(technicalKey + "/reference/" + reference.Key, ConflictRowKind.GroupReference, 1,
-                        $"相关依据也见第 {reference.GroupIndex} 组 →", OwnerKey: card.Key, IsIgnored: ignored, RelatedLink: Link(reference)));
                 add(new(technicalKey + "/copy", ConflictRowKind.CopyDetails, 1, "复制详情", OwnerKey: card.Key,
                     CopyText: copyText, IsIgnored: ignored));
             }));
@@ -339,18 +356,26 @@ public sealed partial class ConflictResultSession
             return package.ResourceKeys.Select(key =>
             {
                 var comparison = comparisonsByKey[key];
+                var versions = new HashSet<int>();
+                var comparedFiles = 0;
+                var incomplete = false;
                 var cells = card.Files.Select(file =>
                 {
                     var index = comparison.ContentGroups.ToList().FindIndex(group => group.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.PackagePath, file.Path)));
                     var group = index < 0 ? null : comparison.ContentGroups[index];
                     var failed = comparison.Uncompared.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.PackagePath, file.Path));
+                    if (group is not null) { versions.Add(index); comparedFiles++; }
+                    if (failed is not null) incomplete = true;
                     var version = group is not null ? $"版本 {index + 1}" : failed is not null ? $"未完成：{failed.Issue!.Message}" : "—";
                     var evidence = file.Path + "\n" + file.TechnicalMetadata;
                     if (group is not null) evidence += $"\nSHA256 {group.Sha256} · 资源解压大小 {group.DecompressedLength} 字节";
                     if (failed is not null) evidence += $"\n{failed.Issue!.Code} · {failed.Issue.Stage} · {failed.Issue.Detail ?? failed.Issue.Message}";
                     return new ConflictTechnicalCell(file.Name, version, evidence);
                 }).ToArray();
-                return new ConflictTechnicalEntry(key.Tgi, ResourceTypeName(key.Type), cells);
+                var identical = versions.Count == 1 && comparedFiles >= 2 && !incomplete;
+                return new ConflictTechnicalEntry(key.Tgi, ResourceTypeName(key.Type),
+                    cells.Select(cell => cell with { IsIdenticalVersion = identical }).ToArray())
+                    { HasDifferentVersions = versions.Count > 1, HasIdenticalVersions = identical };
             }).ToArray();
         }
         if (card.Module is { } module)

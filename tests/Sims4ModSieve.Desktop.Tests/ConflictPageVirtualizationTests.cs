@@ -200,7 +200,7 @@ public sealed class ConflictPageVirtualizationTests
         Assert.IsTrue(containers is > 0 and < 150, $"{label}: containers={containers}");
         Assert.IsTrue(texts < 750, $"{label}: detail text elements={texts}");
         Assert.IsTrue(controls < 3000, $"{label}: elements={controls}");
-        Assert.IsTrue(Descendants<ItemsControl>(list).Count(control => control is not ListBox) <= containers);
+        Assert.IsTrue(Descendants<ItemsControl>(list).Count(control => control is not ListBox) <= containers * 2);
         Console.WriteLine($"{label}: logical={list.Items.Count}, containers={containers}, text-elements={texts}, all-elements={controls}");
     }
 }
