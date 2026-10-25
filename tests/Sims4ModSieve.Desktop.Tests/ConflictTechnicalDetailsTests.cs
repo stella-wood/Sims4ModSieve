@@ -6,6 +6,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Desktop.ViewModels;
 using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
@@ -946,4 +947,62 @@ public sealed class ConflictTechnicalDetailsTests
         }
         Save(window, "technical-list-plain-rows.png");
     });
+    [TestMethod]
+    [DataRow(2)]
+    [DataRow(15)]
+    public Task FloatingCollapseRemainsClickableAndClosesItsTechnicalDetails(int files) => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, TechnicalSession(files == 15 ? 3 : 100, files));
+        var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
+        var toggle = model.ConflictRows.Single(row => row.IsTechnicalToggle);
+        list.ScrollIntoView(toggle);
+        await WpfTestHost.LayoutAsync(window);
+        var inline = Descendants<Button>(list).Single(button => button.Name == "TechnicalToggleButton");
+        Assert.AreEqual("收起", inline.Content);
+        var ownerKey = toggle.OwnerKey;
+        var details = model.ConflictRows.Where(row => row.OwnerKey == ownerKey &&
+            (row.Kind == ConflictRowKind.Technical && !row.IsExpandable || row.Kind == ConflictRowKind.TechnicalListFile)).ToArray();
+        list.ScrollIntoView(details[details.Length / 2]);
+        await WpfTestHost.LayoutAsync(window);
+        var floating = Descendants<Button>(window).Single(button => button.Name == "FloatingTechnicalCollapse");
+        Assert.IsTrue(floating.IsVisible);
+        Assert.AreEqual(ownerKey, ((ConflictResultRow)floating.DataContext).OwnerKey);
+        var center = floating.TranslatePoint(new Point(floating.ActualWidth / 2, floating.ActualHeight / 2), window);
+        DependencyObject? hit = window.InputHitTest(center) as DependencyObject;
+        while (hit is not null && !ReferenceEquals(hit, floating)) hit = VisualTreeHelper.GetParent(hit);
+        Assert.AreSame(floating, hit, "浮动收起必须在表头上方接收点击");
+        Save(window, $"technical-floating-collapse-{files}.png");
+        var output = Environment.GetEnvironmentVariable("SIMS4_CONFLICT_REVIEW_DIR");
+        if (!string.IsNullOrWhiteSpace(output))
+        {
+            var root = (FrameworkElement)window.Content;
+            var region = new Rect(floating.TranslatePoint(new Point(-8, -8), root),
+                new Size(floating.ActualWidth + 16, floating.ActualHeight + 16));
+            var visual = new DrawingVisual();
+            using (var drawing = visual.RenderOpen())
+                drawing.DrawRectangle(new VisualBrush(root) { ViewboxUnits = BrushMappingMode.Absolute, Viewbox = region, Stretch = Stretch.Fill },
+                    null, new Rect(region.Size));
+            var bitmap = new RenderTargetBitmap((int)Math.Ceiling(region.Width), (int)Math.Ceiling(region.Height), 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var stream = File.Create(Path.Combine(output, $"technical-floating-collapse-button-{files}.png"));
+            encoder.Save(stream);
+        }
+        floating.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(model.ConflictRows.Single(row => row.IsTechnicalToggle && row.OwnerKey == ownerKey).IsExpanded);
+        Assert.IsTrue(model.ConflictRows.Any(row => row.Key == ownerKey));
+        Assert.IsFalse(model.ConflictRows.Any(row => row.OwnerKey == ownerKey && row.TechnicalEntry is not null));
+        Assert.IsFalse(floating.IsVisible);
+        list.ScrollIntoView(model.ConflictRows.Single(row => row.IsTechnicalToggle && row.OwnerKey == ownerKey));
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual("技术详情", Descendants<Button>(list).Single(button => button.Name == "TechnicalToggleButton").Content);
+    });
+
 }

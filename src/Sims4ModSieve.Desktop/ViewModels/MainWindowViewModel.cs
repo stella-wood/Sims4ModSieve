@@ -595,6 +595,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var relatedSession = lastDeleteConflictSession;
         var owner = lastDeleteOwner;
         var pending = new HashSet<string>(lastDeletePendingPaths, StringComparer.OrdinalIgnoreCase);
+        var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
         IsBusy = true;
         try
         {
@@ -610,7 +611,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
                 if (ReferenceEquals(relatedSession, conflictSession) && IsConflictComplete)
                 {
-                    await UpdateConflictFilePathsAsync(conflictSession, result.CompletedPaths, restore: true);
+                    await UpdateConflictFilePathsAsync(conflictSession, result.CompletedPaths, restore: true, restoreViewport);
                 }
                 var restoredText = result.Failures.Count == 0
                     ? $"已撤回，恢复 {result.CompletedPaths.Count} 个文件"
@@ -780,6 +781,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ApplySuggestionsCommand.RaiseCanExecuteChanged();
         ClearSelectionCommand.RaiseCanExecuteChanged();
         ToggleAllGroupsCommand.RaiseCanExecuteChanged();
+        ToggleAllConflictGroupsCommand?.RaiseCanExecuteChanged();
         DeleteSelectedCommand.RaiseCanExecuteChanged();
         UndoLastDeleteCommand.RaiseCanExecuteChanged();
     }

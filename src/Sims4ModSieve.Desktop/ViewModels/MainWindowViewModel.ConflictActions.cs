@@ -112,6 +112,7 @@ public sealed partial class MainWindowViewModel
         var session = conflictSession;
         var duplicateGeneration = resultGeneration;
         var duplicateSnapshot = Groups.Select(group => group.Model).ToArray();
+        var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
         IsBusy = true;
         try
         {
@@ -133,7 +134,7 @@ public sealed partial class MainWindowViewModel
                 if (ReferenceEquals(session, conflictSession))
                 {
                     // 旧投影继续使用其不可变快照，更新完成后才发布新行。
-                    await UpdateConflictFilePathsAsync(session, result.CompletedPaths, restore: false);
+                    await UpdateConflictFilePathsAsync(session, result.CompletedPaths, restore: false, restoreViewport);
                 }
                 if (duplicateGeneration == resultGeneration) resultSession.SynchronizeDeletedPaths(result.CompletedPaths);
                 if (ReferenceEquals(session, conflictSession)) ConflictFileActionStatusText = $"已移入回收站 {result.CompletedPaths.Count} 个文件";
@@ -160,7 +161,8 @@ public sealed partial class MainWindowViewModel
         if (lastDeleteOwner == "conflict") ClearFileActionHistory();
     }
 
-    private async Task UpdateConflictFilePathsAsync(ConflictResultSession session, IReadOnlyList<string> paths, bool restore)
+    private async Task UpdateConflictFilePathsAsync(ConflictResultSession session, IReadOnlyList<string> paths, bool restore,
+        Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
     {
         var prepared = session.ProjectionSnapshot();
         await Task.Run(() =>
@@ -170,7 +172,8 @@ public sealed partial class MainWindowViewModel
         });
         if (!ReferenceEquals(session, conflictSession) || !IsConflictComplete) return;
         session.AcceptFileChanges(prepared);
-        await RefreshConflictRowsAsync();
+        if (ConflictRelationships is { } relationships) ConflictRelationships = session.Relationships(relationships.File.Path);
+        await RefreshConflictRowsAsync(restoreViewport);
         RefreshConflictResults();
     }
 }

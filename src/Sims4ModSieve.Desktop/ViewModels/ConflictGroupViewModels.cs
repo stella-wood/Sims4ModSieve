@@ -24,6 +24,7 @@ public sealed record ConflictCard(string Key, string Type, string Title, Conflic
     PackageConflictGroup? Package = null, ScriptModuleCollision? Module = null, DuplicateGroup? Duplicate = null)
 {
     public int GroupIndex { get; init; }
+    public bool HasRemovedFiles { get; init; }
     public IReadOnlyList<ResourceKey> ResourceKeys => Package?.ResourceKeys ?? [];
 }
 

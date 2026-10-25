@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -18,6 +19,13 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class ConflictRelationshipsDialogTests
 {
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out System.Drawing.Point point);
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+
     internal static ConflictResultSession ReviewSession(int partners = 4)
     {
         const string bundle = @"C:\Mods\整合\人物合集.package";
@@ -386,4 +394,165 @@ public sealed class ConflictRelationshipsDialogTests
         await model.ConflictRowsRefreshTask;
         Assert.IsFalse(model.ConflictRows.Any(row => row.OwnerKey == card.Key && row.Kind == ConflictRowKind.TechnicalHeader));
     });
+    [TestMethod]
+    public Task RelationshipBadgesKeepDirectionsWithoutRenderingResourceDetails() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        var window = OpenWindow(model);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var session = ReviewSession();
+        var card = session.Cards.First(card => card.Type == "override" && card.Files.Any(file => file.Path == A));
+        session.ToggleExpanded(card.Key);
+        await SetSessionAsync(model, session, "all");
+        model.OpenConflictRelationshipsCommand.Execute(model.ConflictRows.First(row => row.File?.Path == A));
+        await Task.Delay(280);
+        await WpfTestHost.LayoutAsync(window);
+        var dialog = Descendants<ConflictRelationshipsDialog>(window).Single();
+        var relationships = model.ConflictRelationships!.Related.SelectMany(row => row.Relationships).ToArray();
+        Assert.IsTrue(relationships.Any(relationship => relationship.Detail.Length > 0), "底层资源事实应保留");
+        var badges = Descendants<Border>(dialog).Where(border => border.Name == "Badge" && border.IsVisible).ToArray();
+        Assert.IsTrue(badges.Any(badge => badge.DataContext is ConflictRelationship { IsContainment: true }));
+        Assert.IsTrue(badges.Any(badge => badge.DataContext is ConflictRelationship { IsContainment: false }));
+        foreach (var badge in badges)
+        {
+            var relationship = (ConflictRelationship)badge.DataContext;
+            Assert.AreEqual(relationship.AccessibleLabel, AutomationProperties.GetName(badge));
+            var tooltip = (ToolTip)badge.ToolTip;
+            tooltip.PlacementTarget = badge;
+            await WpfTestHost.LayoutAsync(window);
+            Assert.AreEqual(relationship.Detail, tooltip.Content);
+            Assert.AreEqual(relationship.Detail.Length > 0, ToolTipService.GetIsEnabled(badge), "空说明不能打开空白提示");
+            Assert.IsTrue(Descendants<TextBlock>(badge).Any(text => text.IsVisible && text.Text.Length > 0));
+        }
+        Assert.IsFalse(Descendants<TextBlock>(dialog).Any(text => text.IsVisible && text.DataContext is ConflictRelationship relationship
+            && relationship.Detail.Length > 0 && text.Text == relationship.Detail));
+        var reusedBadge = badges.First(badge => ((ConflictRelationship)badge.DataContext).Detail.Length > 0);
+        var original = (ConflictRelationship)reusedBadge.DataContext;
+        var reusedTooltip = (ToolTip)reusedBadge.ToolTip;
+        var replacement = relationships.First(relationship => relationship.Detail != original.Detail);
+        try
+        {
+            reusedBadge.DataContext = replacement;
+            await WpfTestHost.LayoutAsync(window);
+            Assert.AreEqual(replacement.Detail, reusedTooltip.Content, "视觉节点复用后提示应读取当前关系，不能保留旧说明");
+            Assert.AreEqual(replacement.Detail.Length > 0, ToolTipService.GetIsEnabled(reusedBadge));
+        }
+        finally { reusedBadge.ClearValue(FrameworkElement.DataContextProperty); }
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(original.Detail, reusedTooltip.Content);
+        Save(window, "v2-relations-badges-without-resource-details.png");
+    });
+
+    [TestMethod]
+    public Task RelationshipDialogKeepsActionsAndVirtualizedScrollingAcrossWindowStates() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        var window = OpenWindow(model);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var session = ReviewSession(partners: 200);
+        var sourceCard = session.Cards.First(card => card.Type == "override" && card.Files.Any(file => file.Path == A));
+        session.ToggleExpanded(sourceCard.Key);
+        await SetSessionAsync(model, session, "all");
+        foreach (var state in new[] { "normal", "maximized", "restored", "minimum" })
+        {
+            model.OpenConflictRelationshipsCommand.Execute(model.ConflictRows.First(row => row.File?.Path == A));
+            await Task.Delay(280);
+            window.WindowState = state == "maximized" ? WindowState.Maximized : WindowState.Normal;
+            if (state == "minimum") { window.Width = 920; window.Height = 640; }
+            await WpfTestHost.LayoutAsync(window);
+            var dialog = Descendants<ConflictRelationshipsDialog>(window).Single();
+            var list = Descendants<ListBox>(dialog).Single();
+            var close = Descendants<Button>(dialog).Single(button => button.Name == "CloseButton");
+            var footer = Descendants<Button>(dialog).Single(button => Equals(button.Content, "打开所在文件夹"));
+            Assert.AreSame(close, HitButton(window, close, new Point(close.ActualWidth / 2, close.ActualHeight / 2)));
+            Assert.AreSame(footer, HitButton(window, footer, new Point(footer.ActualWidth / 2, footer.ActualHeight / 2)));
+            var scroll = Descendants<ScrollViewer>(list).Single();
+            Assert.IsTrue(scroll.ScrollableHeight > 0);
+            list.ScrollIntoView(list.Items[list.Items.Count - 1]);
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsTrue(scroll.VerticalOffset > 0);
+            var last = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(list.Items.Count - 1);
+            Assert.IsNotNull(last);
+            Assert.IsTrue(Descendants<ListBoxItem>(list).Count() < list.Items.Count, "长列表不能实现所有行");
+            var jump = Descendants<Button>(last).First(button => button.IsVisible && button.DataContext is ConflictGroupLink);
+            Assert.AreSame(jump, HitButton(window, jump, new Point(jump.ActualWidth / 2, jump.ActualHeight / 2)));
+            Save(window, $"v2-relations-responsive-{state}.png");
+            close.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(230);
+            Assert.IsFalse(dialog.IsVisible);
+            Assert.IsNull(model.ConflictRelationships);
+            model.OpenConflictRelationshipsCommand.Execute(model.ConflictRows.First(row => row.File?.Path == A));
+            await Task.Delay(280);
+            await WpfTestHost.LayoutAsync(window);
+            list.ScrollIntoView(list.Items[list.Items.Count - 1]);
+            await WpfTestHost.LayoutAsync(window);
+            last = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(list.Items.Count - 1);
+            jump = Descendants<Button>(last).First(button => button.IsVisible && button.DataContext is ConflictGroupLink);
+            var target = (ConflictGroupLink)jump.DataContext;
+            jump.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(230);
+            await model.ConflictRowsRefreshTask;
+            Assert.IsFalse(dialog.IsVisible);
+            Assert.IsNull(model.ConflictRelationships);
+            Assert.IsTrue(model.ConflictRows.Single(row => row.Key == target.Key).IsExpanded);
+        }
+    });
+
+    [TestMethod]
+    public Task RelationshipBadgeNativeHoverShowsDetailsAndAllowsDialogClose() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        var window = OpenWindow(model);
+        window.Left = 60;
+        window.Top = 40;
+        window.Topmost = true;
+        window.Activate();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var session = ReviewSession();
+        var card = session.Cards.First(card => card.Type == "override" && card.Files.Any(file => file.Path == A));
+        session.ToggleExpanded(card.Key);
+        await SetSessionAsync(model, session, "all");
+        model.OpenConflictRelationshipsCommand.Execute(model.ConflictRows.First(row => row.File?.Path == A));
+        await Task.Delay(280);
+        await WpfTestHost.LayoutAsync(window);
+        var dialog = Descendants<ConflictRelationshipsDialog>(window).Single();
+        var badge = Descendants<Border>(dialog).First(border => border.Name == "Badge" && border.IsVisible
+            && border.DataContext is ConflictRelationship { Detail.Length: > 0 });
+        var tooltip = (ToolTip)badge.ToolTip;
+        var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        tooltip.Opened += (_, _) => opened.TrySetResult();
+        Assert.IsTrue(GetCursorPos(out var previous));
+        try
+        {
+            var close = Descendants<Button>(dialog).Single(button => button.Name == "CloseButton");
+            var closeScreen = close.PointToScreen(new Point(close.ActualWidth / 2, close.ActualHeight / 2));
+            Assert.IsTrue(SetCursorPos((int)closeScreen.X, (int)closeScreen.Y));
+            Mouse.Synchronize();
+            await Task.Delay(100);
+            var center = new Point(badge.ActualWidth / 2, badge.ActualHeight / 2);
+            Assert.IsTrue(IsInside(window.InputHitTest(badge.TranslatePoint(center, window)) as DependencyObject, badge));
+            var point = badge.PointToScreen(center);
+            Assert.IsTrue(SetCursorPos((int)point.X, (int)point.Y));
+            Mouse.Synchronize();
+            await opened.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.IsTrue(tooltip.IsOpen);
+            Assert.AreEqual(((ConflictRelationship)badge.DataContext).Detail, tooltip.Content);
+            Save(window, "v2-relationship-badge-hover.png");
+            Save(window, "v2-relationship-badge-tooltip.png", tooltip);
+            Assert.IsTrue(SetCursorPos((int)closeScreen.X, (int)closeScreen.Y));
+            Mouse.Synchronize();
+            await Task.Delay(100);
+            mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+            mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+            await Task.Delay(280);
+            Assert.IsNull(model.ConflictRelationships);
+            Assert.IsFalse(dialog.IsVisible);
+            Assert.IsFalse(tooltip.IsOpen);
+        }
+        finally { SetCursorPos(previous.X, previous.Y); }
+    });
+
 }

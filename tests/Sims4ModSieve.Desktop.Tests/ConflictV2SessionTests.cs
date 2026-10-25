@@ -239,7 +239,7 @@ public sealed class ConflictV2SessionTests
         var deleted = session.ProjectionSnapshot();
         deleted.ApplyDeletedPaths([B]);
         session.AcceptFileChanges(deleted);
-        Assert.AreEqual(0, session.Cards.Count);
+        CollectionAssert.AreEquivalent(new[] { A }, session.Cards.Single().Files.Select(file => file.Path).ToArray());
         var restored = session.ProjectionSnapshot();
         restored.ApplyRestoredPaths([B, C]);
         session.AcceptFileChanges(restored);
@@ -257,7 +257,7 @@ public sealed class ConflictV2SessionTests
         var change = session.ProjectionSnapshot();
         change.ApplyDeletedPaths([B]);
         session.AcceptFileChanges(change);
-        Assert.AreEqual(0, session.Cards.Count);
+        CollectionAssert.AreEquivalent(new[] { A }, session.Cards.Single().Files.Select(file => file.Path).ToArray());
         AssertChangedFileExcluded(session, "file-changed-during-hash");
         var restore = session.ProjectionSnapshot();
         restore.ApplyRestoredPaths([B, C]);
@@ -305,8 +305,9 @@ public sealed class ConflictV2SessionTests
         Assert.IsTrue(partner.Relationships.All(relation => relation.Link.Key == mixed.Key));
         Assert.AreEqual(2, session.Relationships(A)!.CardCount);
         session.ApplyDeletedPaths([C]);
-        Assert.AreEqual("duplicates", session.Cards.Single().Type);
-        Assert.AreEqual(1, session.Relationships(A)!.CardCount);
+        Assert.AreEqual(2, session.Cards.Count);
+        Assert.AreEqual(2, session.Relationships(A)!.CardCount);
+        Assert.AreEqual(mixed.Key, session.Cards.Single(card => card.Type == "suspected").Key);
         session.ApplyRestoredPaths([C]);
         Assert.AreEqual(2, session.Cards.Count);
         Assert.AreEqual(mixed.GroupIndex, session.Cards.Single(card => card.Key == mixed.Key).GroupIndex);
@@ -528,12 +529,188 @@ public sealed class ConflictV2SessionTests
         session.ToggleExpanded(original.Key);
         session.ApplyDeletedPaths([A]);
         Assert.IsFalse(session.Cards.Any(card => card.Files.Any(file => file.Path == A)));
-        Assert.AreEqual(1, session.Cards.Count);
+        Assert.AreEqual(2, session.Cards.Count);
         session.ApplyRestoredPaths([C]);
-        Assert.AreEqual(1, session.Cards.Count);
+        Assert.AreEqual(2, session.Cards.Count);
         session.ApplyRestoredPaths([A]);
         Assert.AreEqual(original.GroupIndex, session.Cards.Single(card => card.Key == original.Key).GroupIndex);
         Assert.IsTrue(Rows(session).Single(row => row.Key == original.Key).IsExpanded);
+    }
+
+    [TestMethod]
+    [DataRow("resources")]
+    [DataRow("scripts")]
+    [DataRow("duplicates")]
+    public void DeletedPairKeepsRemainingFileAndRestoresOriginalCard(string kind)
+    {
+        var session = kind switch
+        {
+            "scripts" => V2([], [], scripts: Scripts([Collision("pkg.main", (A, "one"), (B, "two"))])),
+            "duplicates" => V2([], [], Duplicates(A, B)),
+            _ => V2([Resource(1, (A, "one"), (B, "two"))], [(A, 10), (B, 10)]),
+        };
+        var original = session.Cards.Single();
+        session.ToggleExpanded(original.Key);
+        session.ToggleExpanded(original.Key + "/technical");
+        var deletion = session.ProjectionSnapshot();
+        deletion.ApplyDeletedPaths([A]);
+        session.AcceptFileChanges(deletion);
+        var remaining = session.Cards.Single();
+        Assert.AreEqual(original.Key, remaining.Key);
+        Assert.AreEqual(original.GroupIndex, remaining.GroupIndex);
+        Assert.AreEqual(B, remaining.Files.Single().Path);
+        Assert.AreEqual("已移除 1 个文件，剩余 1 个文件", remaining.Explanation);
+        var rows = Rows(session, "all");
+        Assert.IsTrue(rows.Single(row => row.IsCardStart).IsExpanded);
+        Assert.AreEqual(B, rows.Single(row => row.File is not null).File!.Path);
+        Assert.IsFalse(rows.Any(row => row.IsTechnicalToggle));
+        if (kind == "resources")
+            Assert.AreEqual("撞 0 样 · 独有 10 样", rows.Single(row => row.File is not null).Annotation);
+        else Assert.IsFalse(rows.Any(row => row.HasAnnotation));
+        Assert.IsNull(session.Relationships(A));
+        Assert.AreEqual(0, session.Relationships(B)!.Related.Count);
+        Assert.AreEqual(0, session.Relationships(B)!.Copies.Count);
+        session.ApplyDeletedPaths([B]);
+        Assert.AreEqual(0, session.Cards.Count);
+        var restore = session.ProjectionSnapshot();
+        restore.ApplyRestoredPaths([A, B]);
+        session.AcceptFileChanges(restore);
+        Assert.AreEqual(original, session.Cards.Single());
+        Assert.IsTrue(Rows(session, "all").Single(row => row.IsCardStart).IsExpanded);
+        if (kind != "duplicates")
+            Assert.IsTrue(Rows(session, "all").Single(row => row.IsTechnicalToggle).IsExpanded);
+    }
+
+    [TestMethod]
+    public void DeletedMemberKeepsRemainingDirectRelationsAndTechnicalEvidence()
+    {
+        var session = V2([Resource(1, (A, "one"), (B, "two"), (C, "three")),
+            Resource(2, (A, "one"), (B, "two"))], [(A, 10), (B, 10), (C, 10)]);
+        var original = session.Cards.Single(card => card.Files.Count == 3);
+        session.ToggleExpanded(original.Key);
+        session.ToggleExpanded(original.Key + "/technical");
+        session.ApplyDeletedPaths([A]);
+        var remaining = session.Cards.Single(card => card.Key == original.Key);
+        Assert.AreEqual(original.GroupIndex, remaining.GroupIndex);
+        CollectionAssert.AreEquivalent(new[] { B, C }, remaining.Files.Select(file => file.Path).ToArray());
+        var entries = session.TechnicalEntries(remaining);
+        Assert.AreEqual(1, entries.Count);
+        Assert.AreEqual(2, entries.Single().Cells.Count);
+        Assert.IsFalse(entries.Single().CopyText.Contains(A, StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entries.Single().HasDifferentVersions);
+        Assert.AreEqual(C, session.Relationships(B)!.Related.Single().File.Path);
+        Assert.IsNull(session.Relationships(A));
+        Assert.IsTrue(Rows(session).Single(row => row.OwnerKey == original.Key && row.IsTechnicalToggle).IsExpanded);
+    }
+
+    [TestMethod]
+    public void DeletionRecomputesOverrideUniqueCountsUsingAllRemainingMemberPairs()
+    {
+        var session = V2([Resource(1, (A, "different"), (B, "same"), (C, "same")),
+            Resource(2, (B, "same"), (C, "same"))], [(A, 10), (B, 10), (C, 10)]);
+        var card = session.Cards.Single();
+        session.ToggleExpanded(card.Key);
+        Assert.AreEqual(8, card.Package!.Members.Single(member => member.Path == B).UniqueResourceCount);
+        session.ApplyDeletedPaths([C]);
+        var row = Rows(session).Single(row => row.File?.Path == B);
+        Assert.AreEqual("撞 1 样 · 独有 9 样", row.Annotation);
+        Assert.AreEqual("相同TGI编号1个，其中0个内容相同，独有编号9个", row.AnnotationTooltip);
+        session.ApplyRestoredPaths([C]);
+        Assert.AreEqual("撞 1 样 · 独有 8 样", Rows(session).Single(row => row.File?.Path == B).Annotation);
+        session.ApplyDeletedPaths([A]);
+        row = Rows(session).Single(row => row.File?.Path == B);
+        Assert.AreEqual("撞 0 样 · 独有 8 样", row.Annotation);
+        Assert.AreEqual("相同TGI编号0个，其中0个内容相同，独有编号8个", row.AnnotationTooltip);
+        Assert.IsNull(session.Relationships(A));
+    }
+
+    [TestMethod]
+    public void DeletionRecomputesContainmentAndClearsLabelsWhenBundleIsRemoved()
+    {
+        var session = V2([Resource(1, (A, "same"), (B, "same")), Resource(2, (A, "same"), (B, "same")),
+            Resource(3, (A, "same"), (B, "same")), Resource(4, (B, "same"), (C, "same")),
+            Resource(5, (B, "same"), (C, "same")), Resource(6, (B, "same"), (C, "same"))], [(A, 3), (B, 10), (C, 3)]);
+        var card = session.Cards.Single();
+        session.ToggleExpanded(card.Key);
+        Assert.AreEqual(4, card.Package!.BundleUniqueResourceCount);
+        session.ApplyDeletedPaths([A]);
+        var remaining = session.Cards.Single();
+        Assert.AreEqual(7, remaining.Package!.BundleUniqueResourceCount);
+        Assert.AreEqual("独有 7 样", Rows(session).Single(row => row.File?.Path == B).Annotation);
+        Assert.AreEqual("已被包含", Rows(session).Single(row => row.File?.Path == C).Annotation);
+        session.ApplyRestoredPaths([A]);
+        session.ApplyDeletedPaths([B]);
+        Assert.IsNull(session.Cards.Single().Package!.BundlePath);
+        foreach (var row in Rows(session).Where(row => row.File is not null))
+        {
+            Assert.AreEqual("撞 0 样 · 独有 3 样", row.Annotation);
+            Assert.AreEqual("相同TGI编号0个，其中0个内容相同，独有编号3个", row.AnnotationTooltip);
+            Assert.IsFalse(row.HasTag || row.IsBundle);
+        }
+        Assert.IsFalse(Rows(session).Any(row => row.IsTechnicalToggle));
+    }
+
+    [TestMethod]
+    public void DeletionKeepsLatestTagOnNewestRemainingFileIncludingSingleton()
+    {
+        var session = VersionSession();
+        var card = session.Cards.Single();
+        session.ToggleExpanded(card.Key);
+        session.ApplyDeletedPaths([C]);
+        Assert.AreEqual("最新", Rows(session).Single(row => row.File?.Path == B).Tag);
+        Assert.AreEqual("", Rows(session).Single(row => row.File?.Path == A).Tag);
+        session.ApplyDeletedPaths([B]);
+        var only = Rows(session).Single(row => row.File is not null);
+        Assert.AreEqual(A, only.File!.Path);
+        Assert.AreEqual("最新", only.Tag);
+        Assert.AreEqual("撞 0 样 · 独有 2 样", only.Annotation);
+        Assert.IsFalse(Rows(session).Any(row => row.IsTechnicalToggle));
+        session.ApplyRestoredPaths([B, C]);
+        Assert.AreEqual("最新", Rows(session).Single(row => row.File?.Path == C).Tag);
+        Assert.AreEqual(card.GroupIndex, Rows(session).Single(row => row.IsCardStart).GroupIndex);
+    }
+
+    [TestMethod]
+    public void DeletedScriptMemberLeavesOnlyActiveModuleEvidence()
+    {
+        var session = V2([], [], scripts: Scripts([Collision("pkg.main", (A, "one"), (B, "two"), (C, "three"))]));
+        var original = session.Cards.Single();
+        session.ToggleExpanded(original.Key);
+        session.ToggleExpanded(original.Key + "/technical");
+        session.ApplyDeletedPaths([A]);
+        var card = session.Cards.Single();
+        Assert.AreEqual(original.Key, card.Key);
+        CollectionAssert.AreEquivalent(new[] { B, C }, card.Module!.Occurrences.Select(item => item.ArchivePath).ToArray());
+        var entry = session.TechnicalEntries(card).Single();
+        Assert.AreEqual(2, entry.Cells.Count);
+        Assert.IsFalse(entry.CopyText.Contains(A, StringComparison.OrdinalIgnoreCase));
+        var copy = Rows(session, "all").Single(row => row.Kind == ConflictRowKind.CopyDetails);
+        Assert.IsFalse(copy.CopyText.Contains(A, StringComparison.OrdinalIgnoreCase));
+        Assert.AreEqual(C, session.Relationships(B)!.Related.Single().File.Path);
+        Assert.IsNull(session.Relationships(A));
+    }
+
+    [TestMethod]
+    public void BulkExpansionOnlyChangesVisibleCardKeysAndPreservesTechnicalState()
+    {
+        var session = ContainmentSession();
+        var red = session.Cards.Single(card => card.Type == "override");
+        var yellow = session.Cards.Single(card => card.Type == "collection");
+        session.ToggleExpanded(red.Key + "/technical");
+        session.ToggleAllGroups(Rows(session, filter: "different"));
+        Assert.IsTrue(Rows(session).Single(row => row.Key == red.Key).IsExpanded);
+        Assert.IsFalse(Rows(session).Single(row => row.Key == yellow.Key).IsExpanded);
+        Assert.AreEqual("收起", Rows(session).Single(row => row.IsTechnicalToggle).Title);
+        session.ToggleAllGroups(Rows(session, filter: "same"));
+        Assert.IsTrue(Rows(session).Where(row => row.IsCardStart).All(row => row.IsExpanded));
+        session.ToggleAllGroups(Rows(session));
+        Assert.IsTrue(Rows(session).All(row => !row.IsExpanded));
+        Assert.IsTrue(session.GetExpandedKeysSnapshot().Contains(red.Key + "/technical"));
+        session.ToggleAllGroups(Rows(session));
+        Assert.IsTrue(Rows(session).Single(row => row.OwnerKey == red.Key && row.IsTechnicalToggle).IsExpanded);
+        Assert.IsFalse(Rows(session).Single(row => row.OwnerKey == yellow.Key && row.IsTechnicalToggle).IsExpanded);
+        session.Reset();
+        Assert.AreEqual(0, session.GetExpandedKeysSnapshot().Count);
     }
 
     [TestMethod]

@@ -98,6 +98,14 @@ public sealed partial class ConflictResultSession
         if (!expandedKeys.Remove(key)) expandedKeys.Add(key);
     }
 
+    public void ToggleAllGroups(IEnumerable<ConflictResultRow> visibleRows)
+    {
+        var keys = visibleRows.Where(row => row.IsCardStart && row.IsExpandable).Select(row => row.Key).ToArray();
+        var expand = !keys.All(expandedKeys.Contains);
+        foreach (var key in keys)
+            if (expand) expandedKeys.Add(key); else expandedKeys.Remove(key);
+    }
+
     public IReadOnlySet<string> GetExpandedKeysSnapshot() => new HashSet<string>(expandedKeys, StringComparer.Ordinal);
 
     public void Replace(PackageConflictScanReport packages, ResourceContentComparisonReport contents,
@@ -239,7 +247,8 @@ public sealed partial class ConflictResultSession
             var fileIgnored = row.File is not null && ignoredFiles.Contains(FileKey(owner, row.File.Path));
             if (fileIgnored && !showIgnored) return false;
             var open = row.IsExpandable && expanded.Contains(row.Key);
-            rows.Add(row with { IsExpanded = open, OwnerKey = owner, IsIgnored = row.IsIgnored || fileIgnored || ignoredGroups.Contains(owner) });
+            rows.Add(row with { IsExpanded = open, Title = row.IsTechnicalToggle && open ? "收起" : row.Title,
+                OwnerKey = owner, IsIgnored = row.IsIgnored || fileIgnored || ignoredGroups.Contains(owner) });
             return open;
         }
         void Technical(string key, string text) =>

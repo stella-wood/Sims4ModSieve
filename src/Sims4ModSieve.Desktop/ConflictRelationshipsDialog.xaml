@@ -13,6 +13,7 @@
         <DataTemplate x:Key="RelationAnnotationTemplate">
             <WrapPanel Margin="0,0,8,0">
                 <Border x:Name="Badge" BorderBrush="#E8D5D0" BorderThickness="1" Background="#F8EFED" CornerRadius="2" Padding="4,0" AutomationProperties.Name="{Binding AccessibleLabel}">
+                    <Border.ToolTip><ToolTip Content="{Binding PlacementTarget.DataContext.Detail, RelativeSource={RelativeSource Self}}" /></Border.ToolTip>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock x:Name="Label" Text="{Binding Label}" FontSize="11" Foreground="#89655D" />
                         <TextBlock x:Name="BeforeMark" Visibility="Collapsed" FontSize="11" Foreground="#88774E" />
@@ -20,10 +21,10 @@
                         <TextBlock x:Name="AfterMark" Visibility="Collapsed" FontSize="11" Foreground="#88774E" Text="包含" />
                     </StackPanel>
                 </Border>
-                <TextBlock x:Name="Reason" Text="{Binding Detail}" Margin="5,0,0,0" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
             </WrapPanel>
             <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding IsContainment}" Value="True"><Setter TargetName="Badge" Property="Background" Value="#F8F3E8" /><Setter TargetName="Badge" Property="BorderBrush" Value="#E5DCC6" /><Setter TargetName="Label" Property="Visibility" Value="Collapsed" /><Setter TargetName="MainMark" Property="Visibility" Value="Visible" /><Setter TargetName="BeforeMark" Property="Visibility" Value="Visible" /><Setter TargetName="Reason" Property="Visibility" Value="Collapsed" /></DataTrigger>
+                <DataTrigger Binding="{Binding Detail}" Value=""><Setter TargetName="Badge" Property="ToolTipService.IsEnabled" Value="False" /></DataTrigger>
+                <DataTrigger Binding="{Binding IsContainment}" Value="True"><Setter TargetName="Badge" Property="Background" Value="#F8F3E8" /><Setter TargetName="Badge" Property="BorderBrush" Value="#E5DCC6" /><Setter TargetName="Label" Property="Visibility" Value="Collapsed" /><Setter TargetName="MainMark" Property="Visibility" Value="Visible" /><Setter TargetName="BeforeMark" Property="Visibility" Value="Visible" /></DataTrigger>
                 <DataTrigger Binding="{Binding ContainsMain}" Value="True"><Setter TargetName="BeforeMark" Property="Text" Value="包含" /></DataTrigger>
                 <DataTrigger Binding="{Binding ContainedByMain}" Value="True"><Setter TargetName="BeforeMark" Property="Text" Value="被" /><Setter TargetName="AfterMark" Property="Visibility" Value="Visible" /></DataTrigger>
             </DataTemplate.Triggers>
@@ -83,6 +84,7 @@
                     <Line x:Name="OwnCopiesSeparator" Visibility="Collapsed" X1="0" X2="1" Stretch="Fill" Height="1" Stroke="#D8D3CC" StrokeDashArray="2,4" />
                 </StackPanel>
                 <ListBox x:Name="RelationRowsList" Grid.Row="2" Background="Transparent" BorderThickness="0" ItemTemplate="{StaticResource RelationDisplayTemplate}" HorizontalContentAlignment="Stretch" ScrollViewer.CanContentScroll="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                    <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
                     <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
                     <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Focusable" Value="False" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
                 </ListBox>

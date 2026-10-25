@@ -21,6 +21,7 @@ public sealed partial class MainWindowViewModel
     private IReadOnlyList<ConflictResultRow> conflictRows = [];
     private int visibleConflictParentCount;
     public Task ConflictRowsRefreshTask { get; private set; } = Task.CompletedTask;
+    public event Func<bool, Action<IReadOnlyList<ConflictResultRow>>?>? ConflictViewportCaptureRequested;
     private string conflictSection = "overview";
     private string conflictView = "all";
     private string conflictFilter = "all";
@@ -55,6 +56,7 @@ public sealed partial class MainWindowViewModel
     public RelayCommand SelectConflictFilterCommand { get; private set; } = null!;
     public AsyncRelayCommand StartConflictScanCommand { get; private set; } = null!;
     public RelayCommand ToggleConflictExpandedCommand { get; private set; } = null!;
+    public RelayCommand ToggleAllConflictGroupsCommand { get; private set; } = null!;
     public RelayCommand CancelConflictScanCommand { get; private set; } = null!;
 
     public string ConflictSection => conflictSection;
@@ -111,6 +113,10 @@ public sealed partial class MainWindowViewModel
     public IReadOnlyList<ConflictRangeProblem> ConflictRangeProblems => conflictSession.RangeProblems;
     public IReadOnlyList<ConflictResultRow> ConflictRows => conflictRows;
     public int VisibleConflictParentCount => visibleConflictParentCount;
+    public bool ShowCollapseAllConflictIcon => conflictRows.Any(row => row.IsCardStart && row.IsExpandable)
+        && conflictRows.Where(row => row.IsCardStart && row.IsExpandable).All(row => row.IsExpanded);
+    public bool ShowExpandAllConflictIcon => !ShowCollapseAllConflictIcon;
+    public string ConflictExpandCollapseToolTip => ShowCollapseAllConflictIcon ? "全部收起" : "全部展开";
     public bool ShowEmptyConflictRows => IsConflictBasic && IsConflictComplete && visibleConflictParentCount == 0;
     public string EmptyConflictText => HasActiveConflictFilter ? "没有符合筛选条件的结果" : "已分析范围未发现冲突";
     public bool ShowConflictResources => IsConflictBasic && conflictView == "resources";
@@ -133,6 +139,12 @@ public sealed partial class MainWindowViewModel
             conflictSession.ToggleExpanded(row.Key);
             QueueConflictRowsRefresh();
         });
+        ToggleAllConflictGroupsCommand = new RelayCommand(_ =>
+        {
+            var restoreViewport = ConflictViewportCaptureRequested?.Invoke(true);
+            conflictSession.ToggleAllGroups(conflictRows);
+            ConflictRowsRefreshTask = RefreshConflictRowsAsync(restoreViewport);
+        }, _ => !IsBusy && IsConflictComplete && conflictRows.Any(row => row.IsCardStart && row.IsExpandable));
         StartConflictScanCommand = new AsyncRelayCommand(StartConflictScanAsync,
             exception => ReportConflictFailure(exception), () => !IsBusy && ConflictSources.Any(source => source.IsEnabled));
         CancelConflictScanCommand = new RelayCommand(_ => conflictCancellation?.Cancel(), _ => IsConflictScanning);
@@ -216,7 +228,7 @@ public sealed partial class MainWindowViewModel
 
     private void QueueConflictRowsRefresh() => ConflictRowsRefreshTask = RefreshConflictRowsAsync();
 
-    private async Task RefreshConflictRowsAsync()
+    private async Task RefreshConflictRowsAsync(Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
     {
         var session = conflictSession;
         var request = ++conflictRowsRequest;
@@ -237,6 +249,7 @@ public sealed partial class MainWindowViewModel
                 return (Rows: rows, ParentCount: rows.Count(row => row.Depth == 0));
             }, cancellation.Token);
             if (!ReferenceEquals(session, conflictSession) || request != conflictRowsRequest || !IsConflictComplete) return;
+            restoreViewport?.Invoke(projection.Rows);
             PublishConflictRows(projection.Rows, projection.ParentCount);
         }
         catch (OperationCanceledException) { }
@@ -260,6 +273,10 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(VisibleConflictParentCount));
         OnPropertyChanged(nameof(ShowEmptyConflictRows));
         OnPropertyChanged(nameof(EmptyConflictText));
+        OnPropertyChanged(nameof(ShowCollapseAllConflictIcon));
+        OnPropertyChanged(nameof(ShowExpandAllConflictIcon));
+        OnPropertyChanged(nameof(ConflictExpandCollapseToolTip));
+        ToggleAllConflictGroupsCommand?.RaiseCanExecuteChanged();
     }
 
     private void ResetConflictSession()

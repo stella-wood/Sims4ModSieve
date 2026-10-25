@@ -68,8 +68,12 @@ public partial class ConflictRelationshipsDialog : UserControl
 
     private void FitPane()
     {
+        var window = Window.GetWindow(this);
+        var widthScale = (window?.ActualWidth ?? 1180) / 1180;
+        var heightScale = (window?.ActualHeight ?? 780) / 780;
         Pane.MaxWidth = Math.Max(1, ActualWidth - 48);
-        Pane.MaxHeight = Math.Max(1, Math.Min(440, ActualHeight - 56));
+        Pane.Width = Math.Min(620 * widthScale, Pane.MaxWidth);
+        Pane.MaxHeight = Math.Max(1, Math.Min(440 * heightScale, ActualHeight - 56));
         Pane.Margin = new Thickness(0, 0, 0, Math.Min(70, ActualHeight * 0.08));
     }
 

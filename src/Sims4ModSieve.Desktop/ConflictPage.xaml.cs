@@ -13,6 +13,7 @@ namespace Sims4ModSieve.Desktop;
 
 public partial class ConflictPage : UserControl
 {
+    private Window? filterPopupWindow;
     private ScrollViewer? technicalResultsScroll;
     private ConflictTechnicalTableState? activeTechnicalTable;
     private bool technicalScrollActive;
@@ -27,6 +28,8 @@ public partial class ConflictPage : UserControl
     {
         InitializeComponent();
         technicalEdge.Freeze();
+        IsVisibleChanged += (_, _) => { if (!IsVisible) ConflictFilterPopup.IsOpen = false; };
+        Unloaded += (_, _) => ConflictFilterPopup.IsOpen = false;
         ((INotifyCollectionChanged)ConflictRowsList.Items).CollectionChanged += (_, _) => StopTechnicalScroll();
         ConflictRowsList.RequestBringIntoView += (_, _) => StopTechnicalScroll();
         ConflictRowsList.IsVisibleChanged += (_, _) => { if (!ConflictRowsList.IsVisible) StopTechnicalScroll(); };
@@ -36,9 +39,66 @@ public partial class ConflictPage : UserControl
         {
             StopTechnicalScroll();
             HideTechnicalOverlays();
-            if (e.OldValue is MainWindowViewModel oldModel) oldModel.ConflictGroupLocationRequested -= LocateGroup;
-            if (e.NewValue is MainWindowViewModel newModel) newModel.ConflictGroupLocationRequested += LocateGroup;
+            if (e.OldValue is MainWindowViewModel oldModel)
+            {
+                oldModel.ConflictGroupLocationRequested -= LocateGroup;
+                oldModel.ConflictViewportCaptureRequested -= CaptureConflictViewport;
+            }
+            if (e.NewValue is MainWindowViewModel newModel)
+            {
+                newModel.ConflictGroupLocationRequested += LocateGroup;
+                newModel.ConflictViewportCaptureRequested += CaptureConflictViewport;
+            }
         };
+    }
+
+    private void ConflictFilterPopup_Opened(object? sender, EventArgs e)
+    {
+        filterPopupWindow = Window.GetWindow(this);
+        if (filterPopupWindow is null) return;
+        filterPopupWindow.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler(FilterPopupWindow_PreviewMouseDown), true);
+        filterPopupWindow.PreviewKeyDown += FilterPopupWindow_PreviewKeyDown;
+        filterPopupWindow.LocationChanged += FilterPopupWindow_LocationChanged;
+        filterPopupWindow.Deactivated += FilterPopupWindow_LocationChanged;
+    }
+
+    private void ConflictFilterPopup_Closed(object? sender, EventArgs e)
+    {
+        if (filterPopupWindow is null) return;
+        filterPopupWindow.RemoveHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler(FilterPopupWindow_PreviewMouseDown));
+        filterPopupWindow.PreviewKeyDown -= FilterPopupWindow_PreviewKeyDown;
+        filterPopupWindow.LocationChanged -= FilterPopupWindow_LocationChanged;
+        filterPopupWindow.Deactivated -= FilterPopupWindow_LocationChanged;
+        filterPopupWindow = null;
+    }
+
+    private void FilterPopupWindow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!ConflictFilterButton.IsMouseOver && ConflictFilterPopup.Child?.IsMouseOver != true)
+            ConflictFilterPopup.IsOpen = false;
+    }
+
+    private void FilterPopupWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) ConflictFilterPopup.IsOpen = false;
+    }
+
+    private void FilterPopupWindow_LocationChanged(object? sender, EventArgs e) => ConflictFilterPopup.IsOpen = false;
+
+    private async void FloatingTechnicalCollapse_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel model || FloatingTechnicalCollapse.DataContext is not ConflictResultRow toggle) return;
+        StopTechnicalScroll();
+        var resources = model.ConflictResources;
+        var scripts = model.ConflictScripts;
+        model.ToggleConflictExpandedCommand.Execute(toggle);
+        var refresh = model.ConflictRowsRefreshTask;
+        await refresh;
+        if (!ReferenceEquals(DataContext, model) || !ConflictRowsList.IsVisible || !model.IsConflictComplete
+            || !ReferenceEquals(model.ConflictRowsRefreshTask, refresh)
+            || !ReferenceEquals(model.ConflictResources, resources) || !ReferenceEquals(model.ConflictScripts, scripts)) return;
+        var card = model.ConflictRows.FirstOrDefault(row => row.Key == toggle.OwnerKey);
+        if (card is not null) ConflictRowsList.ScrollIntoView(card);
     }
 
     private void LocateGroup(string key) => Dispatcher.BeginInvoke(() =>
@@ -52,6 +112,67 @@ public partial class ConflictPage : UserControl
         if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is ListBoxItem item)
             item.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.First));
     }, DispatcherPriority.Loaded);
+
+    private Action<IReadOnlyList<ConflictResultRow>>? CaptureConflictViewport(bool anchorToGroup)
+    {
+        if (DataContext is not MainWindowViewModel model || !ConflictRowsList.IsVisible || technicalResultsScroll is not { } scroll) return null;
+        var presenter = TechnicalVisuals<ScrollContentPresenter>(scroll).FirstOrDefault();
+        var panel = TechnicalVisuals<VirtualizingStackPanel>(ConflictRowsList).FirstOrDefault();
+        if (presenter is null || panel is null) return null;
+        StopTechnicalScroll();
+        var originalRows = model.ConflictRows;
+        // 禁用当前有焦点的删除按钮可能触发 BringIntoView，必须在 IsBusy 改变前记录位置。
+        var candidates = panel.Children.OfType<ListBoxItem>()
+            .Where(item => item.DataContext is ConflictResultRow)
+            .Select(item => (Row: (ConflictResultRow)item.DataContext, Top: item.TranslatePoint(new Point(), presenter).Y, Height: item.ActualHeight))
+            .OrderBy(item => item.Top).ToArray();
+        return replacement =>
+        {
+            if (!ReferenceEquals(DataContext, model) || !ConflictRowsList.IsVisible || !ReferenceEquals(model.ConflictRows, originalRows)) return;
+            var survivingKeys = replacement.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
+            var surviving = candidates.Where(item => survivingKeys.Contains(item.Row.Key)).ToArray();
+            // 顶行被删除时，保留相邻存活行原来的位置，而不是将下一组顶到视口顶部。
+            var visible = surviving.Where(item => item.Top + item.Height > 0 && item.Top < presenter.ActualHeight).ToArray();
+            var anchor = visible.Length > 0 ? visible[0] : surviving.OrderBy(item => Math.Abs(item.Top)).FirstOrDefault();
+            var row = anchor.Row is null ? null : replacement.First(item => item.Key == anchor.Row.Key);
+            var anchorTop = anchor.Top;
+            if (anchorToGroup)
+            {
+                var source = candidates.FirstOrDefault(item => item.Top + item.Height > 0 && item.Top < presenter.ActualHeight);
+                if (source.Row is not null)
+                {
+                    var ownerKey = source.Row.IsCardStart ? source.Row.Key : source.Row.OwnerKey;
+                    var owner = replacement.FirstOrDefault(item => item.IsCardStart && item.Key == ownerKey);
+                    if (owner is not null)
+                    {
+                        row = owner;
+                        anchorTop = source.Row.IsCardStart ? source.Top : 0;
+                    }
+                }
+            }
+            if (row is null) return;
+            bool IsCurrent() => ReferenceEquals(DataContext, model) && ConflictRowsList.IsVisible
+                && ReferenceEquals(model.ConflictRows, replacement);
+            void RestoreAnchor()
+            {
+                if (!IsCurrent()) return;
+                if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is not ListBoxItem)
+                    ConflictRowsList.ScrollIntoView(row);
+                ConflictRowsList.UpdateLayout();
+                if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is ListBoxItem item)
+                {
+                    var delta = item.TranslatePoint(new Point(), presenter).Y - anchorTop;
+                    scroll.ScrollToVerticalOffset(scroll.VerticalOffset + delta);
+                    scroll.UpdateLayout();
+                }
+            }
+            Dispatcher.BeginInvoke(() =>
+            {
+                RestoreAnchor();
+                Dispatcher.BeginInvoke(RestoreAnchor, DispatcherPriority.ApplicationIdle);
+            }, DispatcherPriority.Loaded);
+        };
+    }
 
     private void TechnicalColumns_Loaded(object sender, RoutedEventArgs e) => SubscribeTechnicalColumns((ScrollViewer)sender);
 
@@ -219,11 +340,20 @@ public partial class ConflictPage : UserControl
         var viewport = new Rect(presenter.TranslatePoint(new Point(), TechnicalViewport), presenter.RenderSize);
         // 只检查已实现的行，滚动时不遍历或展开整份技术详情。
         var rows = panel.Children.OfType<ListBoxItem>()
-            .Where(item => item.DataContext is ConflictResultRow { TechnicalTable: not null })
+            .Where(item => item.DataContext is ConflictResultRow)
             .Select(item => (Item: item, Row: (ConflictResultRow)item.DataContext,
                 Bounds: new Rect(item.TranslatePoint(new Point(), TechnicalViewport), item.RenderSize))).ToArray();
-        var first = rows.FirstOrDefault(row => row.Row.Kind != ConflictRowKind.TechnicalScroll && row.Bounds.Bottom > viewport.Top && row.Bounds.Top < viewport.Bottom);
-        if (first.Row?.TechnicalTable is not { HeaderRow: { } header } table) { HideTechnicalOverlays(); return; }
+        var topTechnical = rows.FirstOrDefault(row => row.Bounds.Bottom > viewport.Top && row.Bounds.Top < viewport.Bottom
+            && (row.Row.Kind is ConflictRowKind.TechnicalHeader or ConflictRowKind.TechnicalListHeader or ConflictRowKind.TechnicalListFile
+                || row.Row.Kind == ConflictRowKind.Technical && !row.Row.IsExpandable));
+        var first = rows.FirstOrDefault(row => row.Row.TechnicalTable is not null && row.Row.Kind != ConflictRowKind.TechnicalScroll && row.Bounds.Bottom > viewport.Top && row.Bounds.Top < viewport.Bottom);
+        if (first.Row?.TechnicalTable is not { HeaderRow: { } header } table)
+        {
+            HideTechnicalOverlays(includeCollapse: false);
+            UpdateTechnicalCollapse(topTechnical.Row, viewport);
+            return;
+        }
+        UpdateTechnicalCollapse(topTechnical.Row, viewport);
         var headerItem = rows.FirstOrDefault(row => ReferenceEquals(row.Row.TechnicalTable, table) && row.Row.Kind == ConflictRowKind.TechnicalHeader);
         var footer = rows.FirstOrDefault(row => ReferenceEquals(row.Row.TechnicalTable, table) && row.Row.Kind == ConflictRowKind.TechnicalScroll);
         var bottom = footer.Row is null ? viewport.Bottom : Math.Min(viewport.Bottom, footer.Bounds.Bottom);
@@ -270,11 +400,35 @@ public partial class ConflictPage : UserControl
         }
     }
 
-    private void HideTechnicalOverlays()
+    private void UpdateTechnicalCollapse(ConflictResultRow? row, Rect viewport)
+    {
+        var toggle = row is null || DataContext is not MainWindowViewModel model ? null
+            : model.ConflictRows.FirstOrDefault(candidate => candidate.IsTechnicalToggle && candidate.IsExpanded && candidate.OwnerKey == row.OwnerKey);
+        if (toggle is null)
+        {
+            FloatingTechnicalCollapse.Visibility = Visibility.Collapsed;
+            FloatingTechnicalCollapse.DataContext = null;
+            return;
+        }
+        var toggleItem = ConflictRowsList.ItemContainerGenerator.ContainerFromItem(toggle) as ListBoxItem;
+        var scrolledPastToggle = toggleItem is null || toggleItem.TranslatePoint(new Point(0, toggleItem.ActualHeight), TechnicalViewport).Y <= viewport.Top;
+        FloatingTechnicalCollapse.DataContext = toggle;
+        FloatingTechnicalCollapse.Visibility = scrolledPastToggle ? Visibility.Visible : Visibility.Collapsed;
+        FloatingTechnicalCollapse.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(FloatingTechnicalCollapse, Math.Max(viewport.Left, viewport.Right - FloatingTechnicalCollapse.DesiredSize.Width - 8));
+        Canvas.SetTop(FloatingTechnicalCollapse, viewport.Top + 8);
+    }
+
+    private void HideTechnicalOverlays(bool includeCollapse = true)
     {
         foreach (var item in technicalFadedRows) item.OpacityMask = null;
         technicalFadedRows.Clear();
         activeTechnicalTable = null;
+        if (includeCollapse)
+        {
+            FloatingTechnicalCollapse.Visibility = Visibility.Collapsed;
+            FloatingTechnicalCollapse.DataContext = null;
+        }
         StickyTechnicalContent.Content = null;
         StickyTechnicalHeader.Visibility = Visibility.Collapsed;
         FloatingTechnicalScroll.Visibility = Visibility.Collapsed;

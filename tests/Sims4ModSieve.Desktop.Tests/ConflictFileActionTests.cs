@@ -1,4 +1,10 @@
 using System.IO;
+using System.ComponentModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
+using System.Windows.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
@@ -192,6 +198,165 @@ public sealed class ConflictFileActionTests
         await model.UndoLastDeleteCommand.ExecuteAsync();
         Assert.AreEqual(3, model.Groups.Single().Files.Count);
         Assert.AreEqual(3, session.Cards.Single().Files.Count);
+    });
+
+    [TestMethod]
+    public Task DeletingOneFileKeepsCardVisibleAndRejectsDeletedRowUntilUndo() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var report = Duplicates(files.A, files.B);
+        var adapter = new TestRecycleBin();
+        var model = Model(files.Root, new RecordingDuplicateRun(report), adapter: adapter);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        var session = V2([], [], report);
+        var card = session.Cards.Single();
+        session.ToggleExpanded(card.Key);
+        await SetSessionAsync(model, session, "all");
+        var removedRow = model.ConflictRows.Single(row => row.File?.Path == files.A);
+        await model.DeleteConflictFileAsync(removedRow);
+        await WpfTestHost.LayoutAsync(window);
+        var header = model.ConflictRows.Single(row => row.IsCardStart);
+        Assert.AreEqual(card.Key, header.Key);
+        Assert.AreEqual(card.GroupIndex, header.GroupIndex);
+        Assert.IsTrue(header.IsExpanded);
+        Assert.AreEqual(files.B, model.ConflictRows.Single(row => row.File is not null).File!.Path);
+        Assert.IsTrue(model.CanUndoConflictDelete);
+        await model.DeleteConflictFileAsync(removedRow);
+        Assert.AreEqual(1, adapter.Deleted.Count);
+        var undo = Descendants<Button>(window).Single(button => button.Name == "UndoConflictDeleteButton");
+        Assert.IsTrue(undo.IsVisible);
+        Assert.IsTrue(undo.IsEnabled);
+        var hit = window.InputHitTest(undo.TranslatePoint(new Point(undo.ActualWidth / 2, undo.ActualHeight / 2), window)) as DependencyObject;
+        Assert.IsNotNull(hit);
+        Assert.IsTrue(ReferenceEquals(hit, undo) || Descendants<DependencyObject>(undo).Contains(hit));
+        Save(window, "conflict-delete-footer.png");
+        var undoCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void UndoStateChanged(object? sender, PropertyChangedEventArgs args)
+        {
+            if (args.PropertyName == nameof(model.IsBusy) && !model.IsBusy) undoCompleted.TrySetResult();
+        }
+        model.PropertyChanged += UndoStateChanged;
+        try
+        {
+            ((IInvokeProvider)new ButtonAutomationPeer(undo).GetPattern(PatternInterface.Invoke)!).Invoke();
+            await undoCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await model.ConflictRowsRefreshTask;
+            await WpfTestHost.LayoutAsync(window);
+        }
+        finally { model.PropertyChanged -= UndoStateChanged; }
+        CollectionAssert.AreEquivalent(new[] { files.A, files.B }, model.ConflictRows.Where(row => row.File is not null).Select(row => row.File!.Path).ToArray());
+        Assert.AreEqual(card.Key, model.ConflictRows.Single(row => row.IsCardStart).Key);
+        Assert.IsFalse(model.CanUndoConflictDelete);
+        Assert.IsFalse(undo.IsVisible);
+        Save(window, "conflict-delete-footer-restored.png");
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task FileChangesPreserveVisibleRowPositionAfterLayoutAndUndo(bool deleteBeforeViewport) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var paths = Enumerable.Range(0, 36).Select(index => new[] { "a", "b", "c" }
+            .Select(name => Path.Combine(files.Root, $"group{index:D2}-{name}.package")).ToArray()).ToArray();
+        foreach (var path in paths.SelectMany(group => group))
+        {
+            File.WriteAllBytes(path, new byte[10]);
+            File.SetLastWriteTimeUtc(path, Stamp.LastWriteTimeUtc);
+        }
+        var session = V2(paths.Select((group, index) => Resource((ulong)index + 1,
+            (group[0], "one"), (group[1], "two"), (group[2], "three"))).ToArray(),
+            paths.SelectMany(group => group).Select(path => (path, 10)).ToArray());
+        foreach (var card in session.Cards) session.ToggleExpanded(card.Key);
+        var adapter = new TestRecycleBin();
+        var model = Model(files.Root, new RecordingDuplicateRun(Duplicates(files.A, files.B)), adapter: adapter);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        await SettleAsync();
+        var list = Descendants<ListBox>(window).Single(element => element.Name == "ConflictRowsList");
+        var viewer = Descendants<ScrollViewer>(list).First();
+        var presenter = Descendants<ScrollContentPresenter>(viewer).First();
+        var viewportCard = session.Cards[18];
+        var visibleFile = model.ConflictRows.Single(row => row.OwnerKey == viewportCard.Key && row.File?.Path == viewportCard.Files[0].Path);
+        list.ScrollIntoView(visibleFile);
+        await SettleAsync();
+        var visibleItem = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(visibleFile);
+        viewer.ScrollToVerticalOffset(viewer.VerticalOffset + visibleItem.TranslatePoint(new Point(), presenter).Y + visibleItem.ActualHeight / 2);
+        await SettleAsync();
+        var deletedCard = deleteBeforeViewport ? session.Cards[4] : viewportCard;
+        var deletedRow = model.ConflictRows.Single(row => row.OwnerKey == deletedCard.Key && row.File?.Path == deletedCard.Files[0].Path);
+        Button? deleteButton = null;
+        if (!deleteBeforeViewport)
+        {
+            var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(deletedRow);
+            deleteButton = Descendants<Button>(item).Single(button => ReferenceEquals(button.Command, model.DeleteConflictFileCommand));
+            deleteButton.Focus();
+            await SettleAsync();
+        }
+        var anchor = CaptureAnchor(deletedRow.Key);
+        if (deleteButton is not null)
+        {
+            ((IInvokeProvider)new ButtonAutomationPeer(deleteButton).GetPattern(PatternInterface.Invoke)!).Invoke();
+            await WpfTestHost.LayoutAsync(window);
+            await model.ConflictFileActionTask;
+        }
+        else await model.DeleteConflictFileAsync(deletedRow);
+        await SettleAsync();
+        AssertAnchor(anchor);
+        Assert.AreEqual(deletedCard.GroupIndex, model.ConflictRows.Single(row => row.Key == deletedCard.Key).GroupIndex);
+        Assert.IsFalse(model.ConflictRows.Any(row => row.File?.Path == deletedRow.File!.Path));
+        foreach (var row in model.ConflictRows.Where(row => row.OwnerKey == deletedCard.Key && row.File is not null))
+        {
+            Assert.AreEqual("撞 1 样 · 独有 9 样", row.Annotation);
+            Assert.AreEqual("相同TGI编号1个，其中0个内容相同，独有编号9个", row.AnnotationTooltip);
+        }
+        Save(window, $"conflict-delete-anchor-{(deleteBeforeViewport ? "before-viewport" : "visible-file")}.png");
+        var undoAnchor = CaptureAnchor();
+        var undo = Descendants<Button>(window).Single(button => button.Name == "UndoConflictDeleteButton");
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void UndoStateChanged(object? sender, PropertyChangedEventArgs args)
+        {
+            if (args.PropertyName == nameof(model.IsBusy) && !model.IsBusy) completed.TrySetResult();
+        }
+        model.PropertyChanged += UndoStateChanged;
+        try
+        {
+            ((IInvokeProvider)new ButtonAutomationPeer(undo).GetPattern(PatternInterface.Invoke)!).Invoke();
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await SettleAsync();
+        }
+        finally { model.PropertyChanged -= UndoStateChanged; }
+        AssertAnchor(undoAnchor);
+        Assert.IsTrue(model.ConflictRows.Any(row => row.File?.Path == deletedRow.File!.Path));
+        Save(window, $"conflict-undo-anchor-{(deleteBeforeViewport ? "before-viewport" : "visible-file")}.png");
+
+        async Task SettleAsync()
+        {
+            await WpfTestHost.LayoutAsync(window);
+            await window.Dispatcher.InvokeAsync(() => window.UpdateLayout(), DispatcherPriority.ApplicationIdle);
+            await Task.Delay(60);
+            await WpfTestHost.LayoutAsync(window);
+        }
+        (string Key, double Top) CaptureAnchor(string? excluded = null)
+        {
+            var first = Descendants<ListBoxItem>(list).Where(item => item.DataContext is ConflictResultRow row && row.Key != excluded)
+                .Select(item => (Item: item, Row: (ConflictResultRow)item.DataContext, Top: item.TranslatePoint(new Point(), presenter).Y))
+                .Where(item => item.Top + item.Item.ActualHeight > 0 && item.Top < presenter.ActualHeight)
+                .OrderBy(item => item.Top).First();
+            return (first.Row.Key, first.Top);
+        }
+        void AssertAnchor((string Key, double Top) saved)
+        {
+            var row = model.ConflictRows.Single(row => row.Key == saved.Key);
+            var item = list.ItemContainerGenerator.ContainerFromItem(row) as ListBoxItem;
+            Assert.IsNotNull(item, "原视口锚点应保持实现且可见");
+            Assert.AreEqual(saved.Top, item.TranslatePoint(new Point(), presenter).Y, 1d,
+                $"删除或撤回后，存活行应留在视口中的原相对位置；操作前锚点={saved.Key}, Y={saved.Top:F3}；offset={viewer.VerticalOffset:F3}");
+        }
     });
 
     [TestMethod]

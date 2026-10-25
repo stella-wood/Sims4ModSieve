@@ -15,6 +15,7 @@ public sealed partial class ConflictResultSession
     private IReadOnlyList<ConflictProblemRow> originalProblems = [];
     private IReadOnlyList<PackageConflictPairSummary> originalResources = [];
     private IReadOnlyList<ScriptConflictPairSummary> originalScripts = [];
+    private IReadOnlyList<ConflictCard> originalCards = [];
     private readonly HashSet<string> removedPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> ignoredGroups = new(StringComparer.Ordinal);
     private readonly HashSet<string> ignoredFiles = new(StringComparer.Ordinal);
@@ -32,6 +33,7 @@ public sealed partial class ConflictResultSession
         originalProblems = [];
         originalResources = [];
         originalScripts = [];
+        originalCards = [];
         Grouping = null;
         Cards = [];
         removedPaths.Clear();
@@ -51,6 +53,7 @@ public sealed partial class ConflictResultSession
         originalResources = Resources;
         originalScripts = Scripts;
         RebuildCards(result, token);
+        originalCards = Cards;
     }
 
     public void ToggleIgnored(ConflictResultRow row)
@@ -76,6 +79,7 @@ public sealed partial class ConflictResultSession
             groupingInput = groupingInput, duplicateReport = duplicateReport,
             hashChangedPaths = hashChangedPaths,
             originalProblems = originalProblems, originalResources = originalResources, originalScripts = originalScripts,
+            originalCards = originalCards,
         };
         snapshot.ignoredGroups.UnionWith(ignoredGroups);
         snapshot.ignoredFiles.UnionWith(ignoredFiles);
@@ -119,7 +123,78 @@ public sealed partial class ConflictResultSession
             Files = groupingInput.Files.Where(file => !removedPaths.Contains(file.Path)).ToArray(),
             Pairs = groupingInput.Pairs.Where(pair => !removedPaths.Contains(pair.FirstPath) && !removedPaths.Contains(pair.SecondPath)).ToArray(),
         };
-        RebuildCards(new PackageConflictGroupingBuilder().Build(active, new()), default);
+        var rebuilt = new PackageConflictGroupingBuilder().Build(active, new());
+        // 删除只更新当前排查卡的现存成员；正式分组资格不应让用户正在处理的卡消失。
+        Cards = originalCards.Select(card =>
+        {
+            var files = card.Files.Where(file => !removedPaths.Contains(file.Path)).ToArray();
+            if (files.Length == card.Files.Count) return card;
+            var package = card.Package;
+            if (package is not null)
+            {
+                var relations = package.Relations.Where(relation => !removedPaths.Contains(relation.Pair.FirstPath)
+                    && !removedPaths.Contains(relation.Pair.SecondPath)).ToArray();
+                var paths = files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var allPairs = active.Pairs.Where(pair => paths.Contains(pair.FirstPath) && paths.Contains(pair.SecondPath)).ToArray();
+                var displayPairs = package.Kind == PackageConflictRelationKind.OverrideConflict
+                    ? relations.Select(relation => relation.Pair).ToArray() : allPairs;
+                var members = package.Members.Where(member => paths.Contains(member.Path)).Select(member =>
+                {
+                    var shared = allPairs.Where(pair => StringComparer.OrdinalIgnoreCase.Equals(pair.FirstPath, member.Path)
+                            || StringComparer.OrdinalIgnoreCase.Equals(pair.SecondPath, member.Path))
+                        .SelectMany(pair => pair.Resources).Select(match => match.Key).Distinct().Count();
+                    var displayShared = displayPairs.Where(pair => StringComparer.OrdinalIgnoreCase.Equals(pair.FirstPath, member.Path)
+                            || StringComparer.OrdinalIgnoreCase.Equals(pair.SecondPath, member.Path))
+                        .SelectMany(pair => pair.Resources).Select(match => match.Key).Distinct().Count();
+                    var containment = relations.FirstOrDefault(relation => StringComparer.OrdinalIgnoreCase.Equals(relation.ContainedPath, member.Path));
+                    return member with
+                    {
+                        SharedResourceCount = displayShared, UniqueResourceCount = member.ResourceCount - shared,
+                        IsBundle = relations.Any(relation => StringComparer.OrdinalIgnoreCase.Equals(relation.BundlePath, member.Path)),
+                        ContainedContentIdentical = containment is null ? null : !containment.HasDifferentContent,
+                    };
+                }).ToArray();
+                var bundle = members.FirstOrDefault(member => member.IsBundle);
+                package = package with
+                {
+                    Members = members,
+                    Relations = relations,
+                    ResourceKeys = displayPairs.SelectMany(pair => pair.Resources).Select(match => match.Key).Distinct().ToArray(),
+                    BundlePath = bundle?.Path,
+                    BundleUniqueResourceCount = bundle is null ? null : bundle.ResourceCount
+                        - relations.SelectMany(relation => relation.Pair.Resources).Select(match => match.Key).Distinct().Count(),
+                };
+            }
+            var duplicate = card.Duplicate;
+            if (duplicate is not null && files.Length > 0)
+            {
+                var copies = duplicate.Files.Where(file => !removedPaths.Contains(file.Path)).ToArray();
+                var selection = copies.Length > 1 ? new DuplicateSelectionService().Select(copies)
+                    : (KeepPath: copies[0].Path, DeletePaths: (IReadOnlyList<string>)Array.Empty<string>());
+                duplicate = duplicate with { Files = copies, SuggestedKeepPath = selection.KeepPath, SuggestedDeletePaths = selection.DeletePaths };
+            }
+            var module = card.Module is { } originalModule ? originalModule with
+            {
+                ContentGroups = originalModule.ContentGroups.Select(group => group with
+                {
+                    Occurrences = group.Occurrences.Where(item => !removedPaths.Contains(item.ArchivePath)).ToArray(),
+                }).Where(group => group.Occurrences.Count > 0).ToArray(),
+                Uncompared = originalModule.Uncompared.Where(item => !removedPaths.Contains(item.ArchivePath)).ToArray(),
+            } : null;
+            return card with
+            {
+                Files = files, Package = package, Duplicate = duplicate, Module = module, HasRemovedFiles = true,
+                Explanation = $"已移除 {card.Files.Count - files.Length} 个文件，剩余 {files.Length} 个文件",
+            };
+        }).Where(card => card.Files.Count > 0).ToArray();
+        var groups = Cards.Where(card => card.Package is not null).Select(card => card.Package!).ToArray();
+        Grouping = rebuilt with
+        {
+            Groups = groups,
+            GroupsByFile = groups.SelectMany(group => group.Members.Select(member => (member.Path, Group: group)))
+                .GroupBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => (IReadOnlyList<PackageConflictGroup>)group.Select(item => item.Group).ToArray(), StringComparer.OrdinalIgnoreCase),
+        };
     }
 
     private void RebuildCards(PackageConflictGroupingResult result, CancellationToken token)
@@ -215,11 +290,14 @@ public sealed partial class ConflictResultSession
                 if (!add(new(card.Key, kind, 0, card.Title, Priority: card.Priority, IsExpandable: true,
                     FileCountText: $"{card.Files.Count} 个文件", IsIgnored: ignored, OwnerKey: card.Key))) return;
                 add(new(card.Key + "/explanation", ConflictRowKind.Explanation, 1,
-                    card.Duplicate is null ? card.Explanation : $"共有 {DuplicateGroupCount} 组重复文件，",
-                    OwnerKey: card.Key, IsIgnored: ignored, DuplicateLink: card.Duplicate is null ? null : Link(card)));
+                    card.Duplicate is null || card.HasRemovedFiles ? card.Explanation : $"共有 {DuplicateGroupCount} 组重复文件，",
+                    OwnerKey: card.Key, IsIgnored: ignored, DuplicateLink: card.Duplicate is null || card.HasRemovedFiles ? null : Link(card)));
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var contentLabels = new HashSet<string>(StringComparer.Ordinal);
                 var activeFiles = card.Files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var annotationPairs = card.Package is null ? null : card.HasRemovedFiles && card.Package.Kind != PackageConflictRelationKind.OverrideConflict
+                    ? groupingInput!.Pairs.Where(pair => activeFiles.Contains(pair.FirstPath) && activeFiles.Contains(pair.SecondPath)).ToArray()
+                    : card.Package.Relations.Select(relation => relation.Pair).ToArray();
                 var moduleContentCounts = card.Module?.ContentGroups.ToDictionary(group => group.Sha256,
                     group => group.Occurrences.Where(item => activeFiles.Contains(item.ArchivePath))
                         .Select(item => item.ArchivePath).Distinct(StringComparer.OrdinalIgnoreCase).Count(), StringComparer.Ordinal);
@@ -244,10 +322,10 @@ public sealed partial class ConflictResultSession
                                 $"以下 {moduleContentCounts[contentGroup.Sha256]} 个内容相同", OwnerKey: card.Key, IsIgnored: ignored));
                     }
                     var member = card.Package?.Members.First(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, representative.Path));
-                    var sharedResources = card.Package?.Relations.Where(relation =>
-                            StringComparer.OrdinalIgnoreCase.Equals(relation.Pair.FirstPath, representative.Path)
-                            || StringComparer.OrdinalIgnoreCase.Equals(relation.Pair.SecondPath, representative.Path))
-                        .SelectMany(relation => relation.Pair.Resources).GroupBy(match => match.Key).ToArray();
+                    var sharedResources = annotationPairs?.Where(pair =>
+                            StringComparer.OrdinalIgnoreCase.Equals(pair.FirstPath, representative.Path)
+                            || StringComparer.OrdinalIgnoreCase.Equals(pair.SecondPath, representative.Path))
+                        .SelectMany(pair => pair.Resources).GroupBy(match => match.Key).ToArray();
                     var differentCount = sharedResources?.Count(matches => matches.Any(match => match.HasConfirmedDifference)) ?? 0;
                     var annotation = member is null ? card.Duplicate is not null && visibleIndex > 0 ? "内容完全相同" : ""
                         : member.IsBundle ? $"独有 {member.UniqueResourceCount} 样"
@@ -267,6 +345,7 @@ public sealed partial class ConflictResultSession
                     visibleIndex++;
                 }
                 if (card.Duplicate is not null) return;
+                if (card.Files.Count < 2 || card.Package is { ResourceKeys.Count: 0 }) return;
                 var technicalKey = card.Key + "/technical";
                 if (!add(new(technicalKey, ConflictRowKind.Technical, 1, TechnicalDetailTitle, IsExpandable: true,
                     OwnerKey: card.Key, IsIgnored: ignored))) return;

@@ -281,7 +281,7 @@
             </DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalToggleTemplate">
-            <Button Margin="26,5,0,0" HorizontalAlignment="Right" Content="技术详情" Style="{StaticResource ConflictTechnicalButtonStyle}"
+            <Button x:Name="TechnicalToggleButton" Margin="26,5,0,0" HorizontalAlignment="Right" Content="{Binding Title}" Style="{StaticResource ConflictTechnicalButtonStyle}"
                     Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalRelatedLinkTemplate">
@@ -344,19 +344,6 @@
             </Grid>
             <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalEntry.HasIdenticalVersions}" Value="True"><Setter TargetName="ListFile" Property="TextBlock.Foreground" Value="#A39E98" /></DataTrigger></DataTemplate.Triggers>
         </DataTemplate>
-        <Style x:Key="ConflictResultVerticalScrollBarStyle" TargetType="ScrollBar">
-            <Setter Property="Width" Value="12" />
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
-                <Grid Background="Transparent">
-                    <Border Width="6" HorizontalAlignment="Center" Background="#F0EDE8" CornerRadius="2" />
-                    <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
-                        <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
-                        <Track.Thumb><Thumb x:Name="ScrollThumb" Focusable="False"><Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Border Width="6" HorizontalAlignment="Center" Background="#AAA198" CornerRadius="2" /></Grid></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
-                        <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
-                    </Track>
-                </Grid>
-            </ControlTemplate></Setter.Value></Setter>
-        </Style>
         <Style x:Key="ConflictTechnicalScrollBarStyle" TargetType="ScrollBar">
             <Setter Property="Height" Value="11" /><Setter Property="MinHeight" Value="0" /><Setter Property="SmallChange" Value="16" /><Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
@@ -531,10 +518,10 @@
                                          Visibility="{Binding HasActiveConflictFilter, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             </Grid>
                         </ToggleButton>
-                        <Popup x:Name="ConflictFilterPopup" PlacementTarget="{Binding ElementName=ConflictFilterButton}" Placement="Custom" StaysOpen="False" AllowsTransparency="True"
+                        <Popup x:Name="ConflictFilterPopup" PlacementTarget="{Binding ElementName=ConflictFilterButton}" Placement="Custom" StaysOpen="True" AllowsTransparency="True" Opened="ConflictFilterPopup_Opened" Closed="ConflictFilterPopup_Closed"
                                IsOpen="{Binding IsChecked, ElementName=ConflictFilterButton, Mode=TwoWay}"
                                DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10,16,10">
+                            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10,16,10" PreviewKeyDown="FilterPopupWindow_PreviewKeyDown">
                                 <StackPanel Grid.IsSharedSizeScope="True">
                                     <Grid x:Name="ConflictStatusChoices">
                                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
@@ -546,13 +533,15 @@
                                     </Grid>
                                     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />
                                     <Grid x:Name="ConflictTypeChoices">
-                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="72" /><ColumnDefinition Width="Auto" MinWidth="72" /><ColumnDefinition Width="Auto" SharedSizeGroup="ConflictFilterLastColumn" /></Grid.ColumnDefinitions>
                                         <CheckBox Content="全部" IsChecked="{Binding IncludeAllConflictTypes}" Margin="0,4,0,4" HorizontalAlignment="Left" AutomationProperties.Name="全部类型" />
                                         <CheckBox Grid.Column="1" Content="资源覆盖冲突" IsChecked="{Binding IncludeConflictOverrides}" Margin="0,4,0,4" HorizontalAlignment="Left" />
                                         <CheckBox Grid.Column="2" Content="脚本" IsChecked="{Binding IncludeConflictScripts}" Margin="0,4,0,4" HorizontalAlignment="Left" />
-                                        <CheckBox Grid.Row="1" Content="合集包含" IsChecked="{Binding IncludeConflictCollections}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="1" Content="疑似同一 mod" IsChecked="{Binding IncludeConflictSuspected}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="2" Content="重复文件" IsChecked="{Binding IncludeConflictDuplicates}" Margin="0,4,0,4" /><CheckBox Grid.Row="2" Grid.ColumnSpan="3" Content="显示已忽略" IsChecked="{Binding ShowIgnoredConflicts}" Margin="0,8,0,4" />
+                                        <CheckBox Grid.Row="1" Content="合集包含" IsChecked="{Binding IncludeConflictCollections}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="1" Content="疑似同一 mod" IsChecked="{Binding IncludeConflictSuspected}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="2" Content="重复文件" IsChecked="{Binding IncludeConflictDuplicates}" Margin="0,4,0,4" />
                                     </Grid>
+                                    <Border x:Name="ConflictIgnoredSeparator" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />
+                                    <CheckBox Content="显示已忽略" IsChecked="{Binding ShowIgnoredConflicts}" Margin="0,4,0,4" />
                                 </StackPanel>
                             </Border>
                         </Popup>
@@ -563,7 +552,7 @@
                         <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" ItemTemplate="{StaticResource ConflictRowTemplate}" Style="{StaticResource ConflictListStyle}" VirtualizingPanel.ScrollUnit="Pixel"
                                  PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel" PreviewMouseDown="TechnicalResults_PreviewMouseDown" PreviewKeyDown="TechnicalResults_PreviewKeyDown"
                                  Loaded="TechnicalResults_Loaded" Unloaded="TechnicalResults_Unloaded" LayoutUpdated="TechnicalResults_LayoutUpdated">
-                            <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ConflictResultVerticalScrollBarStyle}" /></ListBox.Resources>
+                            <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">
                                     <Setter Property="AutomationProperties.Name" Value="{Binding Title, Mode=OneWay}" />
@@ -584,10 +573,36 @@
                                            MouseEnter="TechnicalTableScrollBar_MouseOverChanged" MouseLeave="TechnicalTableScrollBar_MouseOverChanged" IsMouseCaptureWithinChanged="TechnicalTableScrollBar_IsMouseCaptureWithinChanged"
                                            Maximum="{Binding ScrollableWidth, Mode=OneWay}" ViewportSize="{Binding ViewportWidth, Mode=OneWay}" Value="{Binding HorizontalOffset, Mode=TwoWay}" AutomationProperties.Name="横向滚动技术详情" />
                             </Border>
+                            <Button x:Name="FloatingTechnicalCollapse" Content="收起" Style="{StaticResource ConflictTechnicalButtonStyle}" Background="{StaticResource SurfaceBrush}" Visibility="Collapsed" Click="FloatingTechnicalCollapse_Click" PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel" AutomationProperties.Name="收起技术详情">
+                                <Button.Template><ControlTemplate TargetType="Button">
+                                    <Grid>
+                                        <Border Background="{StaticResource SurfaceBrush}" IsHitTestVisible="False">
+                                            <Border.Effect><DropShadowEffect Color="#514A43" BlurRadius="7" ShadowDepth="1" Opacity="0.18" /></Border.Effect>
+                                        </Border>
+                                        <Border Background="{StaticResource SurfaceBrush}" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter IsHitTestVisible="False" />
+                                        </Border>
+                                    </Grid>
+                                </ControlTemplate></Button.Template>
+                            </Button>
                         </Canvas>
                         <TextBlock Text="{Binding EmptyConflictText}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowEmptyConflictRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </Grid>
-                    <StackPanel Grid.Row="3" Margin="20,10,20,12"><WrapPanel><TextBlock Text="{Binding ConflictFileActionStatusText}" FontSize="11" Foreground="{StaticResource MutedBrush}" /><Button Content="撤回最近一次删除" Command="{Binding UndoLastDeleteCommand}" Style="{StaticResource EntranceActionStyle}" FontSize="11" Padding="8,0" Visibility="{Binding CanUndoConflictDelete, Converter={StaticResource BooleanToVisibilityConverter}}" /></WrapPanel><TextBlock Text="没查出冲突不代表没有冲突" Visibility="{Binding ShowConflictWarning, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#9A6A32" FontSize="11" /></StackPanel>
+                    <Border Grid.Row="3" Padding="20,11,36,11" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                        <StackPanel>
+                            <WrapPanel>
+                                <Button x:Name="ToggleAllConflictGroupsButton" Width="24" Height="24" Cursor="Hand" Command="{Binding ToggleAllConflictGroupsCommand}" ToolTip="{Binding ConflictExpandCollapseToolTip}" Style="{StaticResource BareIconButtonStyle}">
+                                    <Grid Width="16" Height="16" IsHitTestVisible="False">
+                                        <Path Data="M 1,2 L 15,2 M 1,8 L 15,8 M 1,14 L 15,14" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="{Binding ShowCollapseAllConflictIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Path Data="M 1,5 L 15,5 M 1,8 L 15,8 M 1,11 L 15,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="{Binding ShowExpandAllConflictIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    </Grid>
+                                </Button>
+                                <TextBlock Text="{Binding ConflictFileActionStatusText}" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource DataTextStyle}" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+                                <Button x:Name="UndoConflictDeleteButton" Content="撤回" Command="{Binding UndoLastDeleteCommand}" Style="{StaticResource HeaderBackButtonStyle}" Margin="8,0,0,0" Padding="4,2" Visibility="{Binding CanUndoConflictDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </WrapPanel>
+                            <TextBlock Text="没查出冲突不代表没有冲突" Visibility="{Binding ShowConflictWarning, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#9A6A32" FontSize="11" />
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
         </Grid>
