@@ -455,7 +455,7 @@
             <Border Style="{StaticResource CardStyle}"><TextBlock Text="尚未开放" Foreground="{StaticResource MutedBrush}" /></Border>
         </StackPanel>
         <Grid Margin="28,18,28,28" Visibility="{Binding IsConflictBasic, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="31*" MinWidth="300" /><ColumnDefinition Width="16" /><ColumnDefinition Width="69*" /></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="31*" MinWidth="300" MaxWidth="333.3333333333333" /><ColumnDefinition Width="16" /><ColumnDefinition Width="69*" /></Grid.ColumnDefinitions>
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="24" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                 <Button Content="← 返回冲突检测" Command="{Binding ConflictBackCommand}" Style="{StaticResource HeaderBackButtonStyle}" HorizontalAlignment="Left" />
