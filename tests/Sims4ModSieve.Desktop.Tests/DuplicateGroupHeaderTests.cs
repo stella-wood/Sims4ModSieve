@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -76,6 +77,115 @@ public sealed class DuplicateGroupHeaderTests
         }
     });
 
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out System.Drawing.Point point);
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+
+    [TestMethod]
+    [DataRow(1180, 780, false)]
+    [DataRow(920, 640, false)]
+    [DataRow(1180, 780, true)]
+    [DataRow(920, 640, true)]
+    public Task HeaderMouseTargetsToggleExpansionWithoutChangingSelection(int width, int height, bool longName) => WpfTestHost.RunAsync(async () =>
+    {
+        var name = longName ? string.Concat(Enumerable.Repeat("很长的建议保留文件名_", 8)) + ".package" : "obscurus_hairline_N1.package";
+        DuplicateFile[] files =
+        [
+            new(@"D:\Downloads\copy.package", 100, DateTime.UnixEpoch, ["test"], ["test"], false, 2),
+            new(@"D:\Mods\" + name, 100, DateTime.UnixEpoch, ["test"], ["test"], true, 2),
+        ];
+        var suggestion = new DuplicateSelectionService().Select(files);
+        var group = new DuplicateGroupViewModel(new DuplicateGroup("header-hit-test", 100, DuplicateSection.FocusCrossScope,
+            files, suggestion.KeepPath, suggestion.DeletePaths), 1) { IsExpanded = false };
+        var session = new DuplicateResultSession();
+        var model = new MainWindowViewModel(new DuplicateRunService(DuplicateScanner.CreateDefault()),
+            new NoFolderPicker(), new EmptySettingsStore(), resultSession: session);
+        model.OpenDuplicateScannerCommand.Execute(null);
+        session.Replace([group]);
+        var window = new MainWindow(model)
+        {
+            Left = 60, Top = 40, Width = width, Height = height, Topmost = true, ShowInTaskbar = false,
+        };
+        window.Show();
+        window.Activate();
+        await WpfTestHost.LayoutAsync(window);
+        var expander = Descendants<Expander>(window).Single(item => ReferenceEquals(item.DataContext, group));
+        var header = (FrameworkElement)expander.Header;
+        var caption = Descendants<ToggleButton>(header).Single(button => button.Name == "DuplicateHeaderToggle");
+        var arrow = Descendants<ToggleButton>(expander).Single(button => button.Name == "ExpanderArrowToggle");
+        var checkBox = Descendants<CheckBox>(header).Single();
+        Assert.IsTrue(GetCursorPos(out var previous));
+        try
+        {
+            var targets = new List<(FrameworkElement Element, Point Point)>
+            {
+                (caption, new Point(caption.ActualWidth * 0.05, caption.ActualHeight * 0.05)),
+                (caption, new Point(caption.ActualWidth * 0.95, caption.ActualHeight * 0.95)),
+                (arrow, new Point(arrow.ActualWidth * 0.85, arrow.ActualHeight * 0.15)),
+            };
+            targets.AddRange(Descendants<TextBlock>(caption).Select(text =>
+                ((FrameworkElement)text, new Point(text.ActualWidth / 2, text.ActualHeight / 2))));
+            foreach (var (target, point) in targets)
+            {
+                var hit = window.InputHitTest(target.TranslatePoint(point, window)) as DependencyObject;
+                Assert.IsTrue(IsInside(hit, caption) || IsInside(hit, arrow), "标题及其边缘应命中展开按钮");
+                await ClickAsync(target, point);
+                Assert.IsTrue(group.IsExpanded, "点击标题、统计或箭头留白应展开");
+                Assert.AreEqual(0, group.SelectedCount);
+                await ClickAsync(target, point);
+                Assert.IsFalse(group.IsExpanded, "再次点击应收起");
+            }
+            await ClickAsync(checkBox, new Point(checkBox.ActualWidth / 2, checkBox.ActualHeight / 2));
+            Assert.IsFalse(group.IsExpanded, "组勾选不得触发展开");
+            Assert.IsTrue(group.IsSuggestionSelected);
+            Assert.IsFalse(group.Files.Single(file => file.IsSuggestedKeep).IsSelected);
+            await ClickAsync(checkBox, new Point(checkBox.ActualWidth / 2, checkBox.ActualHeight / 2));
+            Assert.AreEqual(0, group.SelectedCount);
+            var captionEnd = caption.TranslatePoint(new Point(caption.ActualWidth, 0), header).X;
+            if (header.ActualWidth > captionEnd + 1)
+            {
+                await ClickAsync(header, new Point((captionEnd + header.ActualWidth) / 2, header.ActualHeight / 2));
+                Assert.IsFalse(group.IsExpanded, "标题右侧空白不触发展开");
+                Assert.AreEqual(0, group.SelectedCount);
+            }
+            PressSpace(caption);
+            Assert.IsTrue(group.IsExpanded, "标题支持键盘空格");
+            await WpfTestHost.LayoutAsync(window);
+            var fileText = Descendants<TextBlock>(expander).First(text => text.DataContext is DuplicateFileViewModel && text.Text == group.Files[0].FileName);
+            await ClickAsync(fileText, new Point(fileText.ActualWidth / 2, fileText.ActualHeight / 2));
+            Assert.IsTrue(group.IsExpanded, "组内文件区不触发展开收起");
+            Assert.AreEqual(0, group.SelectedCount);
+            Save(window, $"duplicate-header-hits-{width}x{height}-{(longName ? "long" : "short")}.png");
+            PressSpace(arrow);
+            Assert.IsFalse(group.IsExpanded, "箭头继续支持键盘空格");
+        }
+        finally { mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero); SetCursorPos(previous.X, previous.Y); }
+    });
+
+    private static bool IsInside(DependencyObject? current, DependencyObject ancestor)
+    {
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, ancestor)) return true;
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return false;
+    }
+
+    private static async Task ClickAsync(FrameworkElement element, Point point)
+    {
+        var screen = element.PointToScreen(point);
+        Assert.IsTrue(SetCursorPos((int)screen.X, (int)screen.Y));
+        Mouse.Synchronize();
+        await Task.Delay(70);
+        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+        await Task.Delay(100);
+        await WpfTestHost.LayoutAsync(Window.GetWindow(element)!);
+    }
     private static void PressSpace(Control control)
     {
         control.Focus();

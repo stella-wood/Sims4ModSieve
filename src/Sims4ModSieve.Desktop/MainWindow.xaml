@@ -344,6 +344,7 @@
                                      VirtualizingPanel.IsVirtualizing="True"
                                      VirtualizingPanel.VirtualizationMode="Recycling"
                                      Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="Padding" Value="0" />
@@ -367,7 +368,7 @@
                                         <StackPanel>
                                             <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,8" Style="{StaticResource PlainExpanderStyle}">
                                                 <Expander.Header>
-                                                    <Grid Margin="0,6" HorizontalAlignment="Stretch">
+                                                    <Grid HorizontalAlignment="Stretch">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="*" />
@@ -377,23 +378,35 @@
                                                                   AutomationProperties.Name="{Binding GroupLabel}"
                                                                   IsChecked="{Binding IsSuggestionSelected, Mode=TwoWay}"
                                                                   ToolTip="按建议勾选本组" />
-                                                        <StackPanel Grid.Column="1">
-                                                            <DockPanel HorizontalAlignment="Left">
-                                                                <TextBlock DockPanel.Dock="Left" Margin="0,3,9,0"
-                                                                           Text="{Binding GroupLabel}"
-                                                                           Foreground="{StaticResource AccentBrush}"
-                                                                           FontSize="11"
-                                                                           FontWeight="SemiBold" />
-                                                                <TextBlock DockPanel.Dock="Right" Margin="9,0,0,0"
-                                                                           Text="{Binding CopyCountText}"
-                                                                           Foreground="{StaticResource MutedBrush}"
-                                                                           FontSize="11" VerticalAlignment="Center" />
-                                                                <TextBlock Text="{Binding Title}" ToolTip="{Binding Title}"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           Style="{StaticResource SectionTitleTextStyle}" FontSize="15" />
-                                                            </DockPanel>
-                                                            <TextBlock Text="{Binding Detail}" Foreground="{StaticResource MutedBrush}" Style="{StaticResource DataTextStyle}" FontSize="11" />
-                                                        </StackPanel>
+                                                        <ToggleButton x:Name="DuplicateHeaderToggle" Grid.Column="1" HorizontalAlignment="Left" HorizontalContentAlignment="Stretch"
+                                                                      Background="Transparent" BorderThickness="0" Padding="0,6,8,6" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                                                                      AutomationProperties.Name="{Binding Title}"
+                                                                      IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource AncestorType=Expander}}">
+                                                            <ToggleButton.Template>
+                                                                <ControlTemplate TargetType="ToggleButton">
+                                                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                                                                    </Border>
+                                                                </ControlTemplate>
+                                                            </ToggleButton.Template>
+                                                            <StackPanel>
+                                                                <DockPanel HorizontalAlignment="Left">
+                                                                    <TextBlock DockPanel.Dock="Left" Margin="0,3,9,0"
+                                                                               Text="{Binding GroupLabel}"
+                                                                               Foreground="{StaticResource AccentBrush}"
+                                                                               FontSize="11"
+                                                                               FontWeight="SemiBold" />
+                                                                    <TextBlock DockPanel.Dock="Right" Margin="9,0,0,0"
+                                                                               Text="{Binding CopyCountText}"
+                                                                               Foreground="{StaticResource MutedBrush}"
+                                                                               FontSize="11" VerticalAlignment="Center" />
+                                                                    <TextBlock Text="{Binding Title}" ToolTip="{Binding Title}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               Style="{StaticResource SectionTitleTextStyle}" FontSize="15" />
+                                                                </DockPanel>
+                                                                <TextBlock Text="{Binding Detail}" Foreground="{StaticResource MutedBrush}" Style="{StaticResource DataTextStyle}" FontSize="11" />
+                                                            </StackPanel>
+                                                        </ToggleButton>
                                                         <Border Grid.Column="2"
                                                                 Background="{StaticResource AccentSoftBrush}"
                                                                 CornerRadius="3"
