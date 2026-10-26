@@ -183,6 +183,7 @@ public sealed class PackageConflictScanner(
     {
         var results = new ReadOutcome[packagePaths.Count];
         var completed = 0;
+        var progressGate = new object();
 
         progress?.Report(new PackageConflictScanProgress(
             PackageConflictScanPhase.ReadingIndexes,
@@ -203,13 +204,17 @@ public sealed class PackageConflictScanner(
                 {
                     results[index] = await ReadOneAsync(packagePaths[index], token).ConfigureAwait(false);
 
-                    var done = Interlocked.Increment(ref completed);
-                    progress?.Report(new PackageConflictScanProgress(
-                        PackageConflictScanPhase.ReadingIndexes,
-                        $"正在读取 package 索引（{done}/{packagePaths.Count}）",
-                        done,
-                        packagePaths.Count,
-                        packagePaths.Count));
+                    // 计数和发送一起排序，避免较早完成的线程最后上报旧计数。
+                    lock (progressGate)
+                    {
+                        var done = ++completed;
+                        progress?.Report(new PackageConflictScanProgress(
+                            PackageConflictScanPhase.ReadingIndexes,
+                            $"正在读取 package 索引（{done}/{packagePaths.Count}）",
+                            done,
+                            packagePaths.Count,
+                            packagePaths.Count));
+                    }
                 })
             .ConfigureAwait(false);
 

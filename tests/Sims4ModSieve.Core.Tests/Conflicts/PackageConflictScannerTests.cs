@@ -410,6 +410,46 @@ public sealed class PackageConflictScannerTests
     }
 
     [TestMethod]
+    public async Task ParallelIndexProgressIsSerializedWithoutSerializingReads()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        Placeholder(temp, "Mods", "a.package");
+        Placeholder(temp, "Mods", "b.package");
+        using var firstProgressEntered = new ManualResetEventSlim();
+        using var secondReadCompleted = new ManualResetEventSlim();
+        using var secondProgressEntered = new ManualResetEventSlim();
+        var inner = new FakePackageIndexReader()
+            .WithIndex("a.package", Hair)
+            .WithIndex("b.package", Hair);
+        var reader = new CoordinatedIndexReader(inner, firstProgressEntered, secondReadCompleted);
+        var updates = new List<int>();
+        var secondReadFinishedDuringFirstProgress = false;
+        var callbacksOverlapped = false;
+        var progress = new InlineProgress<PackageConflictScanProgress>(update =>
+        {
+            if (update.Phase != PackageConflictScanPhase.ReadingIndexes) return;
+            if (update.CompletedItems == 1)
+            {
+                firstProgressEntered.Set();
+                secondReadFinishedDuringFirstProgress = secondReadCompleted.Wait(TimeSpan.FromSeconds(5));
+                // 第二个读取已完成；给它机会进入回调，旧实现会先写入 2，再写入 1。
+                callbacksOverlapped = secondProgressEntered.Wait(TimeSpan.FromMilliseconds(250));
+            }
+            if (update.CompletedItems == 2) secondProgressEntered.Set();
+            lock (updates) updates.Add(update.CompletedItems);
+        });
+
+        var report = await new PackageConflictScanner(new PhysicalFileSystemAccess(), reader).ScanAsync(
+            new PackageConflictScanRequest([new ScanSource("mods", mods)], MaxDegreeOfParallelism: 2), progress);
+
+        Assert.IsTrue(secondReadFinishedDuringFirstProgress, "进度回调不能阻塞另一个文件的读取。");
+        Assert.IsFalse(callbacksOverlapped, "后完成的进度回调不能越过尚未返回的回调。");
+        CollectionAssert.AreEqual(new[] { 0, 1, 2 }, updates);
+        Assert.AreEqual(2, report.AnalyzedPackageCount);
+    }
+
+    [TestMethod]
     public async Task ReadsAreBoundedByTheConfiguredParallelism()
     {
         using var temp = new TempDirectory();
@@ -483,6 +523,24 @@ public sealed class PackageConflictScannerTests
         Assert.AreEqual(1, inventory.ResourceCount);
         Assert.AreEqual(1, inventory.ResourceTypeCounts![Lonely.Type]);
         Assert.AreEqual(1, reader.ReadCount);
+    }
+
+    private sealed class CoordinatedIndexReader(FakePackageIndexReader inner,
+        ManualResetEventSlim firstProgressEntered, ManualResetEventSlim secondReadCompleted) : IPackageIndexReader
+    {
+        public async Task<PackageReadResult> ReadIndexAsync(string packagePath, CancellationToken cancellationToken = default)
+        {
+            var second = Path.GetFileName(packagePath) == "b.package";
+            if (second) Assert.IsTrue(firstProgressEntered.Wait(TimeSpan.FromSeconds(5), cancellationToken));
+            var result = await inner.ReadIndexAsync(packagePath, cancellationToken);
+            if (second) secondReadCompleted.Set();
+            return result;
+        }
+    }
+
+    private sealed class InlineProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
     }
 
     private sealed class InventoryIndexReader(FileStamp stamp) : IPackageIndexReader
