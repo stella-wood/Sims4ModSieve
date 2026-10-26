@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Desktop.Infrastructure;
 using Sims4ModSieve.Desktop.ViewModels;
 using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
 using static Sims4ModSieve.Desktop.Tests.ConflictResultSessionTests;
@@ -38,9 +39,9 @@ public sealed class ConflictTechnicalDetailsTests
         return session;
     }
 
-    private static ConflictResultSession RelatedSession()
+    private static ConflictResultSession RelatedSession(int pairCount = 8)
     {
-        var pairs = Enumerable.Range(0, 8).Select(index => (First: $@"C:\DemoMods\pair-{index}-a.package", Second: $@"C:\DemoMods\pair-{index}-b.package")).ToArray();
+        var pairs = Enumerable.Range(0, pairCount).Select(index => (First: $@"C:\DemoMods\pair-{index}-a.package", Second: $@"C:\DemoMods\pair-{index}-b.package")).ToArray();
         return Session([Resource(1, pairs.SelectMany((pair, index) => new[] { (pair.First, (string?)$"shared-{index}"), (pair.Second, (string?)$"shared-{index}") }).ToArray()),
             .. pairs.SelectMany((pair, index) => new[] { Resource((ulong)(100 + index * 2), (pair.First, "same"), (pair.Second, "same")),
                 Resource((ulong)(101 + index * 2), (pair.First, "same"), (pair.Second, "same")) })],
@@ -171,10 +172,7 @@ public sealed class ConflictTechnicalDetailsTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Left = 30;
-        window.Top = 30;
-        window.Topmost = true;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await SetSessionAsync(model, TechnicalSession(100, 12));
         var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
         var outer = Descendants<ScrollViewer>(list).First();
@@ -228,6 +226,119 @@ public sealed class ConflictTechnicalDetailsTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
+    public Task TechnicalColumnsKeepExactRangeAndReachEdgesAfterRecycling(bool related) => WpfTestHost.RunAsync(async () =>
+    {
+        var session = related ? RelatedSession(6) : TechnicalSession(24, 80);
+        string? ownerKey = null;
+        if (related)
+        {
+            var card = session.Cards.MaxBy(card => card.Files.Count)!;
+            ownerKey = card.Key;
+            session.ToggleExpanded(card.Key);
+            session.ToggleExpanded(card.Key + "/technical");
+        }
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session);
+        var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
+        var row = model.ConflictRows.First(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable
+            && (ownerKey is null || row.OwnerKey == ownerKey));
+        var table = row.TechnicalTable!;
+        Assert.AreEqual(related, table.HasRelatedGroups);
+        foreach (var width in new[] { 920d, 1180d })
+        {
+            window.Width = width;
+            list.ScrollIntoView(row);
+            await WpfTestHost.LayoutAsync(window);
+            foreach (var fraction in new[] { 0d, 0.5, 1d, 0d, 1d })
+            {
+                table.HorizontalOffset = table.ScrollableWidth * fraction;
+                await WpfTestHost.LayoutAsync(window);
+                var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(row);
+                var columns = Descendants<ItemsControl>(container).First(control => control.Items.Count > 0 && control.Items[0] is ConflictTechnicalCell);
+                var scroll = Descendants<ScrollViewer>(columns).Single();
+                Console.WriteLine($"related={related}, fraction={fraction}, extent={scroll.ExtentWidth}, viewport={scroll.ViewportWidth}, range={scroll.ScrollableWidth}, modelRange={table.ScrollableWidth}");
+                Assert.AreEqual(table.ScrollableWidth, scroll.ScrollableWidth, 0.01, "已知列宽的滚动范围不能因容器回收而改变");
+                Assert.AreEqual(table.HorizontalOffset, scroll.HorizontalOffset, 0.01, "正文应到达共享滚动位置");
+                var edgeIndex = fraction == 1 ? columns.Items.Count - 1 : 0;
+                if (fraction is 0 or 1)
+                {
+                    var edge = columns.ItemContainerGenerator.ContainerFromIndex(edgeIndex) as FrameworkElement;
+                    Assert.IsNotNull(edge, "左右端的真实列应被实现");
+                    var bounds = new Rect(edge.TranslatePoint(new Point(), scroll), edge.RenderSize);
+                    Assert.IsTrue(bounds.Left >= -0.01 && bounds.Right <= scroll.ViewportWidth + 0.01, "端点列应完整进入视口");
+                }
+                if (fraction == 0.5)
+                {
+                    var partial = Enumerable.Range(0, columns.Items.Count)
+                        .Select(index => columns.ItemContainerGenerator.ContainerFromIndex(index) as FrameworkElement)
+                        .First(cell => cell is not null);
+                    partial!.BringIntoView();
+                    await WpfTestHost.LayoutAsync(window);
+                    Assert.IsTrue(partial.TranslatePoint(new Point(), scroll).X >= -0.01, "BringIntoView应将部分可见列完整带入视口");
+                }
+                var realized = Enumerable.Range(0, columns.Items.Count).Where(index => columns.ItemContainerGenerator.ContainerFromIndex(index) is not null).ToArray();
+                Assert.IsTrue(realized.Length < columns.Items.Count, $"横向列必须继续虚拟化，不能全量实现来掩盖范围估算：{string.Join(",", realized)}");
+                var outer = Descendants<ScrollViewer>(list).First();
+                Assert.AreEqual(0d, outer.ScrollableWidth, $"内层不能让外层横滚：extent={outer.ExtentWidth}, viewport={outer.ViewportWidth}");
+            }
+            var realizedRow = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(row);
+            var columnsPanel = Descendants<TechnicalColumnsPanel>(realizedRow).Single();
+            columnsPanel.BringIndexIntoViewPublic(0);
+            await WpfTestHost.LayoutAsync(window);
+            Assert.AreEqual(0d, table.HorizontalOffset);
+            var rowColumns = Descendants<ItemsControl>(realizedRow).First(control => control.Items.Count > 0 && control.Items[0] is ConflictTechnicalCell);
+            columnsPanel.BringIndexIntoViewPublic(rowColumns.Items.Count - 1);
+            await WpfTestHost.LayoutAsync(window);
+            Assert.AreEqual(table.ScrollableWidth, table.HorizontalOffset, 0.01, "未实现的末列也应能按索引带入视口");
+            list.ScrollIntoView(model.ConflictRows[0]);
+            await WpfTestHost.LayoutAsync(window);
+            list.ScrollIntoView(row);
+            await WpfTestHost.LayoutAsync(window);
+            Save(window, $"technical-exact-range-{related}-{width}.png");
+        }
+    });
+
+    [TestMethod]
+    public Task TechnicalColumnsClampOffsetWhenViewportGrows() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        window.MinWidth = 1;
+        window.Width = 760;
+        await SetSessionAsync(model, TechnicalSession(24, 2));
+        var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
+        var row = model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable).ElementAt(12);
+        list.ScrollIntoView(row);
+        await WpfTestHost.LayoutAsync(window);
+        var table = row.TechnicalTable!;
+        Assert.IsTrue(table.ScrollableWidth > 0);
+        table.HorizontalOffset = table.ScrollableWidth;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(table.HorizontalOffset > 0);
+        window.Width = 1180;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(0d, table.ScrollableWidth);
+        Assert.AreEqual(0d, table.HorizontalOffset, "视口放大到容纳全部列时应清除旧偏移");
+        var header = Descendants<ContentControl>(window).Single(control => control.Name == "StickyTechnicalContent");
+        var headerScroll = Descendants<ScrollViewer>(header).Single();
+        Assert.AreEqual(0d, headerScroll.HorizontalOffset);
+        Assert.IsNull(headerScroll.OpacityMask, "无需横滚时不能残留左侧渐隐");
+        Assert.IsFalse(Descendants<ScrollBar>(window).Single(control => control.Name == "TechnicalTableScrollBar").IsVisible);
+        window.Width = 760;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(table.ScrollableWidth > 0);
+        Assert.AreEqual(0d, table.HorizontalOffset);
+        Save(window, "technical-offset-after-resize.png");
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     public Task SmoothWheelUsesIntermediatePixelsAccumulatesAndReverses(bool insideTable) => WpfTestHost.RunAsync(async () =>
     {
         var model = CreateModel();
@@ -248,17 +359,30 @@ public sealed class ConflictTechnicalDetailsTests
         var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(row);
         UIElement target = insideTable ? Descendants<TextBlock>(container).First(text => text.Name == "Version" && text.DataContext is ConflictTechnicalCell { IsFile: true }) : container;
         var positions = new List<double>();
+        var frames = new List<(double Offset, double Y)>();
+        void Track(object? sender, EventArgs args) => frames.Add((outer.VerticalOffset, container.TranslatePoint(new Point(), window).Y));
         outer.ScrollChanged += (_, args) => { if (ReferenceEquals(args.OriginalSource, outer) && args.VerticalChange != 0) positions.Add(outer.VerticalOffset); };
         var before = outer.VerticalOffset;
-        SendWheel(target, -120);
-        Assert.AreEqual(before, outer.VerticalOffset, "滚轮不应立即跳到目标位置");
-        await Task.Delay(250);
-        await WpfTestHost.LayoutAsync(window);
+        var origin = container.TranslatePoint(new Point(), window).Y;
+        CompositionTarget.Rendering += Track;
+        try
+        {
+            SendWheel(target, -120);
+            Assert.AreEqual(before, outer.VerticalOffset, "滚轮不应立即跳到目标位置");
+            await Task.Delay(250);
+            await WpfTestHost.LayoutAsync(window);
+        }
+        finally { CompositionTarget.Rendering -= Track; }
+        Console.WriteLine($"{(insideTable ? "表内" : "外层")}: {string.Join(", ", positions.Select(position => position.ToString("F2")))}");
+        Console.WriteLine(string.Join("; ", frames.Select(frame => $"offset={frame.Offset:F2}, Y={frame.Y:F2}")));
         Assert.IsTrue(positions.Distinct().Count() > 2, "实际窗口应呈现多个中间滚动位置");
-        Assert.IsTrue(positions.Zip(positions.Skip(1)).All(pair => pair.First <= pair.Second), "单次向下缓动应持续向下");
+        Assert.AreSame(row, container.DataContext, "用于追踪实际位置的资源行不能被回收复用");
+        Assert.IsTrue(frames.Select(frame => frame.Y).Distinct().Count() > 2, "实际内容应在多个渲染帧中移动");
+        Assert.IsTrue(frames.Zip(frames.Skip(1)).All(pair => pair.First.Y >= pair.Second.Y), "单次向下缓动时实际内容不能反向跳动");
+        var requested = SystemParameters.WheelScrollLines < 0 ? outer.ViewportHeight : SystemParameters.WheelScrollLines * 16d;
+        Assert.AreEqual(requested, origin - container.TranslatePoint(new Point(), window).Y, 0.1, "实际内容应只移动本次滚轮请求的距离");
         var single = outer.VerticalOffset - before;
         Assert.IsTrue(single > 0);
-        Console.WriteLine($"{(insideTable ? "表内" : "外层")}: {string.Join(", ", positions.Select(position => position.ToString("F2")))}");
         outer.ScrollToVerticalOffset(before);
         await WpfTestHost.LayoutAsync(window);
         for (int count = 0; count < 3; count++) SendWheel(list, -120);
@@ -321,10 +445,7 @@ public sealed class ConflictTechnicalDetailsTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Left = 30;
-        window.Top = 30;
-        window.Topmost = true;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await SetSessionAsync(model, TechnicalSession(100, 12));
         var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
         list.ScrollIntoView(model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable).ElementAt(40));
@@ -435,10 +556,7 @@ public sealed class ConflictTechnicalDetailsTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Left = 30;
-        window.Top = 30;
-        window.Topmost = true;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await SetSessionAsync(model, TechnicalSession(100, 12));
         var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
         var row = model.ConflictRows.Where(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable).ElementAt(40);
@@ -575,9 +693,16 @@ public sealed class ConflictTechnicalDetailsTests
             list.ScrollIntoView(footer);
             await WpfTestHost.LayoutAsync(window);
             var footerContainer = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(footer);
-            Assert.IsTrue(floating.TranslatePoint(new Point(0, floating.ActualHeight), list).Y
-                <= footerContainer.TranslatePoint(new Point(0, footerContainer.ActualHeight), list).Y,
-                "悬浮滚动条不得进入表格后的正文");
+            var floatingBottom = floating.TranslatePoint(new Point(0, floating.ActualHeight), list).Y;
+            var footerBottom = footerContainer.TranslatePoint(new Point(0, footerContainer.ActualHeight), list).Y;
+            var viewport = Descendants<Grid>(window).Single(control => control.Name == "TechnicalViewport");
+            var dpi = VisualTreeHelper.GetDpi(window);
+            var geometry = $"group={card.GroupIndex}, dpi={dpi.DpiScaleX:R}x{dpi.DpiScaleY:R}, floatingBottom={floatingBottom:R}, footerBottom={footerBottom:R}, delta={floatingBottom - footerBottom:R}, "
+                + $"floatingViewportBottom={floating.TranslatePoint(new Point(0, floating.ActualHeight), viewport).Y:R}, footerViewportBottom={footerContainer.TranslatePoint(new Point(0, footerContainer.ActualHeight), viewport).Y:R}, "
+                + $"viewport={viewport.ActualWidth:R}x{viewport.ActualHeight:R}, outerViewport={outer.ViewportWidth:R}x{outer.ViewportHeight:R}, offset={outer.VerticalOffset:R}";
+            Console.WriteLine(geometry);
+            // 两条视觉祖先路径的坐标变换会留下约 1e-13 DIP 的浮点残差。
+            Assert.IsTrue(floatingBottom <= footerBottom + 1e-10, "悬浮滚动条不得进入表格后的正文；" + geometry);
             list.ScrollIntoView(model.ConflictRows[0]);
             await WpfTestHost.LayoutAsync(window);
             Assert.IsNull(sticky.Content, "没有可见表格时应解除吸附");
@@ -627,6 +752,7 @@ public sealed class ConflictTechnicalDetailsTests
         Save(window, "technical-related-groups-wrapped.png");
         var target = (ConflictGroupLink)links[0].DataContext;
         ((IInvokeProvider)new ButtonAutomationPeer(links[0]).GetPattern(PatternInterface.Invoke)!).Invoke();
+        await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         await model.ConflictRowsRefreshTask;
         await WpfTestHost.LayoutAsync(window);
         var destination = model.ConflictRows.Single(row => row.Key == target.Key);
@@ -724,10 +850,7 @@ public sealed class ConflictTechnicalDetailsTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Left = 30;
-        window.Top = 30;
-        window.Topmost = true;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await SetSessionAsync(model, TechnicalSession(100, files));
         var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
         var outer = Descendants<ScrollViewer>(list).Single(control => control.Name != "TechnicalColumnsScroll");

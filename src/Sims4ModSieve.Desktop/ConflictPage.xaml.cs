@@ -194,11 +194,14 @@ public partial class ConflictPage : UserControl
                 scroll.ScrollToHorizontalOffset(table.HorizontalOffset);
                 scroll.OpacityMask = table.HorizontalOffset > 0 ? technicalEdge : null;
             }
+            else if (args.PropertyName == nameof(ConflictTechnicalTableState.ViewportWidth))
+                UpdateTechnicalHeaderHeight(scroll, table);
         };
         scroll.Tag = (table, handler);
         table.PropertyChanged += handler;
         scroll.ScrollToHorizontalOffset(table.HorizontalOffset);
         scroll.OpacityMask = table.HorizontalOffset > 0 ? technicalEdge : null;
+        UpdateTechnicalHeaderHeight(scroll, table);
     }
 
     private void TechnicalColumns_Unloaded(object sender, RoutedEventArgs e)
@@ -209,36 +212,18 @@ public partial class ConflictPage : UserControl
         scroll.Tag = null;
     }
 
-    private void TechnicalColumns_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    private static void UpdateTechnicalHeaderHeight(ScrollViewer scroll, ConflictTechnicalTableState table)
     {
-        if (!ReferenceEquals(sender, e.OriginalSource)) return;
-        var scroll = (ScrollViewer)sender;
-        if (scroll.DataContext is not ConflictResultRow { TechnicalTable: { } table }) return;
-        if (scroll.ActualWidth > 0)
+        if (table.ViewportWidth > 0 && table.HeaderRow?.TechnicalEntry is { } header)
         {
-            var widthChanged = table.ViewportWidth != scroll.ActualWidth;
-            table.ViewportWidth = scroll.ActualWidth;
-            if (widthChanged && table.HeaderRow?.TechnicalEntry is { } header)
+            var height = 26d;
+            foreach (var cell in header.Cells.Where(cell => cell.IsFile))
             {
-                var height = 26d;
-                foreach (var cell in header.Cells.Where(cell => cell.IsFile))
-                {
-                    var text = new TextBlock { Text = cell.FileName, FontFamily = scroll.FontFamily, FontSize = 10, TextWrapping = TextWrapping.Wrap };
-                    text.Measure(new Size(Math.Max(1, table.CellWidth - 12), double.PositiveInfinity));
-                    height = Math.Max(height, text.DesiredSize.Height + 12);
-                }
-                table.HeaderHeight = height;
+                var text = new TextBlock { Text = cell.FileName, FontFamily = scroll.FontFamily, FontSize = 10, TextWrapping = TextWrapping.Wrap };
+                text.Measure(new Size(Math.Max(1, table.CellWidth - 12), double.PositiveInfinity));
+                height = Math.Max(height, text.DesiredSize.Height + 12);
             }
-        }
-        // 种类与文件列宽不同，虚拟化会估算未实现列的宽度；按实际列位置校正，避免回收后错列。
-        var panel = TechnicalVisuals<VirtualizingStackPanel>(scroll).FirstOrDefault();
-        if (scroll.TemplatedParent is ItemsControl columns && panel?.Children.OfType<FrameworkElement>().FirstOrDefault() is { } cellContainer)
-        {
-            var index = columns.ItemContainerGenerator.IndexFromContainer(cellContainer);
-            var prefix = index == 0 ? 0 : ConflictTechnicalTableState.TypeWidth + (index - 1) * table.CellWidth;
-            var correction = cellContainer.TranslatePoint(new Point(), scroll).X - (prefix - table.HorizontalOffset);
-            if (Math.Abs(correction) > 0.01)
-                scroll.ScrollToHorizontalOffset(Math.Clamp(scroll.HorizontalOffset + correction, 0, scroll.ScrollableWidth));
+            table.HeaderHeight = height;
         }
     }
 

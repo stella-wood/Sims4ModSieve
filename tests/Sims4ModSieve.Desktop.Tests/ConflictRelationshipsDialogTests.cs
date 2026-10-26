@@ -303,7 +303,10 @@ public sealed class ConflictRelationshipsDialogTests
     });
 
     [TestMethod]
-    public Task MinimumWindowWrapsLongTechnicalNamesAndKeysWithOnlyHorizontalInnerScrolling() => WpfTestHost.RunAsync(async () =>
+    [DataRow(920, 640)]
+    [DataRow(1024, 768)]
+    [DataRow(1180, 780)]
+    public Task MinimumWindowWrapsLongTechnicalNamesAndKeysWithOnlyHorizontalInnerScrolling(int width, int height) => WpfTestHost.RunAsync(async () =>
     {
         var first = @"C:\Mods\很长的目录\" + string.Concat(Enumerable.Repeat("自定义睫毛与五官替换说明", 8)) + ".package";
         var second = @"D:\Inbox\另一个目录\" + string.Concat(Enumerable.Repeat("另一版文件完整名称", 8)) + ".package";
@@ -316,8 +319,8 @@ public sealed class ConflictRelationshipsDialogTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Width = 920;
-        window.Height = 640;
+        window.Width = width;
+        window.Height = height;
         await SetSessionAsync(model, session, "all");
         var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
         var header = model.ConflictRows.Single(row => row.Kind == ConflictRowKind.TechnicalHeader);
@@ -331,13 +334,17 @@ public sealed class ConflictRelationshipsDialogTests
         Assert.AreEqual(1, scrolls.Count(scroll => scroll.Name != "TechnicalColumnsScroll"));
         Assert.IsTrue(scrolls.Where(scroll => scroll.Name == "TechnicalColumnsScroll")
             .All(scroll => scroll.VerticalScrollBarVisibility == ScrollBarVisibility.Disabled));
-        Assert.IsTrue(scrolls.Single(scroll => scroll.Name != "TechnicalColumnsScroll").ScrollableWidth == 0);
-        Save(window, "v2-long-technical-header-920x640.png");
+        var outer = scrolls.Single(scroll => scroll.Name != "TechnicalColumnsScroll");
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var metrics = $"window={window.ActualWidth}x{window.ActualHeight}, dpi={dpi.DpiScaleX}x{dpi.DpiScaleY}, extent={outer.ExtentWidth}, viewport={outer.ViewportWidth}, scrollable={outer.ScrollableWidth}";
+        Console.WriteLine(metrics);
+        Assert.IsTrue(outer.ScrollableWidth == 0, metrics);
+        Save(window, $"v2-long-technical-header-{width}x{height}.png");
         var last = model.ConflictRows.Last();
         list.ScrollIntoView(last);
         await WpfTestHost.LayoutAsync(window);
         Assert.IsNotNull(list.ItemContainerGenerator.ContainerFromItem(last));
-        Save(window, "v2-long-technical-values-920x640.png");
+        Save(window, $"v2-long-technical-values-{width}x{height}.png");
     });
 
     [TestMethod]

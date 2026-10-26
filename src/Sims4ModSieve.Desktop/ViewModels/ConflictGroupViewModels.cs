@@ -75,10 +75,12 @@ public sealed class ConflictTechnicalTableState(int fileCount, bool hasRelatedGr
             if (!SetProperty(ref viewportWidth, value)) return;
             OnPropertyChanged(nameof(ScrollableWidth));
             OnPropertyChanged(nameof(CellWidth));
+            OnPropertyChanged(nameof(ContentWidth));
         }
     }
 
     public double CellWidth => Math.Max(ColumnWidth, (ViewportWidth - TypeWidth - (HasRelatedGroups ? RelatedWidth : 0)) / fileCount);
+    public double ContentWidth => Math.Max(ViewportWidth, TypeWidth + fileCount * ColumnWidth + (HasRelatedGroups ? RelatedWidth : 0));
     public double ScrollableWidth => Math.Max(0, TypeWidth + fileCount * ColumnWidth + (HasRelatedGroups ? RelatedWidth : 0) - ViewportWidth);
 }
 
