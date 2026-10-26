@@ -127,41 +127,7 @@
             <Setter Property="FontFamily" Value="Consolas, Microsoft YaHei UI" />
             <Setter Property="FontSize" Value="12" />
             <Style.Resources>
-                <Style TargetType="{x:Type ScrollBar}">
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="{x:Type ScrollBar}">
-                                <Grid Width="6" HorizontalAlignment="Right" Margin="0,3,2,3" Background="Transparent">
-                                    <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True"
-                                           Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
-                                           Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
-                                        <Track.DecreaseRepeatButton>
-                                            <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0" Focusable="False" />
-                                        </Track.DecreaseRepeatButton>
-                                        <Track.Thumb>
-                                            <Thumb MinHeight="24">
-                                                <Thumb.Style>
-                                                    <Style TargetType="Thumb">
-                                                        <Setter Property="Background" Value="#D8D3CC" />
-                                                        <Style.Triggers>
-                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#B2ABA3" /></Trigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Thumb.Style>
-                                                <Thumb.Template>
-                                                    <ControlTemplate TargetType="Thumb"><Border Background="{TemplateBinding Background}" CornerRadius="3" /></ControlTemplate>
-                                                </Thumb.Template>
-                                            </Thumb>
-                                        </Track.Thumb>
-                                        <Track.IncreaseRepeatButton>
-                                            <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0" Focusable="False" />
-                                        </Track.IncreaseRepeatButton>
-                                    </Track>
-                                </Grid>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
+                <Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" />
             </Style.Resources>
         </Style>
         <Style x:Key="DiagnosticFrame" TargetType="Border" BasedOn="{StaticResource SettingsGroup}">
@@ -229,53 +195,9 @@
                 </RadioButton>
             </StackPanel>
         </Border>
-        <ScrollViewer x:Name="SettingsContentScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch"
-                      ScrollChanged="SettingsContentScroll_ScrollChanged">
+        <ScrollViewer x:Name="SettingsContentScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
             <ScrollViewer.Resources>
-                <Style TargetType="{x:Type ScrollBar}">
-                    <Setter Property="Width" Value="12" />
-                    <Setter Property="Opacity" Value="0" />
-                    <EventSetter Event="Loaded" Handler="OuterScrollBar_Loaded" />
-                    <EventSetter Event="Unloaded" Handler="OuterScrollBar_Unloaded" />
-                    <EventSetter Event="MouseEnter" Handler="OuterScrollBar_Activity" />
-                    <EventSetter Event="MouseLeave" Handler="OuterScrollBar_Activity" />
-                    <EventSetter Event="GotMouseCapture" Handler="OuterScrollBar_Activity" />
-                    <EventSetter Event="LostMouseCapture" Handler="OuterScrollBar_Activity" />
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="{x:Type ScrollBar}">
-                                <Grid Width="12" Background="Transparent">
-                                    <Track x:Name="PART_Track" Width="12" Margin="0,12,0,12" Orientation="Vertical" IsDirectionReversed="True"
-                                           Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
-                                           Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}">
-                                        <Track.DecreaseRepeatButton>
-                                            <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0" Focusable="False" />
-                                        </Track.DecreaseRepeatButton>
-                                        <Track.Thumb>
-                                            <Thumb x:Name="ScrollThumb" MinHeight="24" Background="#E8E5E1">
-                                                <Thumb.Template>
-                                                    <ControlTemplate TargetType="Thumb">
-                                                        <Grid Background="Transparent">
-                                                            <Border Width="4" HorizontalAlignment="Right" Margin="0,0,4,0"
-                                                                    Background="{TemplateBinding Background}" CornerRadius="2" IsHitTestVisible="False" />
-                                                        </Grid>
-                                                    </ControlTemplate>
-                                                </Thumb.Template>
-                                            </Thumb>
-                                        </Track.Thumb>
-                                        <Track.IncreaseRepeatButton>
-                                            <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0" Focusable="False" />
-                                        </Track.IncreaseRepeatButton>
-                                    </Track>
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ScrollThumb" Property="Background" Value="#C8C1B8" /></Trigger>
-                                    <Trigger SourceName="ScrollThumb" Property="IsDragging" Value="True"><Setter TargetName="ScrollThumb" Property="Background" Value="#C8C1B8" /></Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
+                <Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" />
             </ScrollViewer.Resources>
             <Grid Margin="88,52,88,50">
                 <StackPanel Visibility="{Binding IsFoldersSettings, Converter={StaticResource BooleanToVisibilityConverter}}">

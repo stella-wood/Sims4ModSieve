@@ -19,14 +19,21 @@
             <Setter Property="Width" Value="12" />
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
                 <Grid Background="Transparent">
-                    <Border Width="6" HorizontalAlignment="Center" Background="#F0EDE8" CornerRadius="2" />
                     <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                         <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
-                        <Track.Thumb><Thumb x:Name="ScrollThumb" Focusable="False"><Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Border Width="6" HorizontalAlignment="Center" x:Name="ThumbFill" Background="#CFC8C0" CornerRadius="2" /></Grid><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ThumbFill" Property="Background" Value="#AAA198" /></Trigger><Trigger Property="IsDragging" Value="True"><Setter TargetName="ThumbFill" Property="Background" Value="#AAA198" /></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                        <Track.Thumb><Thumb x:Name="ScrollThumb" Focusable="False" Background="#E8E5E1"><Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Border Width="6" HorizontalAlignment="Center" Background="{TemplateBinding Background}" CornerRadius="2" /></Grid></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
                         <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
                     </Track>
                 </Grid>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ScrollThumb" Property="Background" Value="#C8C1B8" /></Trigger>
+                    <Trigger SourceName="ScrollThumb" Property="IsDragging" Value="True"><Setter TargetName="ScrollThumb" Property="Background" Value="#C8C1B8" /></Trigger>
+                </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
+        </Style>
+
+        <Style x:Key="PageVerticalScrollBarStyle" TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}">
+            <Setter Property="local:AutoHideScrollBar.IsEnabled" Value="True" />
         </Style>
 
         <DrawingImage x:Key="BrandMarkImage">

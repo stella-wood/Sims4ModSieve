@@ -93,7 +93,8 @@
 
         <Grid Grid.Row="1"
               Visibility="{Binding IsHomeVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
+            <ScrollViewer x:Name="HomeContentScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+                <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" /></ScrollViewer.Resources>
                 <Grid Margin="0,90,0,40">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="0.75*" />

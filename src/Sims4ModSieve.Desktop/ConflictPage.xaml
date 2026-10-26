@@ -423,6 +423,7 @@
                 <TextBlock x:Name="ConflictOverviewTitle" Grid.Column="1" Text="Mod 冲突检测" FontSize="35" Style="{StaticResource DisplayTextStyle}" />
             </Grid>
             <ScrollViewer x:Name="ConflictOverviewViewport" Grid.Row="1" Margin="0,26,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
+                <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" /></ScrollViewer.Resources>
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="0.75*" /><ColumnDefinition Style="{StaticResource ConflictOverviewMainColumnStyle}" /><ColumnDefinition Style="{StaticResource ConflictOverviewRightColumnStyle}" /></Grid.ColumnDefinitions>
             <Grid x:Name="ConflictOverviewCards" Grid.Column="1" VerticalAlignment="Top">
