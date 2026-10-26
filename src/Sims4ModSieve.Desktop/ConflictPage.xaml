@@ -3,6 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Sims4ModSieve.Desktop">
     <UserControl.Resources>
+        <Style x:Key="ConflictOverviewMainColumnStyle" TargetType="ColumnDefinition">
+            <Setter Property="Width" Value="8*" />
+            <Style.Triggers><DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized"><Setter Property="Width" Value="6.9*" /></DataTrigger></Style.Triggers>
+        </Style>
+        <Style x:Key="ConflictOverviewRightColumnStyle" TargetType="ColumnDefinition">
+            <Setter Property="Width" Value="1.25*" />
+            <Style.Triggers><DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized"><Setter Property="Width" Value="2.35*" /></DataTrigger></Style.Triggers>
+        </Style>
         <Style x:Key="ConflictFilterButtonStyle" TargetType="ToggleButton">
             <Setter Property="Width" Value="24" />
             <Setter Property="Height" Value="24" />
@@ -302,6 +310,7 @@
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding FileName}" Value=""><Setter TargetName="FileName" Property="Visibility" Value="Collapsed" /></DataTrigger>
                 <DataTrigger Binding="{Binding Version}" Value=""><Setter TargetName="Version" Property="Visibility" Value="Collapsed" /></DataTrigger>
+                <DataTrigger Binding="{Binding IsFile}" Value="True"><Setter TargetName="CellContent" Property="VerticalAlignment" Value="Center" /><Setter TargetName="CellContent" Property="Margin" Value="6,0,6,0" /><Setter TargetName="FileName" Property="TextAlignment" Value="Center" /><Setter TargetName="Version" Property="TextAlignment" Value="Center" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsType}" Value="True"><Setter TargetName="Cell" Property="Width" Value="80" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsRelated}" Value="True"><Setter TargetName="Cell" Property="Width" Value="224" /><Setter TargetName="RelatedContent" Property="Content" Value="{Binding RelatedGroups}" /><Setter TargetName="RelatedContent" Property="ContentTemplate" Value="{StaticResource ConflictTechnicalRelatedGroupsTemplate}" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsHeader}" Value="True"><Setter TargetName="CellContent" Property="VerticalAlignment" Value="Center" /></DataTrigger>
@@ -332,7 +341,7 @@
                 <TextBlock Text="{Binding TechnicalEntry.Identifier}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
                 <TextBlock Margin="0,6,0,18"><Run Text="种类  " /><Run Text="{Binding TechnicalEntry.TypeName, Mode=OneWay}" /></TextBlock>
                 <ItemsControl ItemsSource="{Binding TechnicalEntry.RelatedGroups}" ItemTemplate="{StaticResource ConflictTechnicalRelatedLinkTemplate}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
-                <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions><TextBlock Text="文件" /><TextBlock Grid.Column="1" Text="资源版本" /></Grid>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions><TextBlock Text="文件" /><TextBlock Grid.Column="1" Text="资源版本" TextAlignment="Center" /></Grid>
             </StackPanel>
             <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalEntry.TypeName}" Value="脚本模块"><Setter TargetName="IdentifierLabel" Property="Text" Value="模块" /></DataTrigger></DataTemplate.Triggers>
         </DataTemplate>
@@ -340,7 +349,7 @@
             <Grid x:Name="ListFile" Margin="26,0,0,8" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
                 <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
                 <TextBlock Text="{Binding TechnicalEntry.Cells[0].FileName}" TextTrimming="CharacterEllipsis" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" Margin="0,0,20,0" />
-                <TextBlock Grid.Column="1" Text="{Binding TechnicalEntry.Cells[0].Version}" TextWrapping="Wrap" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" />
+                <TextBlock Grid.Column="1" Text="{Binding TechnicalEntry.Cells[0].Version}" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" />
             </Grid>
             <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalEntry.HasIdenticalVersions}" Value="True"><Setter TargetName="ListFile" Property="TextBlock.Foreground" Value="#A39E98" /></DataTrigger></DataTemplate.Triggers>
         </DataTemplate>
@@ -407,45 +416,63 @@
 
     </UserControl.Resources>
     <Grid Background="{StaticResource WindowBrush}">
-        <Grid Margin="70,38,100,30" Visibility="{Binding IsConflictOverview, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <Grid Margin="0,38,0,30" Visibility="{Binding IsConflictOverview, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-            <TextBlock Text="Mod 冲突检测" FontSize="35" Style="{StaticResource DisplayTextStyle}" />
-            <ScrollViewer x:Name="ConflictOverviewViewport" Grid.Row="1" Margin="0,26,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Left" VerticalContentAlignment="Top" ScrollChanged="ConflictOverviewViewport_ScrollChanged">
-            <Grid x:Name="ConflictOverviewCards" Width="880" Height="440" HorizontalAlignment="Left" VerticalAlignment="Top">
+            <Grid HorizontalAlignment="Left" Width="{Binding ViewportWidth, ElementName=ConflictOverviewViewport}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="0.75*" /><ColumnDefinition Style="{StaticResource ConflictOverviewMainColumnStyle}" /><ColumnDefinition Style="{StaticResource ConflictOverviewRightColumnStyle}" /></Grid.ColumnDefinitions>
+                <TextBlock x:Name="ConflictOverviewTitle" Grid.Column="1" Text="Mod 冲突检测" FontSize="35" Style="{StaticResource DisplayTextStyle}" />
+            </Grid>
+            <ScrollViewer x:Name="ConflictOverviewViewport" Grid.Row="1" Margin="0,26,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="0.75*" /><ColumnDefinition Style="{StaticResource ConflictOverviewMainColumnStyle}" /><ColumnDefinition Style="{StaticResource ConflictOverviewRightColumnStyle}" /></Grid.ColumnDefinitions>
+            <Grid x:Name="ConflictOverviewCards" Grid.Column="1" VerticalAlignment="Top">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="20" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource CardStyle}" BorderThickness="0" Padding="12" MinHeight="200">
-                    <DockPanel LastChildFill="False">
-                        <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M2,12 L7,3 L13,12 L18,3 L23,12" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.8" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
-                        <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="基础排查" FontSize="22" FontWeight="SemiBold" />
-                        <TextBlock DockPanel.Dock="Top" Text="比较资源覆盖与脚本模块，查看内容差异" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                        <Button DockPanel.Dock="Bottom" Margin="-9,2,0,0" Content="进入排查 →" Command="{Binding OpenConflictSectionCommand}" CommandParameter="basic" Style="{StaticResource ConflictOverviewActionStyle}" />
-                    </DockPanel>
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="20" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource CardStyle}" BorderThickness="0" Padding="20" MinHeight="200" Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource MultiplyConverter}, ConverterParameter=0.547}">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="0.32*" /><RowDefinition Height="0.49*" /><RowDefinition Height="0.19*" /></Grid.RowDefinitions>
+                        <Border VerticalAlignment="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M2,12 L7,3 L13,12 L18,3 L23,12" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.8" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
+                        <StackPanel Grid.Row="1" VerticalAlignment="Top">
+                            <TextBlock Text="基础排查" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,8,0,0" Text="比较资源覆盖与脚本模块，查看内容差异" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="22" />
+                        </StackPanel>
+                        <Button Grid.Row="2" VerticalAlignment="Bottom" Margin="-9,0,0,0" Content="进入排查 →" Command="{Binding OpenConflictSectionCommand}" CommandParameter="basic" Style="{StaticResource ConflictOverviewActionStyle}" />
+                    </Grid>
                 </Border>
-                <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource CardStyle}" BorderThickness="0" Padding="12" MinHeight="200">
-                    <DockPanel LastChildFill="False">
-                        <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M4,2 L20,2 L20,22 L4,22 Z M7,8 L17,8 M7,12 L17,12 M7,16 L14,16" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
-                        <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="报错日志分析" FontSize="22" FontWeight="SemiBold" />
-                        <TextBlock DockPanel.Dock="Top" Text="从报错日志中整理线索，缩小排查范围" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
-                    </DockPanel>
+                <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource CardStyle}" BorderThickness="0" Padding="20" MinHeight="200" Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource MultiplyConverter}, ConverterParameter=0.547}">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="0.32*" /><RowDefinition Height="0.49*" /><RowDefinition Height="0.19*" /></Grid.RowDefinitions>
+                        <Border VerticalAlignment="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M4,2 L20,2 L20,22 L4,22 Z M7,8 L17,8 M7,12 L17,12 M7,16 L14,16" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
+                        <StackPanel Grid.Row="1" VerticalAlignment="Top">
+                            <TextBlock Text="报错日志分析" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,8,0,0" Text="从报错日志中整理线索，缩小排查范围" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="22" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="2" VerticalAlignment="Bottom" Margin="0,0,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                    </Grid>
                 </Border>
-                <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource CardStyle}" BorderThickness="0" Padding="12" MinHeight="200">
-                    <DockPanel LastChildFill="False">
-                        <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M12,2 L22,6 L20,17 L12,23 L4,17 L2,6 Z M7,12 L11,16 L17,8" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
-                        <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="健康性检查" FontSize="22" FontWeight="SemiBold" />
-                        <TextBlock DockPanel.Dock="Top" Text="检查文件结构、读取状态与未完成项" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
-                    </DockPanel>
+                <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource CardStyle}" BorderThickness="0" Padding="20" MinHeight="200" Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource MultiplyConverter}, ConverterParameter=0.547}">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="0.32*" /><RowDefinition Height="0.49*" /><RowDefinition Height="0.19*" /></Grid.RowDefinitions>
+                        <Border VerticalAlignment="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M12,2 L22,6 L20,17 L12,23 L4,17 L2,6 Z M7,12 L11,16 L17,8" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
+                        <StackPanel Grid.Row="1" VerticalAlignment="Top">
+                            <TextBlock Text="健康性检查" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,8,0,0" Text="检查文件结构、读取状态与未完成项" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="22" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="2" VerticalAlignment="Bottom" Margin="0,0,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                    </Grid>
                 </Border>
-                <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource CardStyle}" BorderThickness="0" Padding="12" MinHeight="200">
-                    <DockPanel LastChildFill="False">
-                        <Border DockPanel.Dock="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M12,2 L12,8 M12,8 L4,13 M12,8 L20,13 M4,13 L4,22 M20,13 L20,22" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
-                        <TextBlock DockPanel.Dock="Top" Margin="0,8,0,5" Text="二分排查" FontSize="22" FontWeight="SemiBold" />
-                        <TextBlock DockPanel.Dock="Top" Text="分批试运行，根据反馈逐步缩小范围" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
-                    </DockPanel>
+                <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource CardStyle}" BorderThickness="0" Padding="20" MinHeight="200" Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource MultiplyConverter}, ConverterParameter=0.547}">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="0.32*" /><RowDefinition Height="0.49*" /><RowDefinition Height="0.19*" /></Grid.RowDefinitions>
+                        <Border VerticalAlignment="Top" Width="46" Height="46" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" HorizontalAlignment="Left"><Path Data="M12,2 L12,8 M12,8 L4,13 M12,8 L20,13 M4,13 L4,22 M20,13 L20,22" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.6" Width="27" Height="27" Stretch="Uniform" IsHitTestVisible="False" /></Border>
+                        <StackPanel Grid.Row="1" VerticalAlignment="Top">
+                            <TextBlock Text="二分排查" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,8,0,0" Text="分批试运行，根据反馈逐步缩小范围" FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="22" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="2" VerticalAlignment="Bottom" Margin="0,0,0,5" Text="暂未开放" FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                    </Grid>
                 </Border>
+            </Grid>
             </Grid>
             </ScrollViewer>
         </Grid>
@@ -455,7 +482,7 @@
             <Border Style="{StaticResource CardStyle}"><TextBlock Text="尚未开放" Foreground="{StaticResource MutedBrush}" /></Border>
         </StackPanel>
         <Grid Margin="28,18,28,28" Visibility="{Binding IsConflictBasic, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="31*" MinWidth="300" MaxWidth="333.3333333333333" /><ColumnDefinition Width="16" /><ColumnDefinition Width="69*" /></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="31*" MinWidth="300" MaxWidth="346.6666666666667" /><ColumnDefinition Width="16" /><ColumnDefinition Width="69*" /></Grid.ColumnDefinitions>
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="24" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                 <Button Content="← 返回冲突检测" Command="{Binding ConflictBackCommand}" Style="{StaticResource HeaderBackButtonStyle}" HorizontalAlignment="Left" />
@@ -472,7 +499,9 @@
                                 <Button Grid.Column="1" Content="{Binding ModsRootActionText}" Command="{Binding ChangeModsRootCommand}" Style="{StaticResource HeaderBackButtonStyle}" Padding="6,2" Foreground="#A892C5" FontSize="12" FontWeight="Normal" />
                             </Grid>
                         </Border>
-                        <ListBox x:Name="ConflictSourcesList" Grid.Row="2" ItemsSource="{Binding ConflictSources}" Style="{StaticResource ConflictListStyle}"><ListBox.ItemTemplate><DataTemplate>
+                        <ListBox x:Name="ConflictSourcesList" Grid.Row="2" ItemsSource="{Binding ConflictSources}" Style="{StaticResource ConflictListStyle}">
+                            <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
+                            <ListBox.ItemTemplate><DataTemplate>
                                 <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <CheckBox Margin="0,3,10,0" IsChecked="{Binding IsEnabled}" IsEnabled="{Binding DataContext.CanEditSources, RelativeSource={RelativeSource AncestorType=Window}}" />
                                     <StackPanel Grid.Column="1"><TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Path}" ToolTip="{Binding Path}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource MutedBrush}" /><TextBlock Text="{Binding AvailabilityText}" Foreground="#9A6A32" FontSize="10" Visibility="{Binding HasAvailabilityWarning, Converter={StaticResource BooleanToVisibilityConverter}}" /></StackPanel>

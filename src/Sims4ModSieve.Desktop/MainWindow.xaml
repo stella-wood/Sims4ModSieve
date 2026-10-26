@@ -169,7 +169,7 @@
               Visibility="{Binding IsScannerVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="31*" MinWidth="300" />
+                    <ColumnDefinition Width="31*" MinWidth="300" MaxWidth="346.6666666666667" />
                     <ColumnDefinition Width="16" />
                     <ColumnDefinition Width="69*" />
                 </Grid.ColumnDefinitions>
@@ -237,7 +237,8 @@
                             </Grid>
                         </Border>
 
-                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer x:Name="DuplicateSourcesScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ScrollViewer.Resources>
                             <ItemsControl ItemsSource="{Binding Sources}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -331,7 +332,7 @@
                         <Grid Grid.Row="1">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                                         Visibility="{Binding HasNoResults, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <TextBlock Text="尚未扫描" Foreground="{StaticResource MutedBrush}" FontSize="15" HorizontalAlignment="Center" />
+                                <TextBlock x:Name="DuplicatePlaceholderText" Text="{Binding DuplicatePlaceholderText}" Foreground="{StaticResource MutedBrush}" FontSize="15" HorizontalAlignment="Center" />
                             </StackPanel>
 
                             <ListBox x:Name="DuplicateGroupsList" ItemsSource="{Binding Groups}"

@@ -178,7 +178,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsStatusVisible
     {
         get => isStatusVisible;
-        private set => SetProperty(ref isStatusVisible, value);
+        private set
+        {
+            if (SetProperty(ref isStatusVisible, value)) OnPropertyChanged(nameof(DuplicatePlaceholderText));
+        }
     }
 
     public string? ModsRoot
@@ -218,8 +221,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string StatusText
     {
         get => statusText;
-        private set => SetProperty(ref statusText, value);
+        private set
+        {
+            if (SetProperty(ref statusText, value)) OnPropertyChanged(nameof(DuplicatePlaceholderText));
+        }
     }
+
+    public string DuplicatePlaceholderText => IsStatusVisible ? StatusText : "尚未扫描";
 
     public string StatusDetail
     {
