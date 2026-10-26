@@ -44,10 +44,7 @@ public sealed class ScopeScrollbarTests
             model.OpenConflictSectionCommand.Execute("basic");
         }
         var window = OpenWindow(model);
-        window.Left = 60;
-        window.Top = 40;
-        window.Topmost = true;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await WpfTestHost.LayoutAsync(window);
         FrameworkElement scope = page == "duplicate"
             ? Descendants<ScrollViewer>(window).Single(element => element.Name == "DuplicateSourcesScroll")
@@ -57,7 +54,7 @@ public sealed class ScopeScrollbarTests
         Assert.IsTrue(GetCursorPos(out var previous));
         try
         {
-            MoveTo(viewer, new Point(viewer.ActualWidth / 2, viewer.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(viewer, new Point(viewer.ActualWidth / 2, viewer.ActualHeight / 2));
             await Task.Delay(100);
             Assert.IsTrue(IsInside(Mouse.DirectlyOver as DependencyObject, scope), "真实鼠标应命中来源区");
             mouse_event(0x0800, 0, 0, unchecked((uint)-360), UIntPtr.Zero);
@@ -74,10 +71,8 @@ public sealed class ScopeScrollbarTests
             viewer.ScrollToTop();
             await WpfTestHost.LayoutAsync(window);
             var thumb = track.Thumb;
-            MoveTo(thumb, new Point(thumb.ActualWidth / 2, thumb.ActualHeight / 2));
-            mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-            await Task.Delay(70);
-            MoveTo(bar, new Point(bar.ActualWidth / 2, bar.ActualHeight * 0.7));
+            await WpfTestHost.BeginDragAsync(thumb);
+            await WpfTestHost.MoveMouseAsync(bar, new Point(bar.ActualWidth / 2, bar.ActualHeight * 0.7));
             await Task.Delay(100);
             mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
             await Task.Delay(100);
@@ -106,7 +101,7 @@ public sealed class ScopeScrollbarTests
                 await WpfTestHost.LayoutAsync(window);
                 viewer.ScrollToTop();
                 await WpfTestHost.LayoutAsync(window);
-                MoveTo(window, new Point(window.ActualWidth * 0.75, window.ActualHeight / 2));
+                await WpfTestHost.MoveMouseAsync(window, new Point(window.ActualWidth * 0.75, window.ActualHeight / 2));
                 await Task.Delay(100);
                 Save(window, $"{page}-scope-scrollbar-{state}.png");
             }
@@ -123,20 +118,7 @@ public sealed class ScopeScrollbarTests
         }
         return false;
     }
-    private static void MoveTo(FrameworkElement element, Point point)
-    {
-        var screen = element.PointToScreen(point);
-        Assert.IsTrue(SetCursorPos((int)screen.X, (int)screen.Y));
-        Mouse.Synchronize();
-    }
-    private static async Task ClickAsync(FrameworkElement element)
-    {
-        MoveTo(element, new Point(element.ActualWidth / 2, element.ActualHeight / 2));
-        await Task.Delay(70);
-        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
-        await Task.Delay(150);
-    }
+    private static Task ClickAsync(FrameworkElement element) => WpfTestHost.ClickAsync(element);
     private static void Save(Window window, string filename)
     {
         var output = Environment.GetEnvironmentVariable("SIMS4_DETECTION_REVIEW_DIR");

@@ -23,6 +23,30 @@ public sealed class VerticalScrollbarTests
     private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
 
     [TestMethod]
+    public Task NativeInputWindowFitsWorkAreaAndKeepsEdgeControlClickable() => WpfTestHost.RunAsync(async () =>
+    {
+        var workArea = SystemParameters.WorkArea;
+        var smallArea = new Rect(workArea.Left + workArea.Width / 4, workArea.Top + workArea.Height / 4,
+            workArea.Width / 2, workArea.Height / 2);
+        var clicked = false;
+        var button = new Button { Content = "边缘按钮", HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom };
+        button.Click += (_, _) => clicked = true;
+        var window = new Window { MinWidth = workArea.Width, MinHeight = workArea.Height, Content = button, ShowInTaskbar = false };
+        Assert.IsTrue(GetCursorPos(out var previous));
+        try
+        {
+            window.Show();
+            WpfTestHost.PlaceOnScreen(window, workArea: smallArea);
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsTrue(smallArea.Contains(new Rect(window.Left, window.Top, window.ActualWidth, window.ActualHeight)),
+                "原最小尺寸超过工作区时，测试窗口仍应完整处于工作区内。");
+            await WpfTestHost.ClickAsync(button);
+            Assert.IsTrue(clicked, "适配后窗口右下角控件应可被真实鼠标点击。");
+        }
+        finally { SetCursorPos(previous.X, previous.Y); }
+    });
+
+    [TestMethod]
     [DataRow("home")]
     [DataRow("overview")]
     public Task OuterPageScrollbarsSupportNativeInputAndIdleVisibility(string page) => WpfTestHost.RunAsync(async () =>
@@ -39,7 +63,7 @@ public sealed class VerticalScrollbarTests
         Assert.IsTrue(GetCursorPos(out var previous));
         try
         {
-            MoveTo(viewer, new Point(viewer.ActualWidth / 2, viewer.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(viewer, new Point(viewer.ActualWidth / 2, viewer.ActualHeight / 2));
             await Task.Delay(100);
             Assert.IsTrue(IsInside(Mouse.DirectlyOver as DependencyObject, viewer),
                 $"真实鼠标应命中页面滚动区域，实际命中 {Mouse.DirectlyOver}。");
@@ -57,20 +81,19 @@ public sealed class VerticalScrollbarTests
 
             var track = Descendants<Track>(bar).Single();
             var thumb = track.Thumb;
-            MoveTo(thumb, new Point(thumb.ActualWidth * 0.1, thumb.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(thumb, new Point(thumb.ActualWidth * 0.1, thumb.ActualHeight / 2));
             await Task.Delay(100);
             Assert.IsTrue(IsInside(Mouse.DirectlyOver as DependencyObject, thumb), "滑块透明边缘也应命中。");
             Assert.IsTrue(bar.Opacity > 0, "鼠标进入隐藏滑块热区时应显示。");
             Save(window, page + "-outer-hover.png");
-            mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-            await Task.Delay(70);
-            MoveTo(bar, new Point(bar.ActualWidth * 0.1, bar.ActualHeight * 0.7));
+            await WpfTestHost.BeginDragAsync(thumb, new Point(thumb.ActualWidth * 0.1, thumb.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(bar, new Point(bar.ActualWidth * 0.1, bar.ActualHeight * 0.7));
             await Task.Delay(1300);
             Assert.IsTrue(thumb.IsDragging);
             Assert.IsTrue(bar.Opacity > 0, "拖动期间经过闲置延迟也应保持显示。");
             Assert.IsTrue(viewer.VerticalOffset > 0, "从透明边缘开始拖动应滚动页面。");
             mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
-            MoveTo(viewer, new Point(viewer.ActualWidth / 2, viewer.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(viewer, new Point(viewer.ActualWidth / 2, viewer.ActualHeight / 2));
             await HiddenAsync(bar);
 
             viewer.ScrollToTop();
@@ -85,7 +108,7 @@ public sealed class VerticalScrollbarTests
             await WpfTestHost.LayoutAsync(window);
             viewer = Viewer(window, page);
             bar = Bar(viewer);
-            MoveTo(viewer, new Point(viewer.ActualWidth / 2, viewer.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(viewer, new Point(viewer.ActualWidth / 2, viewer.ActualHeight / 2));
             await HiddenAsync(bar);
             viewer.ScrollToEnd();
             await WpfTestHost.LayoutAsync(window);
@@ -96,7 +119,6 @@ public sealed class VerticalScrollbarTests
         {
             mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
             SetCursorPos(previous.X, previous.Y);
-            window.Close();
         }
     });
 
@@ -110,9 +132,7 @@ public sealed class VerticalScrollbarTests
             string.Join("\n", Enumerable.Range(1, 240).Select(index => $"滚动条验证日志第 {index} 行")));
         var model = files.Model(support: support);
         var window = OpenWindow(model);
-        Place(window);
-        window.MinHeight = 640;
-        window.Height = 640;
+        WpfTestHost.PlaceOnScreen(window, height: 640);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("diagnostics");
         await model.RefreshDiagnosticsAsync();
@@ -129,19 +149,18 @@ public sealed class VerticalScrollbarTests
         Assert.IsTrue(GetCursorPos(out var previous));
         try
         {
-            MoveTo(summary, new Point(summary.ActualWidth / 2, summary.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(summary, new Point(summary.ActualWidth / 2, summary.ActualHeight / 2));
             await HiddenAsync(outerBar);
             Assert.IsTrue(innerBar.Opacity > 0, "文本框滚动条不应继承页面外层自动隐藏。");
             Save(window, "settings-inner-resting.png");
             var outerOffset = outer.VerticalOffset;
             var track = Descendants<Track>(innerBar).Single();
             var thumb = track.Thumb;
-            MoveTo(thumb, new Point(thumb.ActualWidth * 0.1, thumb.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(thumb, new Point(thumb.ActualWidth * 0.1, thumb.ActualHeight / 2));
             await Task.Delay(100);
             Assert.IsTrue(IsInside(Mouse.DirectlyOver as DependencyObject, thumb));
-            mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-            await Task.Delay(70);
-            MoveTo(innerBar, new Point(innerBar.ActualWidth * 0.1, innerBar.ActualHeight * 0.7));
+            await WpfTestHost.BeginDragAsync(thumb, new Point(thumb.ActualWidth * 0.1, thumb.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(innerBar, new Point(innerBar.ActualWidth * 0.1, innerBar.ActualHeight * 0.7));
             await Task.Delay(100);
             mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
             await WpfTestHost.LayoutAsync(window);
@@ -156,7 +175,7 @@ public sealed class VerticalScrollbarTests
             Assert.IsTrue(summary.VerticalOffset > 0, "内层透明轨道应支持翻页。");
             Assert.AreEqual(outerOffset, outer.VerticalOffset);
             Assert.IsTrue(outerBar.Opacity <= 0);
-            MoveTo(summary, new Point(summary.ActualWidth / 2, summary.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(summary, new Point(summary.ActualWidth / 2, summary.ActualHeight / 2));
             await Task.Delay(1300);
             Assert.IsTrue(innerBar.Opacity > 0, "内层在闲置后仍应可见。");
             Save(window, "settings-inner-after-idle.png");
@@ -165,7 +184,6 @@ public sealed class VerticalScrollbarTests
         {
             mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
             SetCursorPos(previous.X, previous.Y);
-            window.Close();
         }
     });
 
@@ -176,13 +194,7 @@ public sealed class VerticalScrollbarTests
 
     private static void Place(Window window)
     {
-        window.Left = 60;
-        window.Top = 40;
-        window.MinHeight = 1;
-        window.Width = 1180;
-        window.Height = 480;
-        window.Topmost = true;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window, height: 480);
     }
 
     private static async Task HiddenAsync(ScrollBar bar)
@@ -191,21 +203,8 @@ public sealed class VerticalScrollbarTests
         Assert.IsTrue(bar.Opacity <= 0, "停止操作后外层滑块应淡出。");
     }
 
-    private static void MoveTo(FrameworkElement element, Point point)
-    {
-        var screen = element.PointToScreen(point);
-        Assert.IsTrue(SetCursorPos((int)screen.X, (int)screen.Y));
-        Mouse.Synchronize();
-    }
-
-    private static async Task ClickAsync(FrameworkElement element)
-    {
-        MoveTo(element, new Point(element.ActualWidth * 0.1, element.ActualHeight / 2));
-        await Task.Delay(100);
-        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
-        await Task.Delay(150);
-    }
+    private static Task ClickAsync(FrameworkElement element) => WpfTestHost.ClickAsync(element,
+        new Point(element.ActualWidth * 0.1, element.ActualHeight / 2));
 
     private static bool IsInside(DependencyObject? current, DependencyObject ancestor)
     {

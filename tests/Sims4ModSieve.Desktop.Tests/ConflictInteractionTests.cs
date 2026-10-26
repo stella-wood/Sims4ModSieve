@@ -65,7 +65,7 @@ public sealed class ConflictInteractionTests
             await WpfTestHost.LayoutAsync(window);
             viewer.ScrollToTop();
             await WpfTestHost.LayoutAsync(window);
-            MoveTo(list, new Point(list.ActualWidth / 3, list.ActualHeight / 2));
+            await WpfTestHost.MoveMouseAsync(list, new Point(list.ActualWidth / 3, list.ActualHeight / 2));
             await Task.Delay(100);
             Assert.IsTrue(IsInside(Mouse.DirectlyOver as DependencyObject, list),
                 $"真实鼠标应命中结果列表；over={Mouse.DirectlyOver}, active={window.IsActive}, foreground={GetForegroundWindow()}");
@@ -286,10 +286,8 @@ public sealed class ConflictInteractionTests
         viewer.ScrollToTop();
         await WpfTestHost.LayoutAsync(window);
         var thumb = track.Thumb;
-        MoveTo(thumb, new Point(thumb.ActualWidth / 2, thumb.ActualHeight / 2));
-        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-        await Task.Delay(70);
-        MoveTo(bar, new Point(bar.ActualWidth / 2, bar.ActualHeight * 0.7));
+        await WpfTestHost.BeginDragAsync(thumb);
+        await WpfTestHost.MoveMouseAsync(bar, new Point(bar.ActualWidth / 2, bar.ActualHeight * 0.7));
         await Task.Delay(100);
         mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
         await Task.Delay(100);
@@ -299,12 +297,7 @@ public sealed class ConflictInteractionTests
 
     private static void PlaceOnScreen(Window window)
     {
-        window.Left = 60;
-        window.Top = 40;
-        window.Width = 1180;
-        window.Height = 780;
-        window.Topmost = true;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
     }
     private static bool IsInside(DependencyObject? child, DependencyObject ancestor)
     {
@@ -316,17 +309,5 @@ public sealed class ConflictInteractionTests
         return false;
     }
     private static void Invoke(Button button) => ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();
-    private static void MoveTo(FrameworkElement element, Point point)
-    {
-        var screen = element.PointToScreen(point);
-        Assert.IsTrue(SetCursorPos((int)screen.X, (int)screen.Y));
-        Mouse.Synchronize();
-    }
-    private static async Task ClickAsync(FrameworkElement element, Point? point = null)
-    {
-        MoveTo(element, point ?? new Point(element.ActualWidth / 2, element.ActualHeight / 2));
-        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
-        await Task.Delay(150);
-    }
+    private static Task ClickAsync(FrameworkElement element, Point? point = null) => WpfTestHost.ClickAsync(element, point);
 }

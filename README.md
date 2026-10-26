@@ -34,6 +34,8 @@ Mod 冲突检测首次从首页或顶部导航进入四功能总览，同次运�
 
 每次推送到 `main` 或提交 Pull Request 时，GitHub Actions 都会在 Windows 上执行锁定还原、Release 构建和普通测试。
 
+CI 失败时上传 `test-failure-diagnostics` 工件，包含 TRX 测试结果、界面场景截图和异常发生时的窗口截图，保留 7 天；原生输入失败的测试输出同时记录工作区、DPI、目标／实际鼠标坐标与命中控件。原生鼠标测试只调整测试窗口到当前工作区，并在确认实际命中后点击或拖动，不改变应用的默认窗口尺寸。
+
 测试范围与断言边界统一遵循 [AGENTS.md 的测试规则](AGENTS.md#10-完成标准)。冲突页截图可通过 `eng/render-conflict-review.ps1` 保存到 `artifacts/conflict-review/`，供人工查看。
 
 ```powershell
