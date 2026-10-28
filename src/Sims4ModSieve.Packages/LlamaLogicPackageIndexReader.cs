@@ -32,7 +32,16 @@ public sealed class LlamaLogicPackageIndexReader(
         .Select(field => (uint)(ResourceType)field.GetValue(null)!)
         .ToFrozenSet();
 
+    // 调参按用途分成上百种类型编号（buff、互动……），LlamaLogic 里的名字都以 Tuning 结尾。
+    private static readonly FrozenSet<uint> TuningTypes = typeof(ResourceType)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(field => field.Name.EndsWith("Tuning", StringComparison.Ordinal))
+        .Select(field => (uint)(ResourceType)field.GetValue(null)!)
+        .ToFrozenSet();
+
     private readonly PackageSafetyLimits _limits = limits ?? PackageSafetyLimits.Default;
+
+    public static bool IsTuningType(uint type) => TuningTypes.Contains(type);
 
     public static LlamaLogicPackageIndexReader CreateDefault()
     {

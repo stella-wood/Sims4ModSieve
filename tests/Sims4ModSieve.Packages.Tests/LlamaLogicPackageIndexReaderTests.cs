@@ -31,6 +31,17 @@ public sealed class LlamaLogicPackageIndexReaderTests
     }
 
     [TestMethod]
+    public void TuningTypesCoverSpecificTuningButNotSimDataOrUnknown()
+    {
+        Assert.IsTrue(LlamaLogicPackageIndexReader.IsTuningType(0x03B33DDF));
+        Assert.IsTrue(LlamaLogicPackageIndexReader.IsTuningType(0x6017E896));
+        Assert.IsTrue(LlamaLogicPackageIndexReader.IsTuningType(0xE882D22F));
+        Assert.IsTrue(LlamaLogicPackageIndexReader.IsTuningType(0x7DF2169C));
+        Assert.IsFalse(LlamaLogicPackageIndexReader.IsTuningType(0x545AC67A));
+        Assert.IsFalse(LlamaLogicPackageIndexReader.IsTuningType(0xF00DBA5E));
+    }
+
+    [TestMethod]
     public async Task ReportsEveryResourceKeyInIndexOrder()
     {
         using var temp = new TempDirectory();
