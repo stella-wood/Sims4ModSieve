@@ -3,6 +3,7 @@ using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
 using Sims4ModSieve.Core.Scripts;
+using Sims4ModSieve.Packages;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
 
@@ -393,12 +394,12 @@ public sealed partial class ConflictResultSession
     {
         // 离线核对 LlamaLogic.Packages 3.8.2 ResourceType 常量及随包 XML。
         0x034AEECB => "捏人部件",
-        0x03B33DDF => "调参",
         0x545AC67A => "模拟数据",
         0xC0DB5AE7 => "物件定义",
         0x319E4F1D => "物件目录",
         0x00B2D882 or 0x2BC04EDF or 0x3453CF95 or 0xBA856C78 or 0x2F7D0004 or 0x2F7D0006 => "图像",
         0x220557DA => "文本表",
+        _ when LlamaLogicPackageIndexReader.IsTuningType(type) => "调参",
         _ => "未识别资源",
     };
 }
