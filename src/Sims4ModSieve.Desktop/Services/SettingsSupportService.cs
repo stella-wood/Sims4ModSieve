@@ -30,6 +30,8 @@ public sealed partial class SettingsSupportService
         this.copyText = copyText ?? Clipboard.SetText;
     }
 
+    public void OpenRecycleBin() => openTarget("shell:RecycleBinFolder");
+
     public string LogDirectory { get; }
     public string ProductVersion => typeof(SettingsSupportService).Assembly.GetName().Version?.ToString() ?? string.Empty;
     public string SystemVersion => Environment.OSVersion.VersionString;

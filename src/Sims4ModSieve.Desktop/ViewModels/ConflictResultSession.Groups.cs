@@ -18,7 +18,7 @@ public sealed partial class ConflictResultSession
     private IReadOnlyList<ConflictCard> originalCards = [];
     private readonly HashSet<string> removedPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> ignoredGroups = new(StringComparer.Ordinal);
-    private readonly HashSet<string> ignoredFiles = new(StringComparer.Ordinal);
+    private readonly HashSet<string> ignoredFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> groupNumbers = new(StringComparer.Ordinal);
     public IReadOnlyList<ConflictCard> Cards { get; private set; } = [];
     public PackageConflictGroupingResult? Grouping { get; private set; }
@@ -38,7 +38,6 @@ public sealed partial class ConflictResultSession
         Cards = [];
         removedPaths.Clear();
         ignoredGroups.Clear();
-        ignoredFiles.Clear();
         groupNumbers.Clear();
     }
 
@@ -58,12 +57,20 @@ public sealed partial class ConflictResultSession
 
     public void ToggleIgnored(ConflictResultRow row)
     {
-        var ignoreWholeCard = row.File is null || row.OwnerKey.StartsWith("problem/", StringComparison.Ordinal);
+        var ignoreWholeCard = row.File is null;
         var set = ignoreWholeCard ? ignoredGroups : ignoredFiles;
         var groupKey = row.IsCardStart ? row.Key : row.OwnerKey;
-        var key = ignoreWholeCard ? groupKey : FileKey(row.OwnerKey, row.File!.Path);
+        var key = ignoreWholeCard ? groupKey : Path.GetFullPath(row.File!.Path);
         if (!set.Remove(key)) set.Add(key);
     }
+
+    public void SetIgnoredFiles(IEnumerable<string> paths)
+    {
+        ignoredFiles.Clear();
+        ignoredFiles.UnionWith(paths.Select(Path.GetFullPath));
+    }
+
+    public bool IsFileIgnored(string path) => ignoredFiles.Contains(Path.GetFullPath(path));
 
     public bool IsGroupIgnored(string key) => ignoredGroups.Contains(key);
 
@@ -87,6 +94,12 @@ public sealed partial class ConflictResultSession
         foreach (var entry in groupNumbers) snapshot.groupNumbers.Add(entry.Key, entry.Value);
         return snapshot;
     }
+
+    public bool MatchesOriginalFile(string path, long size, DateTime? lastWriteUtc) => lastWriteUtc is not null
+        && (originalCards.SelectMany(card => card.Files).Any(file => StringComparer.OrdinalIgnoreCase.Equals(file.Path, path)
+            && file.Stamp is { } stamp && stamp.Length == size && stamp.LastWriteTimeUtc == lastWriteUtc)
+            || PackageReport?.ResourceInventories.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, path)
+                && item.ScannedStamp.Length == size && item.ScannedStamp.LastWriteTimeUtc == lastWriteUtc) == true);
 
     public void ApplyDeletedPaths(IEnumerable<string> paths)
     {
@@ -308,11 +321,13 @@ public sealed partial class ConflictResultSession
                     if (!seen.Add(file.Path)) continue;
                     var duplicate = card.Duplicate is null ? DuplicateFor(file.Path) : null;
                     var siblings = duplicate?.Files.Where(copy => card.Files.Any(member => StringComparer.OrdinalIgnoreCase.Equals(member.Path, copy.Path))).ToArray() ?? [];
-                    var representative = siblings.FirstOrDefault(copy => StringComparer.OrdinalIgnoreCase.Equals(copy.Path, duplicate!.Duplicate!.SuggestedKeepPath))
-                        ?? siblings.FirstOrDefault() ?? file;
+                    if (showIgnored && siblings.Any(copy => IsFileIgnored(copy.Path))) siblings = [];
+                    var visibleSiblings = showIgnored ? siblings : siblings.Where(copy => !IsFileIgnored(copy.Path)).ToArray();
+                    var representative = visibleSiblings.FirstOrDefault(copy => StringComparer.OrdinalIgnoreCase.Equals(copy.Path, duplicate!.Duplicate!.SuggestedKeepPath))
+                        ?? visibleSiblings.FirstOrDefault() ?? file;
                     seen.UnionWith(siblings.Select(copy => copy.Path));
                     var key = FileKey(card.Key, representative.Path);
-                    var fileIgnored = ignoredFiles.Contains(key);
+                    var fileIgnored = IsFileIgnored(representative.Path);
                     if (!showIgnored && fileIgnored) continue;
                     if (card.Module is { ContentGroups.Count: > 1 } module && card.Files.Count >= 3)
                     {

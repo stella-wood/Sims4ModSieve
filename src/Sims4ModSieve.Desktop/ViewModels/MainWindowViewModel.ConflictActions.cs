@@ -39,8 +39,7 @@ public sealed partial class MainWindowViewModel
         IgnoreConflictCommand = new RelayCommand(value =>
         {
             if (value is not ConflictResultRow row || !IsConflictComplete) return;
-            conflictSession.ToggleIgnored(row);
-            QueueConflictRowsRefresh();
+            TogglePersistentIgnoredFile(row);
         }, _ => !IsBusy);
         OpenConflictRelationshipsCommand = new RelayCommand(value =>
         {
@@ -147,6 +146,7 @@ public sealed partial class MainWindowViewModel
 
     private void RememberDeletion(string owner, ConflictResultSession session, IReadOnlyList<DuplicateGroup> snapshot, int generation, IReadOnlyList<string> completedPaths)
     {
+        TrackDuplicateHistory(snapshot, generation, completedPaths);
         lastDeletePendingPaths.Clear();
         lastDeletePendingPaths.UnionWith(completedPaths);
         lastDeleteOwner = owner;

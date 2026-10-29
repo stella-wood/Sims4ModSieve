@@ -161,17 +161,20 @@ public sealed partial class MainWindowViewModel
         IsModsRootAvailable = HasModsRoot && Directory.Exists(ModsRoot);
         OnPropertyChanged(nameof(HasTrayRootAvailabilityWarning));
         if (IsDiagnosticsSettings) RefreshDiagnosticsCommand.Execute(null);
+        if (IsFileManagementSettings) StartFileManagementRefresh();
     }
 
     private void SelectSettingsSection(string? section)
     {
-        if (section is not ("folders" or "diagnostics" or "about") || section == settingsSection) return;
+        if (section is not ("folders" or "files" or "diagnostics" or "about") || section == settingsSection) return;
         settingsSection = section;
         OnPropertyChanged(nameof(SettingsSection));
         OnPropertyChanged(nameof(IsFoldersSettings));
         OnPropertyChanged(nameof(IsDiagnosticsSettings));
         OnPropertyChanged(nameof(IsAboutSettings));
+        OnPropertyChanged(nameof(IsFileManagementSettings));
         if (IsDiagnosticsSettings) RefreshDiagnosticsCommand.Execute(null);
+        if (IsFileManagementSettings) StartFileManagementRefresh();
     }
 
     private void ChangeDefaultModsRoot() => RunFolderOperation("Mods", () =>

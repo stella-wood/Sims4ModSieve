@@ -292,6 +292,7 @@ public sealed partial class MainWindowViewModel
         conflictRowsCancellation?.Cancel();
         // 正在投影的旧会话保持只读，清空来源或重扫直接替换身份。
         conflictSession = new();
+        conflictSession.SetIgnoredFiles(ignoredRecords.Select(record => record.Path));
         PublishConflictRows([], 0);
         conflictView = "all";
         conflictFilter = "all";
@@ -425,6 +426,7 @@ public sealed partial class MainWindowViewModel
                 using var sessionTiming = ScanPerformance.Measure("界面 · 生成冲突会话和结果行");
                 var mapped = new ConflictResultSession();
                 mapped.Replace(packages, contents, scripts, cancellation.Token, duplicates);
+                mapped.SetIgnoredFiles(ignoredRecords.Select(record => record.Path));
                 cancellation.Token.ThrowIfCancellationRequested();
                 var view = initialView;
                 var rows = mapped.BuildVisibleRows(view, initialFilter, mapped.GetExpandedKeysSnapshot(), cancellation.Token, initialShowIgnored, initialTypes);

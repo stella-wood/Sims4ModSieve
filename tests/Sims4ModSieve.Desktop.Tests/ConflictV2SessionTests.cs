@@ -147,7 +147,7 @@ public sealed class ConflictV2SessionTests
     }
 
     [TestMethod]
-    public void IgnoreIsLocalAndAllIgnoredFilesStillLeaveTheirCard()
+    public void IgnoreIsGlobalAndAllIgnoredFilesStillLeaveTheirCard()
     {
         var session = ContainmentSession();
         foreach (var card in session.Cards) session.ToggleExpanded(card.Key);
@@ -157,7 +157,7 @@ public sealed class ConflictV2SessionTests
         var hidden = Rows(session);
         Assert.IsTrue(hidden.Any(row => row.Key == collection.Key));
         Assert.IsFalse(hidden.Any(row => row.Kind == ConflictRowKind.File && row.OwnerKey == collection.Key));
-        Assert.IsTrue(hidden.Any(row => row.File?.Path == B));
+        Assert.IsFalse(hidden.Any(row => row.File?.Path == B));
         var shown = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: true);
         Assert.AreEqual(2, shown.Count(row => row.OwnerKey == collection.Key && row.File is not null && row.IsIgnored));
         session.ToggleIgnored(shown.Single(row => row.Key == collection.Key));

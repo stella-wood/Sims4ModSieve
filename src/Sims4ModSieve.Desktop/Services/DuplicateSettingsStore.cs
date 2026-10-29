@@ -20,6 +20,7 @@ public sealed class DuplicateSettingsStore : IDuplicateSettingsStore
 
     private readonly string settingsPath;
     private readonly string[] legacySettingsPaths;
+    public string DataDirectory => Path.GetDirectoryName(settingsPath)!;
 
     public DuplicateSettingsStore(string? localApplicationData = null)
     {

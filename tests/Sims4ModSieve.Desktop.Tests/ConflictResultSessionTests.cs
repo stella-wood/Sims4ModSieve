@@ -289,7 +289,7 @@ public sealed class ConflictResultSessionTests
             .Where(row => row.OwnerKey == files[0].Key).ToArray();
         Assert.IsTrue(ignored.Length > 1 && ignored.All(row => row.IsIgnored));
         Assert.AreEqual(files[0].GroupIndex, ignored.Single(row => row.IsCardStart).GroupIndex);
-        session.ToggleIgnored(ignored.Single(row => row.IsCardStart));
+        session.ToggleIgnored(ignored.Single(row => row.Kind == ConflictRowKind.File));
         Assert.IsTrue(Rows(session, "problems").Any(row => row.Key == files[0].Key));
     }
 

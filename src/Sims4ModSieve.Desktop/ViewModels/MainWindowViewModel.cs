@@ -52,7 +52,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IResourceContentComparer? resourceContentComparer = null,
         IScriptModuleScanner? scriptModuleScanner = null,
         SettingsSupportService? settingsSupport = null,
-        Action<string>? conflictDetailsCopy = null)
+        Action<string>? conflictDetailsCopy = null,
+        FileManagementStore? fileManagementStore = null,
+        Func<IReadOnlyList<string>>? pickIgnoredFiles = null,
+        ModDisableService? modDisableService = null,
+        Func<IReadOnlyList<string>>? pickDisabledFiles = null,
+        Func<string, bool>? confirmModChange = null)
     {
         this.duplicateRunService = duplicateRunService;
         this.conflictDetailsCopy = conflictDetailsCopy ?? System.Windows.Clipboard.SetText;
@@ -60,7 +65,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         this.folderPicker = folderPicker;
         this.settingsStore = settingsStore;
         this.settingsSupport = settingsSupport ?? new SettingsSupportService();
-        this.fileActionService = fileActionService ?? new FileActionService();
+        this.fileManagementStore = fileManagementStore ?? new FileManagementStore(
+            settingsStore is DuplicateSettingsStore diskSettings ? diskSettings.DataDirectory : null);
+        this.pickIgnoredFiles = pickIgnoredFiles ?? PickIgnoredFiles;
+        this.modDisableService = modDisableService ?? new ModDisableService(
+            settingsStore is DuplicateSettingsStore diskModSettings ? diskModSettings.DataDirectory
+                : Path.Combine(Path.GetTempPath(), "Sims4ModSieve", Guid.NewGuid().ToString("N")));
+        this.pickDisabledFiles = pickDisabledFiles ?? PickDisabledFiles;
+        this.confirmModChange = confirmModChange ?? ConfirmModChange;
+        this.fileActionService = fileActionService ?? new FileActionService(new WindowsRecycleBinAdapter(),
+            new PhysicalFileMetadataAccess(), this.fileManagementStore, this.modDisableService);
         this.fileActionDialogs = fileActionDialogs ?? new FileActionDialogService();
         this.unexpectedErrorHandler = unexpectedErrorHandler ?? new UnexpectedErrorHandler();
         this.packageConflictScanner = packageConflictScanner ?? new PackageConflictScanner(
@@ -98,6 +112,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         LoadSettings();
         InitializeConflict();
         InitializeSettings();
+        InitializeFileManagement();
     }
 
     public ObservableCollection<ScanSourceViewModel> Sources { get; } = [];
@@ -610,21 +625,37 @@ public sealed partial class MainWindowViewModel : ObservableObject
             var result = await fileActionService.UndoLastDeleteAsync();
             if (result.CompletedPaths.Count > 0)
             {
+                IReadOnlyList<string> duplicatePaths = result.CompletedPaths;
+                IReadOnlyList<string> conflictPaths = result.CompletedPaths;
+                if (owner == "ignored")
+                {
+                    var records = (result.RestoredRecords ?? []).Where(record => record.DisabledMod is null).ToArray();
+                    duplicatePaths = records.Where(record => duplicateHistorySnapshot.SelectMany(group => group.Files).Any(file =>
+                        PathRulesEqual(file.Path, record.Item.OriginalPath) && file.Size == record.Size
+                            && file.LastWriteTimeUtc == record.LastWriteTimeUtc)).Select(record => record.Item.OriginalPath).ToArray();
+                    conflictPaths = records.Where(record => conflictSession.MatchesOriginalFile(record.Item.OriginalPath, record.Size,
+                        record.LastWriteTimeUtc)).Select(record => record.Item.OriginalPath).ToArray();
+                }
                 pending.ExceptWith(result.CompletedPaths);
                 if (ReferenceEquals(snapshot, lastDeleteSnapshot)) lastDeletePendingPaths.ExceptWith(result.CompletedPaths);
                 if (snapshot is not null && generation == resultGeneration)
                 {
-                    resultSession.RestoreCompletedPaths(snapshot, pending);
+                    RestoreDuplicateHistory(duplicatePaths);
                 }
 
                 if (ReferenceEquals(relatedSession, conflictSession) && IsConflictComplete)
                 {
-                    await UpdateConflictFilePathsAsync(conflictSession, result.CompletedPaths, restore: true, restoreViewport);
+                    await UpdateConflictFilePathsAsync(conflictSession, conflictPaths, restore: true, restoreViewport);
                 }
                 var restoredText = result.Failures.Count == 0
                     ? $"已撤回，恢复 {result.CompletedPaths.Count} 个文件"
                     : $"已恢复 {result.CompletedPaths.Count} 个文件，部分项目仍需处理";
-                if (owner == "conflict" && ReferenceEquals(relatedSession, conflictSession)) ConflictFileActionStatusText = restoredText;
+                if (owner is "disabled" or "ignored")
+                {
+                    await RefreshFileManagementAsync();
+                    FileManagementFeedback = string.Join("\n", new[] { restoredText, FileManagementFeedback }.Where(text => text.Length > 0));
+                }
+                else if (owner == "conflict" && ReferenceEquals(relatedSession, conflictSession)) ConflictFileActionStatusText = restoredText;
                 else if (owner != "conflict" && generation == resultGeneration) FileActionStatusText = restoredText;
             }
 
@@ -814,6 +845,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OpenConflictDuplicatesCommand?.RaiseCanExecuteChanged();
         DeleteConflictFileCommand?.RaiseCanExecuteChanged();
         RefreshSettingsCommands();
+        RefreshManagementCommands();
         RefreshResultCommands();
     }
 }

@@ -49,6 +49,17 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="ManagedBulkRestoreButton" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Background" Value="#EEE8F4" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Padding" Value="13,8" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#E3D9ED" /></Trigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="SettingsTextButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
@@ -166,6 +177,114 @@
                 </WrapPanel>
             </StackPanel>
         </DataTemplate>
+        <Style x:Key="ManagedFileAction" TargetType="Button" BasedOn="{StaticResource SettingsTextButton}">
+            <Setter Property="Padding" Value="0,4" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <DataTemplate x:Key="ManagedFileTemplate">
+            <Grid MinHeight="50" Margin="18,0" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="48*" /><ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="16*" /><ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="17*" /><ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="19*" MinWidth="100" />
+                </Grid.ColumnDefinitions>
+                <Grid Margin="0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <CheckBox Margin="0,0,14,0" IsChecked="{Binding IsSelected}" AutomationProperties.Name="{Binding Name}"
+                        Visibility="{Binding DataContext.IsMultiSelect, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
+                        <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Grid.Column="2" Text="{Binding SizeText}" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Grid.Column="4" Text="{Binding TimeText}" ToolTip="{Binding TimeTooltip}" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Foreground="{StaticResource MutedBrush}" />
+                <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Content="{Binding RestoreText}" Style="{StaticResource ManagedFileAction}" Command="{Binding RestoreCommand}"
+                        Visibility="{Binding CanRestore, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Content="{Binding RemoveText}" Command="{Binding RemoveCommand}" Visibility="{Binding CanRemove, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource ManagedFileAction}"><Style.Triggers>
+                            <DataTrigger Binding="{Binding CanRestore}" Value="True"><Setter Property="Margin" Value="8,0,0,0" /></DataTrigger>
+                        </Style.Triggers></Style></Button.Style>
+                    </Button>
+                    <Button Content="删除" Style="{StaticResource ManagedFileAction}" Command="{Binding DeleteCommand}" ToolTip="{Binding Path}" Margin="8,0,0,0"
+                        Visibility="{Binding CanDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="FileManagementSectionTemplate">
+            <StackPanel TextElement.FontFamily="Microsoft YaHei UI" TextElement.FontSize="12">
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Style="{StaticResource DiagnosticFolderButton}" Command="{Binding OpenFolderCommand}" ToolTip="打开文件夹"
+                        AutomationProperties.Name="{Binding Title, StringFormat=打开{0}}" Visibility="{Binding HasFolder, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Path Width="16" Height="16" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.25" StrokeLineJoin="Round" IsHitTestVisible="False"
+                            Data="M 2,18 L 2,5 L 7,5 L 9,7 L 18,7 L 18,10 M 2,18 L 5.5,10 L 21,10 L 17.5,18 Z" />
+                    </Button>
+                    <StackPanel Grid.Column="3" Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding IsMultiSelect, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Button Content="全选" Command="{Binding SelectAllCommand}" Style="{StaticResource ManagedFileAction}" Margin="0,0,20,0" />
+                            <Button Content="清空勾选" Command="{Binding ClearSelectionCommand}" Style="{StaticResource ManagedFileAction}" Margin="0,0,20,0" />
+                        </StackPanel>
+                        <Button Content="{Binding MultiSelectText}" Command="{Binding ToggleMultiSelectCommand}" Style="{StaticResource SettingsButton}"
+                            Visibility="{Binding HasMultiSelect, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Button Content="＋添加" Command="{Binding AddCommand}" Margin="20,0,0,0">
+                            <Button.Style><Style TargetType="Button" BasedOn="{StaticResource SettingsButton}">
+                                <Setter Property="Visibility" Value="{Binding HasAdd, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Style.Triggers><DataTrigger Binding="{Binding IsMultiSelect}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger></Style.Triggers>
+                            </Style></Button.Style>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+                <Border BorderThickness="1" BorderBrush="#E8E8E8" CornerRadius="3" Background="White">
+                    <StackPanel>
+                        <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" Visibility="{Binding HasFiles, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Grid Height="34" Margin="18,0,30,0" TextBlock.Foreground="{StaticResource MutedBrush}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="48*" /><ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="16*" /><ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="17*" /><ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="19*" MinWidth="100" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="文件" VerticalAlignment="Center">
+                                    <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMultiSelect}" Value="True"><Setter Property="Margin" Value="30,0,0,0" /></DataTrigger>
+                                    </Style.Triggers></Style></TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Grid.Column="2" Text="大小" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                                <TextBlock Grid.Column="4" Text="{Binding TimeHeader}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                                <TextBlock Grid.Column="6" Text="操作" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                            </Grid>
+                        </Border>
+                        <ListBox x:Name="ManagementFileList" ItemsSource="{Binding Files}" ItemTemplate="{StaticResource ManagedFileTemplate}"
+                            MaxHeight="150" BorderThickness="0" Padding="0" Background="Transparent" FontSize="12" FocusVisualStyle="{x:Null}"
+                            ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Visible"
+                            ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                            PreviewMouseWheel="ManagementList_PreviewMouseWheel" Visibility="{Binding HasFiles, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" /></ListBox.Resources>
+                            <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Padding" Value="0" />
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter>
+                            </Style></ListBox.ItemContainerStyle>
+                        </ListBox>
+                        <TextBlock Text="{Binding EmptyText}" Foreground="{StaticResource MutedBrush}" Margin="18,16" Visibility="{Binding IsEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                </Border>
+                <DockPanel Margin="0,12,0,0" Visibility="{Binding IsMultiSelect, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="{Binding BulkActionText}" Command="{Binding BulkRestoreCommand}" IsEnabled="{Binding HasSelection}" Style="{StaticResource ManagedBulkRestoreButton}" Visibility="{Binding HasRestore, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Button Content="取消忽略" Command="{Binding BulkRemoveCommand}" IsEnabled="{Binding HasSelection}" Style="{StaticResource SettingsButton}" Visibility="{Binding IsIgnored, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Button Content="删除" Command="{Binding BulkDeleteCommand}" IsEnabled="{Binding HasSelection}" Style="{StaticResource SettingsButton}" Margin="12,0,0,0" Visibility="{Binding HasDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding SelectionText}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                </DockPanel>
+            </StackPanel>
+        </DataTemplate>
     </UserControl.Resources>
     <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition Width="208" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -177,6 +296,13 @@
                     <StackPanel Orientation="Horizontal">
                         <Path Style="{StaticResource SettingsNavIcon}" Data="M 9.92,2.22 L 14.08,2.22 L 14.53,5.05 L 16.76,6.33 L 19.43,5.31 L 21.51,8.91 L 19.29,10.72 L 19.29,13.28 L 21.51,15.09 L 19.43,18.69 L 16.76,17.67 L 14.53,18.95 L 14.08,21.78 L 9.92,21.78 L 9.47,18.95 L 7.24,17.67 L 4.57,18.69 L 2.49,15.09 L 4.71,13.28 L 4.71,10.72 L 2.49,8.91 L 4.57,5.31 L 7.24,6.33 L 9.47,5.05 Z M 15.3,12 A 3.3,3.3 0 1 1 8.7,12 A 3.3,3.3 0 1 1 15.3,12 Z" />
                         <TextBlock Text="常规" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="FileManagementSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="删除与忽略"
+                             IsChecked="{Binding IsFileManagementSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="files">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource SettingsNavIcon}" Data="M 3,6 L 9,6 L 11,8 L 21,8 L 21,20 L 3,20 Z M 3,6 L 3,4 L 9,4 L 11,6 L 19,6 L 19,8" />
+                        <TextBlock Text="删除与忽略" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </RadioButton>
                 <RadioButton x:Name="DiagnosticsSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="诊断与反馈"
@@ -200,6 +326,18 @@
                 <Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" />
             </ScrollViewer.Resources>
             <Grid Margin="88,52,88,50">
+                <StackPanel x:Name="FileManagementPanel" Visibility="{Binding IsFileManagementSettings, Converter={StaticResource BooleanToVisibilityConverter}}" IsEnabled="{Binding CanEditSources}">
+                    <Grid Margin="0,0,0,38">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock x:Name="FileManagementTitle" Text="删除与忽略" Style="{StaticResource SettingsTitle}" Margin="0" />
+                        <Button x:Name="FileManagementRefreshButton" Grid.Column="1" Content="刷新" Command="{Binding RefreshFileManagementCommand}"
+                            Style="{StaticResource DiagnosticRefreshButton}" VerticalAlignment="Center" AutomationProperties.Name="刷新删除与忽略" />
+                    </Grid>
+                    <ContentControl Content="{Binding DisabledFiles}" ContentTemplate="{StaticResource FileManagementSectionTemplate}" HorizontalContentAlignment="Stretch" />
+                    <ContentControl Content="{Binding RecentDeletedFiles}" ContentTemplate="{StaticResource FileManagementSectionTemplate}" HorizontalContentAlignment="Stretch" Margin="0,36,0,0" />
+                    <ContentControl Content="{Binding IgnoredFiles}" ContentTemplate="{StaticResource FileManagementSectionTemplate}" HorizontalContentAlignment="Stretch" Margin="0,80,0,0" />
+                    <TextBlock Text="{Binding FileManagementFeedback}" Style="{StaticResource SettingsFeedback}" />
+                </StackPanel>
                 <StackPanel Visibility="{Binding IsFoldersSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="常规" Style="{StaticResource SettingsTitle}" />
                     <TextBlock Text="游戏文件夹" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,15" />

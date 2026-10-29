@@ -6,6 +6,8 @@ namespace Sims4ModSieve.Desktop.Services;
 
 public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
 {
+    private const uint FofRenameOnCollision = 0x0008;
+    private const uint FofxEarlyFailure = 0x00100000;
     private const uint FofSilent = 0x0004;
     private const uint FofNoConfirmation = 0x0010;
     private const uint FofAllowUndo = 0x0040;
@@ -25,7 +27,7 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
             return !string.IsNullOrWhiteSpace(root)
                 && new DriveInfo(root).DriveType == DriveType.Fixed;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException)
         {
             return false;
         }
@@ -40,6 +42,35 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
         IReadOnlyList<RecycleBinItem> items,
         CancellationToken cancellationToken = default) =>
         RunStaAsync(() => Restore(items, cancellationToken), cancellationToken);
+
+    public Task<RecycleBinPresence> QueryAsync(IReadOnlyList<RecycleBinItem> items, CancellationToken cancellationToken = default) =>
+        RunStaAsync(() =>
+        {
+            var present = new List<RecycleBinItem>();
+            var missing = new List<RecycleBinItem>();
+            var failures = new List<FileActionFailure>();
+            foreach (var item in items)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                IShellItem? shell = null;
+                try
+                {
+                    shell = CreateShellItem(item.AbsolutePidl);
+                    var physicalPath = FileOperationProgressSink.GetFileSystemPath(shell);
+                    if (!Path.IsPathFullyQualified(physicalPath)) throw new IOException("无法核对回收站条目");
+                    // GetAttributes distinguishes a missing entry from an inaccessible recycle directory.
+                    File.GetAttributes(physicalPath);
+                    present.Add(item);
+                }
+                catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException
+                    || exception is COMException com && com.HResult is unchecked((int)0x80070002) or unchecked((int)0x80070003))
+                { missing.Add(item); }
+                catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or COMException)
+                { failures.Add(new(item.OriginalPath, "无法核对回收站状态：" + exception.Message)); }
+                finally { ReleaseComObject(shell); }
+            }
+            return new RecycleBinPresence(present, missing, failures);
+        }, cancellationToken);
 
     private static RecycleBinDeleteResult MoveToRecycleBin(
         IReadOnlyList<string> paths,
@@ -167,22 +198,25 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
                 recycledItem = CreateShellItem(item.AbsolutePidl);
                 destinationFolder = CreateShellItem(parentPath);
                 operation = CreateFileOperation();
-                ThrowIfFailed(operation.SetOperationFlags(FofSilent | FofNoConfirmation | FofNoErrorUi));
+                ThrowIfFailed(operation.SetOperationFlags(FofSilent | FofNoConfirmation | FofNoErrorUi | FofRenameOnCollision | FofxEarlyFailure));
+                var sink = new FileOperationProgressSink(item.OriginalPath);
                 ThrowIfFailed(operation.MoveItem(
                     recycledItem,
                     destinationFolder,
                     Path.GetFileName(item.OriginalPath),
-                    null));
+                    sink));
                 ThrowIfFailed(operation.PerformOperations());
                 ThrowIfFailed(operation.GetAnyOperationsAborted(out var aborted));
 
-                if (!aborted && File.Exists(item.OriginalPath))
+                if (!aborted && sink.MoveCompleted && StringComparer.OrdinalIgnoreCase.Equals(sink.MovedPath, item.OriginalPath))
                 {
                     completed.Add(item.OriginalPath);
                 }
                 else
                 {
-                    failures.Add(new FileActionFailure(item.OriginalPath, "Windows 未能从回收站恢复该文件"));
+                    failures.Add(new FileActionFailure(item.OriginalPath, sink.MoveCompleted
+                        ? "原位置出现同名文件，Windows 已将恢复文件保存到：" + sink.MovedPath
+                        : "Windows 未能从回收站恢复该文件"));
                 }
             }
             catch (Exception exception) when (exception is COMException or IOException or UnauthorizedAccessException)
@@ -243,6 +277,19 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
 
     private static IShellItem CreateShellItem(byte[] absolutePidl)
     {
+        var offset = 0;
+        while (offset + 2 <= absolutePidl.Length)
+        {
+            var length = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(absolutePidl.AsSpan(offset, 2));
+            if (length == 0)
+            {
+                if (offset != absolutePidl.Length - 2) throw new InvalidDataException("回收站记录的 PIDL 无效");
+                break;
+            }
+            if (length < 2 || offset + length > absolutePidl.Length - 2) throw new InvalidDataException("回收站记录的 PIDL 无效");
+            offset += length;
+        }
+        if (offset != absolutePidl.Length - 2) throw new InvalidDataException("回收站记录的 PIDL 缺少终止项");
         var memory = Marshal.AllocCoTaskMem(absolutePidl.Length);
         try
         {
@@ -274,9 +321,12 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
     }
 
     [ComVisible(true)]
-    private sealed class FileOperationProgressSink : IFileOperationProgressSink
+    private sealed class FileOperationProgressSink(string? restorePath = null) : IFileOperationProgressSink
     {
         private readonly ConcurrentBag<RecycleBinItem> deletedItems = [];
+
+        public bool MoveCompleted { get; private set; }
+        public string? MovedPath { get; private set; }
 
         public IReadOnlyList<RecycleBinItem> DeletedItems => deletedItems.ToArray();
 
@@ -288,9 +338,18 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
 
         public int PostRenameItem(uint flags, IShellItem item, string newName, int result, IShellItem? newItem) => 0;
 
-        public int PreMoveItem(uint flags, IShellItem item, IShellItem destinationFolder, string? newName) => 0;
+        public int PreMoveItem(uint flags, IShellItem item, IShellItem destinationFolder, string? newName) =>
+            restorePath is not null && (File.Exists(restorePath) || Directory.Exists(restorePath)) ? unchecked((int)0x80070050) : 0;
 
-        public int PostMoveItem(uint flags, IShellItem item, IShellItem destinationFolder, string? newName, int result, IShellItem? newItem) => 0;
+        public int PostMoveItem(uint flags, IShellItem item, IShellItem destinationFolder, string? newName, int result, IShellItem? newItem)
+        {
+            if (result >= 0 && newItem is not null)
+            {
+                try { MovedPath = GetFileSystemPath(newItem); MoveCompleted = true; }
+                catch (COMException) { }
+            }
+            return 0;
+        }
 
         public int PreCopyItem(uint flags, IShellItem item, IShellItem destinationFolder, string? newName) => 0;
 
@@ -304,7 +363,7 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
             {
                 try
                 {
-                    deletedItems.Add(new RecycleBinItem(GetFileSystemPath(item), GetAbsolutePidl(newItem)));
+                    deletedItems.Add(new RecycleBinItem(GetFileSystemPath(item), GetAbsolutePidl(newItem), GetFileSystemPath(newItem)));
                 }
                 catch (Exception)
                 {
@@ -327,7 +386,7 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
 
         public int ResumeTimer() => 0;
 
-        private static string GetFileSystemPath(IShellItem item)
+        public static string GetFileSystemPath(IShellItem item)
         {
             const uint sigdnFileSystemPath = 0x80058000;
             ThrowIfFailed(item.GetDisplayName(sigdnFileSystemPath, out var value));

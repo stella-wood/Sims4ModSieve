@@ -136,7 +136,7 @@ public sealed class ConflictPageRenderTests
         var restored = model.ConflictRows.Single(row => row.Key == target.Key);
         Assert.IsTrue(restored.IsIgnored);
         Assert.AreEqual(target.GroupIndex, restored.GroupIndex);
-        model.IgnoreConflictCommand.Execute(restored);
+        model.IgnoreConflictCommand.Execute(model.ConflictRows.Single(row => row.OwnerKey == target.Key && row.File is not null));
         await model.ConflictRowsRefreshTask;
         Assert.IsFalse(model.ConflictRows.Single(row => row.Key == target.Key).IsIgnored);
     });

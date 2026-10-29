@@ -240,15 +240,17 @@ public sealed partial class ConflictResultSession
         var rows = new List<ConflictResultRow>();
         var cards = new List<(ConflictPairPriority Priority, string Key, bool Included, Action Build)>();
         var currentOwnerKey = string.Empty;
+        var ignoredProblemKeys = Problems.Where(problem => IsFileIgnored(problem.Path))
+            .Select(problem => "problem" + Identity(problem.Path.ToUpperInvariant())).ToHashSet(StringComparer.Ordinal);
         bool Add(ConflictResultRow row)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var owner = row.OwnerKey.Length > 0 ? row.OwnerKey : currentOwnerKey;
-            var fileIgnored = row.File is not null && ignoredFiles.Contains(FileKey(owner, row.File.Path));
+            var fileIgnored = row.File is not null && IsFileIgnored(row.File.Path);
             if (fileIgnored && !showIgnored) return false;
             var open = row.IsExpandable && expanded.Contains(row.Key);
             rows.Add(row with { IsExpanded = open, Title = row.IsTechnicalToggle && open ? "收起" : row.Title,
-                OwnerKey = owner, IsIgnored = row.IsIgnored || fileIgnored || ignoredGroups.Contains(owner) });
+                OwnerKey = owner, IsIgnored = row.IsIgnored || fileIgnored || ignoredGroups.Contains(owner) || ignoredProblemKeys.Contains(owner) });
             return open;
         }
         void Technical(string key, string text) =>
@@ -282,14 +284,15 @@ public sealed partial class ConflictResultSession
                 || !represented.TryGetValue(problem.Path, out var entries) || !entries.Contains((reason.EntryName, reason.Code))).ToArray();
             if (reasons.Length == 0) continue;
             var key = "problem" + Identity(problem.Path.ToUpperInvariant());
-            Card(ConflictPairPriority.Incomplete, key, view is "all" or "problems" || view == (isScript ? "scripts" : "resources"), () =>
+            Card(ConflictPairPriority.Incomplete, key, (view is "all" or "problems" || view == (isScript ? "scripts" : "resources"))
+                && (showIgnored || !IsFileIgnored(problem.Path)), () =>
             {
                 var file = new ConflictFile(problem.Path, PackageReport?.ResourceInventories
                     .FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, problem.Path))?.ScannedStamp);
                 var reasonTexts = reasons.Select(reason => ProblemEntryText(reason.Category,
                     reason.ResourceType is { } type ? GetResourceTypeDisplayName(type) : reason.EntryName)).Distinct(StringComparer.Ordinal).ToArray();
                 Add(new(key, ConflictRowKind.Problem, 0, problem.Name, Tooltip: problem.Path,
-                    Priority: ConflictPairPriority.Incomplete, Annotation: reasonTexts[0]));
+                    Priority: ConflictPairPriority.Incomplete, Annotation: reasonTexts[0], IsIgnored: IsFileIgnored(problem.Path)));
                 foreach (var (text, index) in reasonTexts.Select((text, index) => (text, index)).Skip(1))
                 {
                     Add(new(key + "/reason" + index, ConflictRowKind.Explanation, 1, text));
