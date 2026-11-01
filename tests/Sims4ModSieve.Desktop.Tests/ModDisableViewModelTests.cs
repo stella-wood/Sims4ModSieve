@@ -93,7 +93,8 @@ public sealed class ModDisableViewModelTests
         await SetSessionAsync(model, session, "all");
         await model.DisableFilesAsync([paths[0]]);
         Assert.AreEqual(2, model.Groups.Single().Files.Count);
-        Assert.IsFalse(session.Cards.SelectMany(card => card.Files).Any(file => file.Path == paths[0]));
+        Assert.IsTrue(session.Cards.SelectMany(card => card.Files).Any(file => file.Path == paths[0]));
+        Assert.IsTrue(model.ConflictRows.Single(row => row.File?.Path == paths[0]).IsDisabled);
         await RestoreAllSelectedAsync(model);
         Assert.AreEqual(3, model.Groups.Single().Files.Count);
         Assert.IsTrue(session.Cards.SelectMany(card => card.Files).Any(file => file.Path == paths[0]));
@@ -790,6 +791,82 @@ public sealed class ModDisableViewModelTests
         Assert.IsTrue(new Rect(page.RenderSize).Contains(refreshBounds), "窄窗页头刷新不应溢出");
         Assert.IsNotNull(refresh.InputHitTest(new Point(refresh.ActualWidth * .1, refresh.ActualHeight * .1)));
         window.Close();
+    });
+
+    [TestMethod]
+    public Task FileMenuDisableEnableAndSettingsUseSameLedger() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var mods = files.Folder("Mods");
+        var paths = Enumerable.Range(0, 3).Select(index => NewFile(mods, $"test-{index}.package")).ToArray();
+        files.Store.Save(new(mods, []));
+        var model = Model(files);
+        await model.StartScanCommand.ExecuteAsync();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        var report = await new DuplicateRunService(DuplicateScanner.CreateDefault()).RunAsync(new([new(mods, "Mods")], mods));
+        var session = V2([], [], report);
+        session.ToggleExpanded(session.Cards.Single().Key);
+        await SetSessionAsync(model, session, "all");
+        var row = model.ConflictRows.Single(row => row.File?.Path == paths[0]);
+        model.ToggleConflictFileEnabledCommand.Execute(row);
+        await model.ConflictFileActionTask;
+        row = model.ConflictRows.Single(row => row.File?.Path == paths[0]);
+        Assert.IsTrue(row.IsDisabled);
+        Assert.AreEqual("启用", row.DisableMenuText);
+        Assert.AreEqual(paths[0] + ".off", row.FilePath);
+        Assert.AreEqual(paths[0], model.DisabledFiles.Files.Single().Path);
+        Assert.IsTrue(File.Exists(row.FilePath));
+        await WpfTestHost.LayoutAsync(window);
+        Save(window, "file-disabled-row.png");
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("files");
+        await model.FileManagementRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Save(window, "file-disabled-settings.png");
+        await model.DisabledFiles.Files.Single().RestoreCommand!.ExecuteAsync();
+        row = model.ConflictRows.Single(row => row.File?.Path == paths[0]);
+        Assert.IsFalse(row.IsDisabled);
+        Assert.AreEqual("禁用", row.DisableMenuText);
+        await model.DisableFilesAsync([paths[0]]);
+        row = model.ConflictRows.Single(row => row.File?.Path == paths[0]);
+        Assert.IsTrue(row.IsDisabled);
+        model.ToggleConflictFileEnabledCommand.Execute(row);
+        await model.ConflictFileActionTask;
+        Assert.AreEqual(0, model.DisabledFiles.Files.Count);
+        Assert.IsTrue(File.Exists(paths[0]));
+        Assert.IsFalse(model.ConflictRows.Single(row => row.File?.Path == paths[0]).IsDisabled);
+        window.Close();
+    });
+
+    [TestMethod]
+    public Task FileMenuDeleteDisabledFileAndRestoreKeepItDisabled() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var mods = files.Folder("Mods");
+        var paths = Enumerable.Range(0, 3).Select(index => NewFile(mods, $"test-{index}.package")).ToArray();
+        files.Store.Save(new(mods, []));
+        var disabled = new ModDisableService(files.Store.DataDirectory);
+        var service = new FileActionService(new TemporaryRecycleBin(files.Folder("Recycle")), new PhysicalFileMetadataAccess(),
+            new FileManagementStore(files.Store.DataDirectory), disabled);
+        var model = Model(files, actions: service, disableService: disabled);
+        var report = await new DuplicateRunService(DuplicateScanner.CreateDefault()).RunAsync(new([new(mods, "Mods")], mods));
+        var session = V2([], [], report);
+        session.ToggleExpanded(session.Cards.Single().Key);
+        await SetSessionAsync(model, session, "all");
+        await model.DisableFilesAsync([paths[0]]);
+        var row = model.ConflictRows.Single(row => row.File?.Path == paths[0]);
+        await model.DeleteConflictFileAsync(row);
+        Assert.IsFalse(File.Exists(paths[0] + ".off"));
+        Assert.IsFalse(model.ConflictRows.Any(row => row.File?.Path == paths[0]));
+        Assert.AreEqual(0, model.DisabledFiles.Files.Count);
+        await model.RefreshFileManagementAsync();
+        await model.RecentDeletedFiles.Files.Single().RestoreCommand!.ExecuteAsync();
+        Assert.IsFalse(File.Exists(paths[0]));
+        Assert.IsTrue(File.Exists(paths[0] + ".off"));
+        Assert.AreEqual(1, model.DisabledFiles.Files.Count);
+        Assert.IsTrue(model.ConflictRows.Single(row => row.File?.Path == paths[0]).IsDisabled);
     });
 
     private static async Task RestoreAllSelectedAsync(MainWindowViewModel model)

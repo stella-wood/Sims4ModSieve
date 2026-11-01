@@ -14,6 +14,7 @@ namespace Sims4ModSieve.Desktop;
 public partial class ConflictPage : UserControl
 {
     private Window? filterPopupWindow;
+    private ContextMenu? fileMenu;
     private ScrollViewer? technicalResultsScroll;
     private ConflictTechnicalTableState? activeTechnicalTable;
     private bool technicalScrollActive;
@@ -28,9 +29,9 @@ public partial class ConflictPage : UserControl
     {
         InitializeComponent();
         technicalEdge.Freeze();
-        IsVisibleChanged += (_, _) => { if (!IsVisible) ConflictFilterPopup.IsOpen = false; };
-        Unloaded += (_, _) => ConflictFilterPopup.IsOpen = false;
-        ((INotifyCollectionChanged)ConflictRowsList.Items).CollectionChanged += (_, _) => StopTechnicalScroll();
+        IsVisibleChanged += (_, _) => { if (!IsVisible) { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); } };
+        Unloaded += (_, _) => { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); };
+        ((INotifyCollectionChanged)ConflictRowsList.Items).CollectionChanged += (_, _) => { StopTechnicalScroll(); CloseFileMenu(); };
         ConflictRowsList.RequestBringIntoView += (_, _) => StopTechnicalScroll();
         ConflictRowsList.IsVisibleChanged += (_, _) => { if (!ConflictRowsList.IsVisible) StopTechnicalScroll(); };
         ConflictFilterPopup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
@@ -50,6 +51,30 @@ public partial class ConflictPage : UserControl
                 newModel.ConflictViewportCaptureRequested += CaptureConflictViewport;
             }
         };
+    }
+
+    private void CloseFileMenu()
+    {
+        if (fileMenu is not null) fileMenu.IsOpen = false;
+        fileMenu = null;
+    }
+
+    private void FileContextMenu_Opening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not Border { DataContext: ConflictResultRow row, ContextMenu: { } menu }
+            || DataContext is not MainWindowViewModel model || model.IsBusy) { e.Handled = true; return; }
+        CloseFileMenu();
+        fileMenu = menu;
+        menu.Items.Clear();
+        void Add(string text, ICommand command) => menu.Items.Add(new MenuItem { Header = text, Command = command, CommandParameter = row, Style = (Style)FindResource("FileMenuItemStyle") });
+        Add("打开所在文件夹", model.OpenConflictFolderCommand);
+        Add("复制路径", model.CopyConflictPathCommand);
+        menu.Items.Add(new Separator { Style = (Style)FindResource("FileMenuSeparatorStyle") });
+        Add(row.DisableMenuText, model.ToggleConflictFileEnabledCommand);
+        Add("删除", model.DeleteConflictFileCommand);
+        menu.Items.Add(new Separator { Style = (Style)FindResource("FileMenuSeparatorStyle") });
+        Add("查看文件关系", model.OpenConflictRelationshipsCommand);
+        Add(row.IgnoreMenuText, model.IgnoreConflictCommand);
     }
 
     private void ConflictFilterPopup_Opened(object? sender, EventArgs e)

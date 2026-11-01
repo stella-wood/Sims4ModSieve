@@ -26,6 +26,72 @@ public sealed class ConflictPageRenderTests
     [DllImport("user32.dll")]
     private static extern bool SetCursorPos(int x, int y);
 
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+
+    [TestMethod]
+    public Task FileContextMenuTargetsRowAndCopiesFullPathWithoutIcons() => WpfTestHost.RunAsync(async () =>
+    {
+        string? copied = null;
+        var model = CreateModel(value => copied = value);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var session = ConflictV2SessionTests.VersionSession();
+        session.ToggleExpanded(session.Cards.Single().Key);
+        await SetSessionAsync(model, session, "all");
+        var window = OpenWindow(model);
+        window.Left = 30; window.Top = 30; window.Topmost = true; window.Activate();
+        await WpfTestHost.LayoutAsync(window);
+        var row = model.ConflictRows.First(row => row.File is not null);
+        var surface = Descendants<Border>(window).Single(border => border.Name == "FileSurface" && ReferenceEquals(border.DataContext, row));
+        Assert.AreEqual(row.FilePath, surface.ToolTip);
+        var actions = Descendants<Button>(surface).Where(button => button.Command == model.OpenConflictFolderCommand
+            || button.Command == model.IgnoreConflictCommand || button.Command == model.DeleteConflictFileCommand).ToArray();
+        Assert.AreEqual(3, actions.Length);
+        foreach (var action in actions)
+        {
+            Assert.IsTrue(action.IsVisible);
+            Assert.AreSame(row, action.CommandParameter);
+            foreach (var fraction in new[] { .1, .5, .9 })
+                Assert.IsTrue(IsInside(action.InputHitTest(new Point(action.ActualWidth * fraction, action.ActualHeight * fraction)) as DependencyObject, action));
+        }
+        await WpfTestHost.MoveMouseAsync(surface);
+        mouse_event(0x0008, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(0x0010, 0, 0, 0, UIntPtr.Zero);
+        await Task.Delay(200);
+        var menu = surface.ContextMenu;
+        Assert.IsTrue(menu.IsOpen);
+        var items = menu.Items.OfType<MenuItem>().ToArray();
+        CollectionAssert.AreEqual(new[] { "打开所在文件夹", "复制路径", "禁用", "删除", "查看文件关系", "忽略该文件" },
+            items.Select(item => item.Header.ToString()).ToArray());
+        Assert.IsTrue(items.All(item => item.Icon is null && ReferenceEquals(item.CommandParameter, row)));
+        Assert.AreEqual(0, Descendants<System.Windows.Shapes.Path>(menu).Count());
+        await WpfTestHost.MoveMouseAsync(items[1]);
+        Assert.IsTrue(menu.IsOpen);
+        Assert.AreEqual(2, menu.Items.OfType<Separator>().Count());
+        Assert.IsFalse(surface.IsMouseOver);
+        Save(window, "file-context-menu.png", menu);
+        Save(window, "file-context-menu-source.png");
+        await WpfTestHost.MoveMouseAsync(items[1], new Point(items[1].ActualWidth * .05, items[1].ActualHeight / 2));
+        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+        await Task.Delay(50);
+        Assert.IsTrue(menu.IsOpen);
+        Assert.IsFalse(surface.IsMouseOver);
+        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+        await Task.Delay(150);
+        Assert.AreEqual(row.File!.Path, copied);
+        Assert.IsFalse(menu.IsOpen);
+        Assert.IsFalse(model.ConflictRows.Any(item => item.IsIgnored));
+        await WpfTestHost.MoveMouseAsync(surface);
+        mouse_event(0x0008, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(0x0010, 0, 0, 0, UIntPtr.Zero);
+        await Task.Delay(200);
+        Assert.IsTrue(menu.IsOpen);
+        model.GoHomeCommand.Execute(null);
+        Assert.IsFalse(menu.IsOpen);
+        window.Close();
+    });
+
     [TestMethod]
     public Task LatestAndCollectionTagsPrecedeAnnotations() => WpfTestHost.RunAsync(async () =>
     {

@@ -27,6 +27,8 @@ public sealed partial class MainWindowViewModel
     public RelayCommand DeleteConflictFileCommand { get; private set; } = null!;
     public RelayCommand OpenConflictFolderCommand { get; private set; } = null!;
     public RelayCommand CopyConflictDetailsCommand { get; private set; } = null!;
+    public RelayCommand CopyConflictPathCommand { get; private set; } = null!;
+    public RelayCommand ToggleConflictFileEnabledCommand { get; private set; } = null!;
     public Task ConflictFileActionTask { get; private set; } = Task.CompletedTask;
     public event Action<string>? ConflictGroupLocationRequested;
     public event Action<DuplicateGroupViewModel>? DuplicateGroupLocationRequested;
@@ -36,6 +38,17 @@ public sealed partial class MainWindowViewModel
 
     private void InitializeConflictActions()
     {
+        CopyConflictPathCommand = new RelayCommand(value =>
+        {
+            if (value is not ConflictResultRow { File: not null } row) return;
+            try { conflictDetailsCopy(CurrentConflictPath(row)); }
+            catch (Exception exception) when (exception is System.Runtime.InteropServices.ExternalException or UnauthorizedAccessException)
+            { ConflictFileActionStatusText = "复制未完成"; }
+        });
+        ToggleConflictFileEnabledCommand = new RelayCommand(value =>
+        {
+            if (value is ConflictResultRow row) ConflictFileActionTask = ToggleConflictFileEnabledAsync(row);
+        }, value => !IsBusy && value is ConflictResultRow { File.Stamp: not null });
         IgnoreConflictCommand = new RelayCommand(value =>
         {
             if (value is not ConflictResultRow row || !IsConflictComplete) return;
@@ -62,7 +75,7 @@ public sealed partial class MainWindowViewModel
         }, _ => !IsBusy);
         OpenConflictFolderCommand = new RelayCommand(value =>
         {
-            var path = value switch { ConflictResultRow row => row.File?.Path, ConflictFile file => file.Path, _ => null };
+            var path = value switch { ConflictResultRow row => CurrentConflictPath(row), ConflictFile file => file.Path, _ => null };
             if (path is null) return;
             try
             {
@@ -87,6 +100,22 @@ public sealed partial class MainWindowViewModel
         }, _ => !IsBusy);
     }
 
+    private DisabledModRecord? DisabledRecordFor(ConflictResultRow row) => row.File is { Stamp: { } stamp } file
+        ? disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, file.Path)
+            && record.Size == stamp.Length && record.LastWriteTimeUtc == stamp.LastWriteTimeUtc) : null;
+
+    private string CurrentConflictPath(ConflictResultRow row) => DisabledRecordFor(row)?.DisabledPath ?? row.File?.Path ?? "";
+
+    public async Task ToggleConflictFileEnabledAsync(ConflictResultRow row)
+    {
+        if (IsBusy || !IsConflictComplete || row.File?.Stamp is not { } stamp
+            || !conflictSession.MatchesOriginalFile(row.File.Path, stamp.Length, stamp.LastWriteTimeUtc)) return;
+        var record = DisabledRecordFor(row);
+        if (record is null) await DisableFilesAsync([row.File.Path]);
+        else await RestoreDisabledFilesAsync([record.Id]);
+        ConflictFileActionStatusText = FileManagementFeedback;
+    }
+
     private async Task LocateConflictGroupAsync(ConflictGroupLink link)
     {
         if (!conflictSession.Cards.Any(card => card.Key == link.Key)) return;
@@ -108,6 +137,12 @@ public sealed partial class MainWindowViewModel
         if (IsBusy || row.File?.Stamp is not { } stamp || !conflictSession.Cards.Any(card => card.Key == row.OwnerKey
             && card.Files.Any(file => PathRulesEqual(file.Path, row.File.Path)))
             && !conflictSession.Problems.Any(problem => PathRulesEqual(problem.Path, row.File.Path))) return;
+        if (DisabledRecordFor(row) is { } disabled)
+        {
+            await DeleteDisabledFileAsync(disabled.Id);
+            ConflictFileActionStatusText = FileManagementFeedback;
+            return;
+        }
         var session = conflictSession;
         var duplicateGeneration = resultGeneration;
         var duplicateSnapshot = Groups.Select(group => group.Model).ToArray();

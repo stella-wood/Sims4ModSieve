@@ -267,7 +267,7 @@ public sealed partial class MainWindowViewModel
 
     private void PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount)
     {
-        conflictRows = rows;
+        conflictRows = rows.Select(row => row with { IsDisabled = DisabledRecordFor(row) is not null }).ToArray();
         visibleConflictParentCount = parentCount;
         OnPropertyChanged(nameof(ConflictRows));
         OnPropertyChanged(nameof(VisibleConflictParentCount));

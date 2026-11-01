@@ -19,6 +19,11 @@ public sealed record ConflictResultRow(
     ConflictTechnicalEntry? TechnicalEntry = null, string CopyText = "", ConflictGroupLink? RelatedLink = null,
     string? AnnotationTooltip = null, ConflictTechnicalTableState? TechnicalTable = null)
 {
+    public bool IsDisabled { get; init; }
+    public bool IsFileIgnored { get; init; }
+    public string FilePath => File is null ? "" : File.Path + (IsDisabled ? ".off" : "");
+    public string DisableMenuText => IsDisabled ? "启用" : "禁用";
+    public string IgnoreMenuText => IsFileIgnored ? "取消忽略" : "忽略该文件";
     public string StateText => Priority switch
     {
         ConflictPairPriority.NeedsReview => "需查看",
@@ -250,7 +255,7 @@ public sealed partial class ConflictResultSession
             if (fileIgnored && !showIgnored) return false;
             var open = row.IsExpandable && expanded.Contains(row.Key);
             rows.Add(row with { IsExpanded = open, Title = row.IsTechnicalToggle && open ? "收起" : row.Title,
-                OwnerKey = owner, IsIgnored = row.IsIgnored || fileIgnored || ignoredGroups.Contains(owner) || ignoredProblemKeys.Contains(owner) });
+                OwnerKey = owner, IsFileIgnored = fileIgnored, IsIgnored = row.IsIgnored || fileIgnored || ignoredGroups.Contains(owner) || ignoredProblemKeys.Contains(owner) });
             return open;
         }
         void Technical(string key, string text) =>

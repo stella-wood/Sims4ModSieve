@@ -225,6 +225,7 @@ public sealed partial class MainWindowViewModel
             CanDelete = true, DeleteCommand = ModChangeCommand(() => DeleteDisabledFileAsync(record.Id)),
         }));
         if (result.Failures.Count > 0) FileManagementFeedback = string.Join("\n", result.Failures.Select(failure => failure.Message).Distinct());
+        if (IsConflictComplete) QueueConflictRowsRefresh();
     }
 
     public async Task DisableFilesAsync(IReadOnlyList<string> paths)
@@ -232,7 +233,6 @@ public sealed partial class MainWindowViewModel
         if (IsBusy || paths.Count == 0 || !confirmModChange("禁用")) return;
         var generation = resultGeneration;
         var snapshot = Groups.Select(group => group.Model).ToArray();
-        var session = conflictSession;
         IsBusy = true;
         try
         {
@@ -244,10 +244,9 @@ public sealed partial class MainWindowViewModel
                     TrackDuplicateHistory(snapshot, generation, result.CompletedPaths);
                     resultSession.SynchronizeDeletedPaths(result.CompletedPaths);
                 }
-                if (ReferenceEquals(session, conflictSession) && IsConflictComplete)
-                    await UpdateConflictFilePathsAsync(session, result.CompletedPaths, restore: false);
             }
             await FinishModChangeAsync(result, "禁用", restore: false);
+            if (IsConflictComplete) await RefreshConflictRowsAsync();
         }
         catch (Exception exception) when (IsManagementException(exception)) { FileManagementFeedback = "禁用未完成：" + exception.Message; }
         finally { IsBusy = false; RefreshResultProperties(); RefreshManagementCommands(); }
@@ -260,6 +259,7 @@ public sealed partial class MainWindowViewModel
         if (IsBusy || ids.Count == 0) return;
         var records = disabledRecords.Where(record => ids.Contains(record.Id)).ToArray();
         if (records.Length == 0) return;
+        var session = conflictSession;
         IsBusy = true;
         try
         {
@@ -279,6 +279,9 @@ public sealed partial class MainWindowViewModel
                 lastDeletePendingPaths.UnionWith(result.CompletedPaths);
                 PublishDisabledMods(new(disabledRecords.Where(record => !result.CompletedPaths.Contains(
                     record.DisabledPath, StringComparer.OrdinalIgnoreCase)).ToArray(), []));
+                if (ReferenceEquals(session, conflictSession) && IsConflictComplete)
+                    await UpdateConflictFilePathsAsync(session, records.Where(record => result.CompletedPaths.Contains(record.DisabledPath, StringComparer.OrdinalIgnoreCase))
+                        .Select(record => record.OriginalPath).ToArray(), restore: false);
                 await RefreshFileManagementAsync();
                 FileManagementFeedback = string.Join("\n", new[] { "已移入回收站", FileManagementFeedback }.Where(text => text.Length > 0));
             }
@@ -307,6 +310,7 @@ public sealed partial class MainWindowViewModel
                 await UpdateConflictFilePathsAsync(session, restored.Where(record => session.MatchesOriginalFile(
                     record.OriginalPath, record.Size, record.LastWriteTimeUtc)).Select(record => record.OriginalPath).ToArray(), restore: true);
             await FinishModChangeAsync(result, "启用", restore: true);
+            if (IsConflictComplete) await RefreshConflictRowsAsync();
         }
         catch (Exception exception) when (IsManagementException(exception)) { FileManagementFeedback = "启用未完成：" + exception.Message; }
         finally { IsBusy = false; RefreshResultProperties(); RefreshManagementCommands(); }
@@ -336,7 +340,13 @@ public sealed partial class MainWindowViewModel
     public async Task RefreshFileManagementAsync()
     {
         FileManagementFeedback = "";
-        try { PublishDisabledMods(await Task.Run(modDisableService.Load)); }
+        try
+        {
+            PublishDisabledMods(await Task.Run(modDisableService.Load));
+            if (IsConflictComplete)
+                await UpdateConflictFilePathsAsync(conflictSession, disabledRecords.Where(record => conflictSession.MatchesOriginalFile(
+                    record.OriginalPath, record.Size, record.LastWriteTimeUtc)).Select(record => record.OriginalPath).ToArray(), restore: true);
+        }
         catch (Exception exception) when (IsManagementException(exception)) { FileManagementFeedback = "无法刷新禁用记录：" + exception.Message; }
         try
         {
