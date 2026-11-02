@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -14,7 +15,7 @@ public sealed record DiagnosticLog(string Name, string Content, bool HasContent,
 public sealed partial class SettingsSupportService
 {
     public const int MaximumLogCharacters = 65_536;
-    public const string ProjectUrl = "https://github.com/stella-wood/Sims4ModDoctor";
+    public const string ProjectUrl = "https://github.com/stella-wood/Sims4ModSieve";
     private readonly string documentsDirectory;
     private readonly string applicationDirectory;
     private readonly Action<string> openTarget;
@@ -33,7 +34,9 @@ public sealed partial class SettingsSupportService
     public void OpenRecycleBin() => openTarget("shell:RecycleBinFolder");
 
     public string LogDirectory { get; }
-    public string ProductVersion => typeof(SettingsSupportService).Assembly.GetName().Version?.ToString() ?? string.Empty;
+    public string ProductVersion => typeof(SettingsSupportService).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
+        ?? typeof(SettingsSupportService).Assembly.GetName().Version?.ToString() ?? string.Empty;
     public string SystemVersion => Environment.OSVersion.VersionString;
 
     public string? FindDefaultFolder(string kind)

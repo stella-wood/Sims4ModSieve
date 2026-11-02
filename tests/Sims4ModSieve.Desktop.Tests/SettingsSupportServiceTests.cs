@@ -58,7 +58,8 @@ public sealed class SettingsSupportServiceTests
         StringAssert.Contains(copied, @"C:\Users\<用户>\Documents");
         StringAssert.Contains(copied, @"d:\\Users\\<用户>\\Desktop");
         Assert.AreEqual(raw, File.ReadAllText(path));
-        Assert.AreEqual(typeof(SettingsSupportService).Assembly.GetName().Version!.ToString(), support.ProductVersion);
+        Assert.AreEqual(typeof(SettingsSupportService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0],
+            support.ProductVersion);
         Assert.AreEqual(Environment.OSVersion.VersionString, support.SystemVersion);
         var basic = support.BuildDiagnosticText([]);
         StringAssert.Contains(basic, support.ProductVersion);
@@ -80,7 +81,8 @@ public sealed class SettingsSupportServiceTests
         support.OpenFolder(mods);
         support.OpenProjectPage();
         support.OpenProjectPage(feedback: true);
-        CollectionAssert.AreEqual(new[] { mods, SettingsSupportService.ProjectUrl, SettingsSupportService.ProjectUrl + "/issues" }, targets);
+        CollectionAssert.AreEqual(new[] { mods, "https://github.com/stella-wood/Sims4ModSieve",
+            "https://github.com/stella-wood/Sims4ModSieve/issues" }, targets);
         Assert.ThrowsExactly<ArgumentException>(() => support.FindDefaultFolder("../Other"));
         Assert.ThrowsExactly<ArgumentException>(() => support.OpenLicenseDocument("../LICENSE"));
         Assert.ThrowsExactly<DirectoryNotFoundException>(() => support.OpenFolder(Path.Combine(files.Root, "Missing")));

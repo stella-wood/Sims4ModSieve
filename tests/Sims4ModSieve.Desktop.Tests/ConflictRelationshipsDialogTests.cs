@@ -49,8 +49,7 @@ public sealed class ConflictRelationshipsDialogTests
         model.OpenConflictSectionCommand.Execute("basic");
         foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
         {
-            window.Width = width;
-            window.Height = height;
+            WpfTestHost.PlaceOnScreen(window, width, height);
             var session = ReviewSession();
             var card = session.Cards.First(card => card.Type == "override" && card.Files.Any(file => file.Path == A));
             await SetSessionAsync(model, session, "all");
@@ -377,6 +376,8 @@ public sealed class ConflictRelationshipsDialogTests
         list.ScrollIntoView(detail);
         await WpfTestHost.LayoutAsync(window);
         var detailButton = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, detail));
+        WpfTestHost.PlaceOnScreen(window);
+        await WpfTestHost.LayoutAsync(window);
         detailButton.Focus();
         Assert.IsTrue(detailButton.IsKeyboardFocused);
         var source = PresentationSource.FromVisual(detailButton)!;
