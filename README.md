@@ -1,6 +1,6 @@
 # Sims 4 Mod Sieve
 
-[![CI](https://github.com/stella-wood/Sims4ModDoctor/actions/workflows/ci.yml/badge.svg)](https://github.com/stella-wood/Sims4ModDoctor/actions/workflows/ci.yml)
+[![CI](https://github.com/stella-wood/Sims4ModSieve/actions/workflows/ci.yml/badge.svg)](https://github.com/stella-wood/Sims4ModSieve/actions/workflows/ci.yml)
 
 Sims 4 Mod Sieve 是一个面向 Windows 的本地离线《模拟人生 4》Mod 整理工具。
 
