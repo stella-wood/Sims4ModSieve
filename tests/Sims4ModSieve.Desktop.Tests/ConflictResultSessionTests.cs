@@ -351,6 +351,8 @@ public sealed class ConflictResultSessionTests
     {
         Assert.AreEqual("捏人部件", ConflictResultSession.GetResourceTypeDisplayName(0x034AEECB));
         Assert.AreEqual("调参", ConflictResultSession.GetResourceTypeDisplayName(0x03B33DDF));
+        Assert.AreEqual("调参", ConflictResultSession.GetResourceTypeDisplayName(0x6017E896));
+        Assert.AreEqual("调参", ConflictResultSession.GetResourceTypeDisplayName(0xE882D22F));
         Assert.AreEqual("模拟数据", ConflictResultSession.GetResourceTypeDisplayName(0x545AC67A));
         Assert.AreEqual("物件定义", ConflictResultSession.GetResourceTypeDisplayName(0xC0DB5AE7));
         Assert.AreEqual("物件目录", ConflictResultSession.GetResourceTypeDisplayName(0x319E4F1D));
