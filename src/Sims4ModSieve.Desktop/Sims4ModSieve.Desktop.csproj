@@ -7,6 +7,7 @@
     <ApplicationIcon>Assets\Sims4ModSieve.ico</ApplicationIcon>
     <AssemblyName>Sims4ModSieve</AssemblyName>
     <RootNamespace>Sims4ModSieve.Desktop</RootNamespace>
+    <Version>0.1.0-alpha.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +15,8 @@
     <Content Include="Assets\Fonts\source-han-sans-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\release\便携版使用说明.md" Link="README.md" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\**\*" Link="licenses\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="..\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
     <ProjectReference Include="..\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
   </ItemGroup>

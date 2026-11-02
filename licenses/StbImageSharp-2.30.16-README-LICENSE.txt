@@ -1,0 +1,5 @@
+StbImageSharp 2.30.16
+Source: https://github.com/StbSharp/StbImageSharp/blob/125af70cb557033f2c46aec8e82eaaf72ac49817/README.md
+
+# License
+Public Domain or MIT

@@ -1,0 +1,5 @@
+StbImageWriteSharp 1.16.7
+Source: https://github.com/StbSharp/StbImageWriteSharp/blob/master/README.md
+
+# License
+Public Domain

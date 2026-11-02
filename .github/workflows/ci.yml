@@ -40,11 +40,30 @@ jobs:
       - name: Restore locked dependencies
         run: dotnet restore Sims4ModSieve.sln --locked-mode
 
+      - name: Check known dependency vulnerabilities
+        shell: pwsh
+        run: ./eng/check-vulnerabilities.ps1
+
       - name: Build Release
         run: dotnet build Sims4ModSieve.sln -c Release --no-restore --nologo
 
       - name: Run tests
         run: dotnet test Sims4ModSieve.sln -c Release --no-build --no-restore --nologo --logger trx --results-directory artifacts/ci/test-results
+
+      - name: Package self-contained Windows x64 alpha
+        shell: pwsh
+        run: ./eng/package-portable.ps1
+
+      - name: Upload portable package and hash
+        uses: actions/upload-artifact@v7
+        with:
+          name: Sims4ModSieve-0.1.0-alpha.1-win-x64
+          path: |
+            artifacts/release/Sims4ModSieve-0.1.0-alpha.1-win-x64.zip
+            artifacts/release/Sims4ModSieve-0.1.0-alpha.1-win-x64.zip.sha256
+            artifacts/release/vulnerabilities.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload test failure diagnostics
         if: failure()

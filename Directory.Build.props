@@ -9,5 +9,6 @@
     <Product>Sims 4 Mod Sieve</Product>
     <AssemblyTitle>Sims 4 Mod Sieve</AssemblyTitle>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <NuGetLockFilePath Condition="'$(RuntimeIdentifier)' == 'win-x64'">$(MSBuildProjectDirectory)\packages.win-x64.lock.json</NuGetLockFilePath>
   </PropertyGroup>
 </Project>

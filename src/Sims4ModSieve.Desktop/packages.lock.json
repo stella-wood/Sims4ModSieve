@@ -10,16 +10,6 @@
           "CommunityToolkit.HighPerformance": "8.4.0"
         }
       },
-      "BCnEncoder.Net.ImageSharp": {
-        "type": "Transitive",
-        "resolved": "1.1.2",
-        "contentHash": "qUi8L+bNfHJii95BMBcV6MhBchkKU2VV6sd6D1yyzgm77YhMt+aFT0keh5uf70bvTsRrq/ZKQnE4UQScNU6XAA==",
-        "dependencies": {
-          "BCnEncoder.Net": "2.2.0",
-          "CommunityToolkit.HighPerformance": "8.4.0",
-          "SixLabors.ImageSharp": "3.1.7"
-        }
-      },
       "CommunityToolkit.HighPerformance": {
         "type": "Transitive",
         "resolved": "8.4.0",
@@ -27,13 +17,15 @@
       },
       "LlamaLogic.Packages": {
         "type": "Transitive",
-        "resolved": "3.8.2",
-        "contentHash": "Siy3kbjMYlYS0z+uHEwe9vuAkXFe+kOsPq/wfxfB2F0zZ9dWaHCw/5eRltaOxbTzgFUHUDaDBCqMPocgrOkPKg==",
+        "resolved": "4.9.0",
+        "contentHash": "cBuKzNikzApNViiAf7cFWAS/RW7UtlRubZWnE5tFBNx6pNYdo2Mb/u31hRcMxAColLM8VziNClnw1WqbXFNV3g==",
         "dependencies": {
-          "BCnEncoder.Net.ImageSharp": "1.1.2",
+          "BCnEncoder.Net": "2.2.0",
+          "CommunityToolkit.HighPerformance": "8.4.0",
           "Nito.AsyncEx": "5.1.2",
           "SharpZipLib": "1.4.2",
-          "SixLabors.ImageSharp": "3.1.11",
+          "StbImageSharp": "2.30.16",
+          "StbImageWriteSharp": "1.16.7",
           "System.Collections.Immutable": "8.0.0",
           "YamlDotNet": "16.3.0"
         }
@@ -118,10 +110,15 @@
         "resolved": "1.4.2",
         "contentHash": "yjj+3zgz8zgXpiiC3ZdF/iyTBbz2fFvMxZFEBPUcwZjIvXOf37Ylm+K58hqMfIBt5JgU/Z2uoUS67JmTLe973A=="
       },
-      "SixLabors.ImageSharp": {
+      "StbImageSharp": {
         "type": "Transitive",
-        "resolved": "3.1.11",
-        "contentHash": "JfPLyigLthuE50yi6tMt7Amrenr/fA31t2CvJyhy/kQmfulIBAqo5T/YFUSRHtuYPXRSaUHygFeh6Qd933EoSw=="
+        "resolved": "2.30.16",
+        "contentHash": "qg1i+NHihXVKLKYacGKrauhSQIGL31eBWcTC4Vc7jnGmBFj87LkRuCdXB5aDZisWMRnB6x2mcfwYXQxMWEG/lw=="
+      },
+      "StbImageWriteSharp": {
+        "type": "Transitive",
+        "resolved": "1.16.7",
+        "contentHash": "NF9kOxi0iS9VunklnRKgOpAWC2knCGKRjdy7RT6XAqYNyb7LQfyPHPdl4l1fJw7TFYKrGQzQOmK1XpBONC2MoA=="
       },
       "System.Collections.Immutable": {
         "type": "Transitive",
@@ -142,7 +139,7 @@
       "sims4modsieve.packages": {
         "type": "Project",
         "dependencies": {
-          "LlamaLogic.Packages": "[3.8.2, )",
+          "LlamaLogic.Packages": "[4.9.0, )",
           "SharpZipLib": "[1.4.2, )",
           "Sims4ModSieve.Core": "[1.0.0, )"
         }

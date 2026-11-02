@@ -4,14 +4,16 @@
     "net8.0": {
       "LlamaLogic.Packages": {
         "type": "Direct",
-        "requested": "[3.8.2, )",
-        "resolved": "3.8.2",
-        "contentHash": "Siy3kbjMYlYS0z+uHEwe9vuAkXFe+kOsPq/wfxfB2F0zZ9dWaHCw/5eRltaOxbTzgFUHUDaDBCqMPocgrOkPKg==",
+        "requested": "[4.9.0, )",
+        "resolved": "4.9.0",
+        "contentHash": "cBuKzNikzApNViiAf7cFWAS/RW7UtlRubZWnE5tFBNx6pNYdo2Mb/u31hRcMxAColLM8VziNClnw1WqbXFNV3g==",
         "dependencies": {
-          "BCnEncoder.Net.ImageSharp": "1.1.2",
+          "BCnEncoder.Net": "2.2.0",
+          "CommunityToolkit.HighPerformance": "8.4.0",
           "Nito.AsyncEx": "5.1.2",
           "SharpZipLib": "1.4.2",
-          "SixLabors.ImageSharp": "3.1.11",
+          "StbImageSharp": "2.30.16",
+          "StbImageWriteSharp": "1.16.7",
           "System.Collections.Immutable": "8.0.0",
           "YamlDotNet": "16.3.0"
         }
@@ -28,16 +30,6 @@
         "contentHash": "bJg23yquVTodLWYBCDu28Dk82Coi138ZnjFlWI4sqaOtjRIvftAZHaQHbm2SdCWUShcG9sEZ4BdOnePY9qB7tA==",
         "dependencies": {
           "CommunityToolkit.HighPerformance": "8.4.0"
-        }
-      },
-      "BCnEncoder.Net.ImageSharp": {
-        "type": "Transitive",
-        "resolved": "1.1.2",
-        "contentHash": "qUi8L+bNfHJii95BMBcV6MhBchkKU2VV6sd6D1yyzgm77YhMt+aFT0keh5uf70bvTsRrq/ZKQnE4UQScNU6XAA==",
-        "dependencies": {
-          "BCnEncoder.Net": "2.2.0",
-          "CommunityToolkit.HighPerformance": "8.4.0",
-          "SixLabors.ImageSharp": "3.1.7"
         }
       },
       "CommunityToolkit.HighPerformance": {
@@ -120,10 +112,15 @@
           "System.Collections.Immutable": "1.7.1"
         }
       },
-      "SixLabors.ImageSharp": {
+      "StbImageSharp": {
         "type": "Transitive",
-        "resolved": "3.1.11",
-        "contentHash": "JfPLyigLthuE50yi6tMt7Amrenr/fA31t2CvJyhy/kQmfulIBAqo5T/YFUSRHtuYPXRSaUHygFeh6Qd933EoSw=="
+        "resolved": "2.30.16",
+        "contentHash": "qg1i+NHihXVKLKYacGKrauhSQIGL31eBWcTC4Vc7jnGmBFj87LkRuCdXB5aDZisWMRnB6x2mcfwYXQxMWEG/lw=="
+      },
+      "StbImageWriteSharp": {
+        "type": "Transitive",
+        "resolved": "1.16.7",
+        "contentHash": "NF9kOxi0iS9VunklnRKgOpAWC2knCGKRjdy7RT6XAqYNyb7LQfyPHPdl4l1fJw7TFYKrGQzQOmK1XpBONC2MoA=="
       },
       "System.Collections.Immutable": {
         "type": "Transitive",

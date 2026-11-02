@@ -8,7 +8,7 @@
 
 ### 直接依赖
 
-- `LlamaLogic.Packages` 3.8.2 — MIT — https://github.com/Llama-Logic/LlamaLogic
+- `LlamaLogic.Packages` 4.9.0 — MIT — https://github.com/Llama-Logic/LlamaLogic
 - `SharpZipLib` 1.4.2 — MIT — https://github.com/icsharpcode/SharpZipLib
   （Packages 用于有界流式 zlib 解压；Core 用于脚本 ZIP 的有界 DEFLATE 解压、结束状态及 CRC 校验。
   原本也由 LlamaLogic 传递引入，版本未变，第三方类型不暴露在公开扫描接口中。）
@@ -21,7 +21,6 @@
 | 包 | 版本 | 许可证 |
 |---|---|---|
 | `BCnEncoder.Net` | 2.2.0 | MIT OR Unlicense |
-| `BCnEncoder.Net.ImageSharp` | 1.1.2 | MIT OR Unlicense |
 | `CommunityToolkit.HighPerformance` | 8.4.0 | MIT |
 | `Nito.AsyncEx` | 5.1.2 | MIT |
 | `Nito.AsyncEx.Context` | 5.1.2 | MIT |
@@ -32,33 +31,16 @@
 | `Nito.Cancellation` | 1.1.2 | MIT |
 | `Nito.Collections.Deque` | 1.1.1 | MIT |
 | `Nito.Disposables` | 2.2.1 | MIT |
-| `SixLabors.ImageSharp` | 3.1.11 | Six Labors Split License 1.0（见下） |
+| `StbImageSharp` | 2.30.16 | Unlicense OR MIT；上游声明 Public Domain or MIT |
+| `StbImageWriteSharp` | 1.16.7 | 上游声明 Public Domain |
 | `System.Collections.Immutable` | 8.0.0 | MIT |
 | `YamlDotNet` | 16.3.0 | MIT |
 
-### SixLabors.ImageSharp 3.1.11 — Six Labors Split License 1.0
+各包按实际分发版本随附完整授权文本于 `licenses/`；`Nito.AsyncEx` 的六个拆分包共用该仓库同版本许可证。
+`BCnEncoder.Net` 的两个许可文本均取自 nuspec 指定提交。StbImageSharp 的 Unlicense 与上游 README 授权声明、StbImageWriteSharp 的上游 Public Domain 声明一并提供。
+`LlamaLogic.Packages` 4.9.0 不再引入 ImageSharp；其索引读取在本项目的 53 项 Packages 测试中通过。
 
-该包的 nuspec 未声明 SPDX 许可证表达式，只带一个已弃用的 `licenseUrl`；
-Six Labors 自 2.0 起使用自有的分离式许可证，按使用形态在
-Apache License 2.0 与商业许可之间二选一。
-
-许可证原文：https://github.com/SixLabors/ImageSharp/blob/main/LICENSE
-
-按其条款，满足以下任一条即适用 **Apache License 2.0**：
-
-- 用于以开源或源码可得许可证发布的软件；
-- **作为传递依赖被引入**；
-- 作为直接依赖，且使用方是年营收低于 100 万美元的营利主体；
-- 作为直接依赖，且使用方是非营利组织或注册慈善机构。
-
-本项目同时满足前两条：仓库以 MIT 发布，且 ImageSharp 是经由
-`LlamaLogic.Packages` 引入的传递依赖，不是直接依赖。因此按当前形态适用
-Apache License 2.0，不构成许可证阻塞。
-
-⚠️ 以下变化会使这一结论失效，届时需要重新评估：
-
-- 本项目改为闭源或源码不可得；
-- ImageSharp 变成直接依赖（例如为了图像解码而显式引用它）。
+自包含 win-x64 包同时携带 .NET 8.0.33 Runtime 的 `LICENSE.TXT`、`THIRD-PARTY-NOTICES.TXT` 与 WindowsDesktop Runtime `LICENSE`。这些文件取自发布时解析的官方运行时 NuGet 包。
 
 ## Source Han Sans CN Light — SIL Open Font License 1.1
 

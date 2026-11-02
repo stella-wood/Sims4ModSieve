@@ -26,10 +26,22 @@ Mod 冲突检测首次从首页或顶部导航进入四功能总览，同次运�
 
 ## 系统要求
 
-- Windows 10 或 Windows 11
-- .NET SDK 8.0.424 或兼容的 .NET 8 SDK
+- Windows 10 或 Windows 11；当前便携包面向 x64
+- 从源码构建需要 .NET SDK 8.0.424 或兼容的 .NET 8 SDK
 
 仓库的 `global.json` 固定了开发所使用的 SDK 版本。`eng\dotnet.cmd` 会优先使用项目内的本地 SDK；本地 SDK 不存在时会自动使用系统 `dotnet`。
+
+## 使用便携版
+
+当前候选版本为 `0.1.0-alpha.1`。便携 ZIP 自带 .NET 运行时，解压后运行 `Sims4ModSieve.exe`，普通用户无需安装 SDK 或 Desktop Runtime。配置和日志仍保存在 `%LOCALAPPDATA%\Sims4ModSieve\`。
+
+开发者使用 PowerShell 7 生成本地候选包：
+
+```powershell
+pwsh -NoProfile -File .\eng\package-portable.ps1
+```
+
+产物位于 `artifacts/release/`，包含 ZIP、SHA-256 校验和、源码状态和文件清单。依赖、许可证、运行时补丁及干净 Windows 验证要求见 [便携版发布流程](docs/release/便携版发布流程.md)；本地打包不创建 Git Tag 或 GitHub Release。
 
 ## 构建与测试
 
@@ -72,6 +84,8 @@ src\Sims4ModSieve.Desktop\bin\Release\net8.0-windows\
 
 「删除与忽略」提供已禁用文件管理、本工具回收站记录的跨批次恢复、持久化文件忽略名单及多文件添加。禁用方式与恢复规则见 [设置页面方案 · 已禁用](docs/design/设置页面方案-v1.md#已禁用)。
 
+删除和禁用会核对文件身份，重复文件删除还会再次核对扫描时的内容。旧禁用记录缺少身份信息时保留记录并拒绝自动操作，人工处理步骤见 [文件操作的扫描快照核对](docs/release/file-operation-safety.md)。程序限制同一用户数据目录运行一个实例；正常关闭会等待当前操作完成，见 [应用生命周期](docs/release/application-lifecycle.md)。
+
 配置文件 `duplicate-settings.json`、`file-management.json`、禁用清单 `disabled-mods.json` 与本工具错误日志保存在 `%LOCALAPPDATA%\Sims4ModSieve\`，不会写入 Mods 文件夹。「诊断与反馈」仅查看本工具的运行及启动日志，支持有界读取、路径脱敏和复制；无日志也可复制实际版本与系统信息。关于页可读取随构建输出的 MIT 许可证和第三方声明。GitHub 仅在点击链接时通过系统浏览器打开，无自动联网。
 
 ## CLI
@@ -106,6 +120,8 @@ tests/
 
 eng/
 ├─ dotnet.cmd                    统一 .NET 命令入口
+├─ check-vulnerabilities.ps1      直接与传递依赖漏洞门禁
+├─ package-portable.ps1          Windows x64 自包含候选包
 ├─ generate-brand-icon.ps1       应用图标生成脚本
 └─ render-conflict-review.ps1    冲突页离屏渲染
 ```
