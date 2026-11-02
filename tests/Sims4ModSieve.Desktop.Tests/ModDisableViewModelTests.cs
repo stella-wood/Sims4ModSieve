@@ -770,11 +770,23 @@ public sealed class ModDisableViewModelTests
             Assert.IsTrue(model.RefreshFileManagementCommand.ExecuteAsync().IsCompletedSuccessfully,
                 "忙碌时重复刷新应立即返回");
         };
-        ((IInvokeProvider)new ButtonAutomationPeer(refresh).GetPattern(PatternInterface.Invoke)).Invoke();
-        await WaitForAsync(() => !model.IsBusy && model.DisabledFiles.Files.Count == 2
-            && model.RecentDeletedFiles.Files.Count == 2 && model.IgnoredFiles.Files.Count == 2);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void RefreshStateChanged(object? sender, EventArgs args)
+        {
+            if (busyStarts > 0 && model.RefreshFileManagementCommand.CanExecute(null)) completed.TrySetResult();
+        }
+        model.RefreshFileManagementCommand.CanExecuteChanged += RefreshStateChanged;
+        try
+        {
+            ((IInvokeProvider)new ButtonAutomationPeer(refresh).GetPattern(PatternInterface.Invoke)).Invoke();
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally { model.RefreshFileManagementCommand.CanExecuteChanged -= RefreshStateChanged; }
         Assert.AreEqual(1, busyStarts);
         Assert.IsTrue(model.RefreshFileManagementCommand.CanExecute(null));
+        Assert.AreEqual(2, model.DisabledFiles.Files.Count);
+        Assert.AreEqual(2, model.RecentDeletedFiles.Files.Count);
+        Assert.AreEqual(2, model.IgnoredFiles.Files.Count);
         Assert.AreEqual(disabledPaths[0], model.DisabledFiles.Files.Single(row => row.IsSelected).Path);
         Assert.AreEqual(deletedPaths[0], model.RecentDeletedFiles.Files.Single(row => row.IsSelected).Path);
         Assert.AreEqual(ignoredPaths[0], model.IgnoredFiles.Files.Single(row => row.IsSelected).Path);
