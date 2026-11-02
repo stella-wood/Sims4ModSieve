@@ -543,6 +543,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private async Task DeleteSelectedCoreAsync()
     {
+        if (IsBusy) return;
         var selectedFiles = Groups
             .SelectMany(group => group.Files
                 .Where(file => file.IsSelected)
@@ -550,31 +551,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     file.Path,
                     file.Size,
                     file.LastWriteTimeUtc,
-                    group.GroupLabel)))
+                    group.GroupLabel,
+                    ExpectedIdentity: file.Identity,
+                    ExpectedSha256: group.Model.Sha256)))
             .ToArray();
         var fullySelectedGroups = Groups
             .Where(group => group.SelectedCount == group.Files.Count)
             .Select(group => group.GroupLabel)
             .ToArray();
-        var preflight = fileActionService.Preflight(selectedFiles, fullySelectedGroups);
-
-        if (!preflight.CanExecute)
-        {
-            fileActionDialogs.ShowProblems("暂时不能删除", preflight.Problems);
-            return;
-        }
-
-        if (!fileActionDialogs.ConfirmDeletion(preflight))
-        {
-            return;
-        }
-
         var snapshot = Groups.Select(group => group.Model).ToArray();
         var deletionGeneration = resultGeneration;
         var relatedConflictSession = conflictSession;
         IsBusy = true;
         try
         {
+            var preflight = await Task.Run(() => fileActionService.Preflight(selectedFiles, fullySelectedGroups));
+            if (!preflight.CanExecute)
+            {
+                fileActionDialogs.ShowProblems("暂时不能删除", preflight.Problems);
+                return;
+            }
+            if (!fileActionDialogs.ConfirmDeletion(preflight)) return;
+
             var result = await fileActionService.DeleteAsync(preflight);
             if (result.CompletedPaths.Count > 0)
             {

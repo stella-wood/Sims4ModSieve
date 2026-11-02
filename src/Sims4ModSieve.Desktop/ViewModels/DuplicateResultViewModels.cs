@@ -16,6 +16,8 @@ public sealed class DuplicateFileViewModel(DuplicateFile file, bool isSuggestedK
 
     public DateTime LastWriteTimeUtc { get; } = file.LastWriteTimeUtc;
 
+    public FileIdentity? Identity { get; } = file.Identity;
+
     public bool IsSuggestedKeep { get; } = isSuggestedKeep;
 
     public bool IsSelected

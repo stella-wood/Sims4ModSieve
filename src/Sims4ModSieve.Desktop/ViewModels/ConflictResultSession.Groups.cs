@@ -270,7 +270,7 @@ public sealed partial class ConflictResultSession
             var duplicate = source with { Files = files, SuggestedKeepPath = selection.KeepPath, SuggestedDeletePaths = selection.DeletePaths };
             cards.Add(new("duplicate/" + source.FileSize + "/" + source.Sha256, "duplicates", "重复文件", ConflictPairPriority.CanOrganize,
                 files.OrderByDescending(file => StringComparer.OrdinalIgnoreCase.Equals(file.Path, selection.KeepPath)).ThenBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
-                    .Select(file => new ConflictFile(file.Path, new(file.Size, file.LastWriteTimeUtc))).ToArray(), "", Duplicate: duplicate));
+                    .Select(file => new ConflictFile(file.Path, new(file.Size, file.LastWriteTimeUtc, file.Identity))).ToArray(), "", Duplicate: duplicate));
         }
         var duplicateCards = cards.Where(card => card.Duplicate is not null).ToArray();
         cards.RemoveAll(card => card.Package?.Kind == PackageConflictRelationKind.SuspectedSameMod
@@ -428,7 +428,7 @@ public sealed partial class ConflictResultSession
 
     private static bool MatchesScannedStamp(DuplicateFile file, PackageConflictScanReport? packages, ScriptModuleScanReport? scripts)
     {
-        var stamp = new FileStamp(file.Size, file.LastWriteTimeUtc);
+        var stamp = new FileStamp(file.Size, file.LastWriteTimeUtc, file.Identity);
         var inventory = packages?.ResourceInventories.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, file.Path));
         if (inventory is not null && inventory.ScannedStamp != stamp) return false;
         var occurrences = scripts?.Collisions.SelectMany(collision => collision.Occurrences)

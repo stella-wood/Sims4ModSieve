@@ -238,7 +238,8 @@ public sealed class DuplicateScanner(
             sourceIds,
             primaryIds,
             modsRoot is not null && PathRules.IsWithin(candidate.Path, modsRoot),
-            PathRules.Depth(Path.GetDirectoryName(candidate.Path) ?? candidate.Path));
+            PathRules.Depth(Path.GetDirectoryName(candidate.Path) ?? candidate.Path),
+            candidate.Hash.Stamp.Identity);
     }
 
     private static DuplicateSection Classify(

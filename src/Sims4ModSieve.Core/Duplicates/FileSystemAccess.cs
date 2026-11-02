@@ -25,7 +25,7 @@ public sealed class PhysicalFileSystemAccess : IFileSystemAccess
     public FileStamp GetFileStamp(string path)
     {
         var info = new FileInfo(path);
-        return new FileStamp(info.Length, info.LastWriteTimeUtc);
+        return new FileStamp(info.Length, info.LastWriteTimeUtc, PhysicalFileIdentity.Read(path));
     }
 
     public Stream OpenRead(string path) => new FileStream(

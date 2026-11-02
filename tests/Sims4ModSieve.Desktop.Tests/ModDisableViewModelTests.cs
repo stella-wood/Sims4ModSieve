@@ -582,7 +582,7 @@ public sealed class ModDisableViewModelTests
         var actions = new FileActionService(new TemporaryRecycleBin(files.Folder("Recycle")), new PhysicalFileMetadataAccess(),
             new FileManagementStore(files.Store.DataDirectory), disabled);
         await actions.DeleteAsync(actions.Preflight(deletedPaths.Select(path => new FileDeletionCandidate(path, 4,
-            File.GetLastWriteTimeUtc(path), "")).ToArray(), []));
+            File.GetLastWriteTimeUtc(path), "", ExpectedIdentity: PhysicalFileIdentity.Read(path))).ToArray(), []));
         var model = Model(files, actions: actions, disableService: disabled);
         await model.DisableFilesAsync(paths.Take(2).ToArray());
         model.AddIgnoredFiles(paths.Skip(2).ToArray());
@@ -726,7 +726,8 @@ public sealed class ModDisableViewModelTests
         var store = new FileManagementStore(files.Store.DataDirectory);
         var disabled = new ModDisableService(files.Store.DataDirectory);
         var actions = new FileActionService(new TemporaryRecycleBin(files.Folder("Recycle")), new PhysicalFileMetadataAccess(), store, disabled);
-        await actions.DeleteAsync(actions.Preflight([new(deletedPaths[0], 4, File.GetLastWriteTimeUtc(deletedPaths[0]), "")], []));
+        await actions.DeleteAsync(actions.Preflight([new(deletedPaths[0], 4, File.GetLastWriteTimeUtc(deletedPaths[0]), "",
+            ExpectedIdentity: PhysicalFileIdentity.Read(deletedPaths[0]))], []));
         var model = Model(files, actions: actions, disableService: disabled);
         await model.DisableFilesAsync([disabledPaths[0]]);
         model.AddIgnoredFiles([ignoredPaths[0]]);
@@ -757,7 +758,8 @@ public sealed class ModDisableViewModelTests
         new ModDisableService(files.Store.DataDirectory).Disable([disabledPaths[1]]);
         new FileManagementStore(files.Store.DataDirectory).Update(data => data with
         { Ignored = data.Ignored.Append(new IgnoredFileRecord(ignoredPaths[1], 4, DateTime.UtcNow)).ToArray() });
-        await actions.DeleteAsync(actions.Preflight([new(deletedPaths[1], 4, File.GetLastWriteTimeUtc(deletedPaths[1]), "")], []));
+        await actions.DeleteAsync(actions.Preflight([new(deletedPaths[1], 4, File.GetLastWriteTimeUtc(deletedPaths[1]), "",
+            ExpectedIdentity: PhysicalFileIdentity.Read(deletedPaths[1]))], []));
         Assert.AreEqual(1, model.DisabledFiles.Files.Count);
         Assert.AreEqual(1, model.RecentDeletedFiles.Files.Count);
         Assert.AreEqual(1, model.IgnoredFiles.Files.Count);

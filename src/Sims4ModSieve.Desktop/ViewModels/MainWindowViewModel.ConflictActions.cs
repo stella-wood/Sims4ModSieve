@@ -111,7 +111,8 @@ public sealed partial class MainWindowViewModel
         if (IsBusy || !IsConflictComplete || row.File?.Stamp is not { } stamp
             || !conflictSession.MatchesOriginalFile(row.File.Path, stamp.Length, stamp.LastWriteTimeUtc)) return;
         var record = DisabledRecordFor(row);
-        if (record is null) await DisableFilesAsync([row.File.Path]);
+        if (record is null) await DisableFilesAsync([row.File.Path],
+            new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase) { [row.File.Path] = stamp });
         else await RestoreDisabledFilesAsync([record.Id]);
         ConflictFileActionStatusText = FileManagementFeedback;
     }
@@ -144,6 +145,7 @@ public sealed partial class MainWindowViewModel
             return;
         }
         var session = conflictSession;
+        var duplicateHash = session.Cards.FirstOrDefault(card => card.Key == row.OwnerKey)?.Duplicate?.Sha256;
         var duplicateGeneration = resultGeneration;
         var duplicateSnapshot = Groups.Select(group => group.Model).ToArray();
         var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
@@ -151,7 +153,8 @@ public sealed partial class MainWindowViewModel
         try
         {
             var preflight = await Task.Run(() => fileActionService.Preflight(
-                [new(row.File.Path, stamp.Length, stamp.LastWriteTimeUtc, row.GroupLabel)], []));
+                [new(row.File.Path, stamp.Length, stamp.LastWriteTimeUtc, row.GroupLabel,
+                    ExpectedIdentity: stamp.Identity, ExpectedSha256: duplicateHash)], []));
             if (!ReferenceEquals(session, conflictSession)) return;
             if (!preflight.CanExecute) { fileActionDialogs.ShowProblems("暂时不能删除", preflight.Problems); return; }
             if (!fileActionDialogs.ConfirmDeletion(preflight)) return;

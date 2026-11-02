@@ -1,13 +1,15 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Desktop.Services;
 
 public sealed record DisabledRecycleRecord(string Id, RecycleBinItem Item, DateTime DeletedAtUtc);
 
 public sealed record DisabledModRecord(string Id, string OriginalPath, long Size, DateTime LastWriteTimeUtc, DateTime DisabledAtUtc,
-    bool RecyclePending = false, bool Recycled = false, bool RestorePending = false, DisabledRecycleRecord? RecycleEntry = null)
+    bool RecyclePending = false, bool Recycled = false, bool RestorePending = false, DisabledRecycleRecord? RecycleEntry = null,
+    FileIdentity? Identity = null)
 {
     [JsonIgnore]
     public string DisabledPath => OriginalPath + ".off";
@@ -121,7 +123,8 @@ public sealed class ModDisableService(string? directory = null)
         }
     }
 
-    public ModDisableBatchResult Disable(IReadOnlyList<string> paths)
+    public ModDisableBatchResult Disable(IReadOnlyList<string> paths,
+        IReadOnlyDictionary<string, FileStamp>? expectedStamps = null)
     {
         lock (gate)
         {
@@ -142,8 +145,17 @@ public sealed class ModDisableService(string? directory = null)
                     if (records.Any(item => !item.Recycled && StringComparer.OrdinalIgnoreCase.Equals(item.OriginalPath, original)))
                         throw new IOException("该文件已有禁用记录，请先处理原记录");
                     var stamp = ReadStamp(original);
+                    if (stamp.Identity is null) throw new IOException("无法取得可靠文件身份，未禁用");
+                    if (expectedStamps is not null)
+                    {
+                        if (!expectedStamps.TryGetValue(original, out var expected)
+                            || expected.Identity is null || expected.Length != stamp.Size
+                            || expected.LastWriteTimeUtc != stamp.Modified || expected.Identity != stamp.Identity)
+                            throw new IOException("文件在扫描后发生变化，请重新扫描");
+                    }
                     if (TryReadStamp(original + ".off") is not null) throw new IOException("禁用目标已存在，未覆盖");
-                    record = new(Guid.NewGuid().ToString("N"), original, stamp.Size, stamp.Modified, DateTime.UtcNow);
+                    record = new(Guid.NewGuid().ToString("N"), original, stamp.Size, stamp.Modified, DateTime.UtcNow,
+                        Identity: stamp.Identity);
                     // 先保存恢复所需的信息，进程中断后仍能识别已经改名的文件。
                     Save(records.Append(record).ToArray());
                     records.Add(record);
@@ -294,24 +306,26 @@ public sealed class ModDisableService(string? directory = null)
 
     private static bool IsFileException(Exception exception) => exception is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
 
-    private static (long Size, DateTime Modified) ReadStamp(string path)
+    private static (long Size, DateTime Modified, FileIdentity? Identity) ReadStamp(string path)
     {
         if ((File.GetAttributes(path) & FileAttributes.Directory) != 0) throw new IOException("目标是文件夹，未改动");
         var info = new FileInfo(path);
-        return (info.Length, info.LastWriteTimeUtc);
+        return (info.Length, info.LastWriteTimeUtc, PhysicalFileIdentity.Read(path));
     }
 
-    private static (long Size, DateTime Modified)? TryReadStamp(string path)
+    private static (long Size, DateTime Modified, FileIdentity? Identity)? TryReadStamp(string path)
     {
         try { return ReadStamp(path); }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException) { return null; }
     }
 
-    private static bool Matches((long Size, DateTime Modified) stamp, DisabledModRecord record) =>
-        stamp.Size == record.Size && stamp.Modified == record.LastWriteTimeUtc;
+    private static bool Matches((long Size, DateTime Modified, FileIdentity? Identity) stamp, DisabledModRecord record) =>
+        record.Identity is not null && stamp.Identity is not null && stamp.Size == record.Size
+        && stamp.Modified == record.LastWriteTimeUtc && stamp.Identity == record.Identity;
 
     private static void RequireStamp(string path, DisabledModRecord record)
     {
+        if (record.Identity is null) throw new IOException("旧禁用记录缺少文件身份，请人工核对文件与记录后处理");
         if (!Matches(ReadStamp(path), record)) throw new IOException("文件发生变化，未改动，请重新核对");
     }
 }

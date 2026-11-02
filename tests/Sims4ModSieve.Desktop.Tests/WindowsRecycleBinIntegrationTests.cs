@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Services;
 
 namespace Sims4ModSieve.Desktop.Tests;
@@ -32,7 +33,7 @@ public sealed class WindowsRecycleBinIntegrationTests
             await File.WriteAllTextAsync(path, "do-not-overwrite");
             var actions = new FileActionService(adapter, new PhysicalFileMetadataAccess(), store, mods);
             var deleted = await actions.DeleteAsync(actions.Preflight(
-                [new(disabledPath, record.Size, record.LastWriteTimeUtc, "", record)], []));
+                [new(disabledPath, record.Size, record.LastWriteTimeUtc, "", record, record.Identity)], []));
             items.AddRange(store.Load().Deleted.Select(entry => entry.Item));
             Assert.AreEqual(0, deleted.Failures.Count, string.Join("\n", deleted.Failures));
             CollectionAssert.AreEqual(new[] { disabledPath }, deleted.CompletedPaths.ToArray());
@@ -100,7 +101,10 @@ public sealed class WindowsRecycleBinIntegrationTests
         {
             await File.WriteAllTextAsync(path, "original");
             var info = new FileInfo(path);
-            var deleted = await service.DeleteAsync(service.Preflight([new(path, info.Length, info.LastWriteTimeUtc, "第1组")], []));
+            var scannedIdentity = PhysicalFileIdentity.Read(path);
+            Assert.IsNotNull(scannedIdentity);
+            var deleted = await service.DeleteAsync(service.Preflight(
+                [new(path, info.Length, info.LastWriteTimeUtc, "第1组", ExpectedIdentity: scannedIdentity)], []));
             Assert.AreEqual(0, deleted.Failures.Count, string.Join("\n", deleted.Failures));
             var restarted = new FileActionService(adapter, new PhysicalFileMetadataAccess(), new FileManagementStore(directory));
             var history = await restarted.GetRecentlyDeletedAsync();

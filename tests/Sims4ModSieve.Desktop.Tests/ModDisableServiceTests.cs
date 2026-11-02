@@ -1,12 +1,52 @@
 using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Desktop.Services;
+using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Desktop.Tests;
 
 [TestClass]
 public sealed class ModDisableServiceTests
 {
+    [TestMethod]
+    public void DisableRejectsSameStampPhysicalReplacementFromScan()
+    {
+        using var files = new Scenario();
+        var path = files.Mod("replacement.package", "AAAA");
+        var info = new FileInfo(path);
+        var expected = new FileStamp(info.Length, info.LastWriteTimeUtc, PhysicalFileIdentity.Read(path));
+        Assert.IsNotNull(expected.Identity);
+        File.Move(path, path + ".old");
+        File.WriteAllText(path, "BBBB");
+        File.SetLastWriteTimeUtc(path, expected.LastWriteTimeUtc);
+
+        var result = files.Service.Disable([path], new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase)
+            { [path] = expected });
+
+        Assert.AreEqual(0, result.CompletedPaths.Count);
+        Assert.AreEqual(1, result.Failures.Count);
+        Assert.IsTrue(File.Exists(path));
+        Assert.IsFalse(File.Exists(path + ".off"));
+    }
+
+    [TestMethod]
+    public void RestoreKeepsLegacyRecordWithoutIdentityForManualReview()
+    {
+        using var files = new Scenario();
+        var path = files.Mod("legacy.package", "AAAA");
+        Assert.AreEqual(1, files.Service.Disable([path]).CompletedPaths.Count);
+        var record = files.Service.Load().Records.Single();
+        var legacy = record with { Identity = null };
+        File.WriteAllText(files.Ledger, JsonSerializer.Serialize(new[] { legacy }));
+
+        var result = new ModDisableService(files.Data).Restore([record.Id]);
+
+        Assert.AreEqual(0, result.CompletedPaths.Count);
+        Assert.IsTrue(result.Failures.Any(failure => failure.Message.Contains("人工核对", StringComparison.Ordinal)));
+        Assert.IsTrue(File.Exists(path + ".off"));
+        Assert.AreEqual(1, new ModDisableService(files.Data).Load().Records.Count);
+    }
+
     [TestMethod]
     public void PackageAndScriptDisableInPlaceAndRestoreAcrossRestart()
     {
@@ -24,6 +64,8 @@ public sealed class ModDisableServiceTests
         var restarted = new ModDisableService(files.Data);
         var records = restarted.Load().Records;
         Assert.AreEqual(2, records.Count);
+        Assert.AreEqual(records.Single(record => record.OriginalPath == package).Identity,
+            PhysicalFileIdentity.Read(package + ".off"));
         var restored = restarted.Restore(records.Select(record => record.Id).ToArray());
         Assert.AreEqual(2, restored.CompletedPaths.Count);
         Assert.AreEqual(0, restored.Failures.Count);
@@ -242,7 +284,7 @@ public sealed class ModDisableServiceTests
         files.WriteLedger(record);
         File.Move(original, record.DisabledPath);
         var json = JsonSerializer.Serialize(new[] { new { record.Id, record.OriginalPath, record.Size,
-            record.LastWriteTimeUtc, record.DisabledAtUtc, DisabledPath = unrelated } });
+            record.LastWriteTimeUtc, record.DisabledAtUtc, record.Identity, DisabledPath = unrelated } });
         File.WriteAllText(files.Ledger, json);
         var result = files.Service.Restore([record.Id]);
         Assert.AreEqual(1, result.CompletedPaths.Count);
@@ -488,7 +530,7 @@ public sealed class ModDisableServiceTests
     }
 
     private static FileDeletionCandidate Candidate(DisabledModRecord record) =>
-        new(record.DisabledPath, record.Size, record.LastWriteTimeUtc, "", record);
+        new(record.DisabledPath, record.Size, record.LastWriteTimeUtc, "", record, record.Identity);
 
     private sealed class TemporaryRecycleBin(string root) : IRecycleBinAdapter
     {
@@ -560,7 +602,8 @@ public sealed class ModDisableServiceTests
         }
 
         public DisabledModRecord Record(string path) => new(Guid.NewGuid().ToString("N"), path,
-            new FileInfo(path).Length, File.GetLastWriteTimeUtc(path), DateTime.UtcNow);
+            new FileInfo(path).Length, File.GetLastWriteTimeUtc(path), DateTime.UtcNow,
+            Identity: PhysicalFileIdentity.Read(path));
 
         public void WriteLedger(params DisabledModRecord[] records)
         {

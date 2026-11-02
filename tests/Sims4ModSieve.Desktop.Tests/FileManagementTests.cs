@@ -374,7 +374,7 @@ public sealed class FileManagementTests
         using var files = new Scenario();
         var path = NewFile(files.Root, "damaged.package");
         var info = new FileInfo(path);
-        var stamp = new FileStamp(info.Length, info.LastWriteTimeUtc);
+        var stamp = new FileStamp(info.Length, info.LastWriteTimeUtc, PhysicalFileIdentity.Read(path));
         var report = ConflictResultSessionTests.Packages([(path, 1)]) with
         { ResourceInventories = [new PackageResourceInventory(path, stamp, 1)] };
         var session = new ConflictResultSession();
@@ -566,7 +566,8 @@ public sealed class FileManagementTests
     private static Task<FileActionBatchResult> Delete(FileActionService service, string path)
     {
         var info = new FileInfo(path);
-        return service.DeleteAsync(service.Preflight([new(path, info.Length, info.LastWriteTimeUtc, "第1组")], []));
+        return service.DeleteAsync(service.Preflight([new(path, info.Length, info.LastWriteTimeUtc, "第1组",
+            ExpectedIdentity: PhysicalFileIdentity.Read(path))], []));
     }
 
     private static void SaveReview(Window window, string name)

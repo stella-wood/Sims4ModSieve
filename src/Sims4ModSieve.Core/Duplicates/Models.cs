@@ -35,7 +35,9 @@ public sealed record ScanSourceSnapshot(
     bool IsFocusRange,
     bool IsReferenceRange);
 
-public readonly record struct FileStamp(long Length, DateTime LastWriteTimeUtc);
+public readonly record struct FileIdentity(ulong VolumeSerialNumber, ulong FileIdLow, ulong FileIdHigh);
+
+public readonly record struct FileStamp(long Length, DateTime LastWriteTimeUtc, FileIdentity? Identity = null);
 
 public sealed record DuplicateFile(
     string Path,
@@ -44,7 +46,8 @@ public sealed record DuplicateFile(
     IReadOnlyList<string> SourceIds,
     IReadOnlyList<string> PrimarySourceIds,
     bool IsInsideMods,
-    int DirectoryDepth);
+    int DirectoryDepth,
+    FileIdentity? Identity = null);
 
 public enum DuplicateSection
 {

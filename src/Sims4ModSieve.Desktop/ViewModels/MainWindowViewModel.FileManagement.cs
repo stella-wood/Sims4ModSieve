@@ -151,8 +151,10 @@ public sealed partial class MainWindowViewModel
                     try
                     {
                         var info = new FileInfo(record.Path);
-                        candidates.Add(new(record.Path, info.Length, info.LastWriteTimeUtc, "",
-                            disabled.SingleOrDefault(item => PathRulesEqual(item.DisabledPath, record.Path))));
+                        var disabledRecord = disabled.SingleOrDefault(item => PathRulesEqual(item.DisabledPath, record.Path));
+                        candidates.Add(new(record.Path, disabledRecord?.Size ?? info.Length,
+                            disabledRecord?.LastWriteTimeUtc ?? info.LastWriteTimeUtc, "", disabledRecord,
+                            disabledRecord is null ? PhysicalFileIdentity.Read(record.Path) : disabledRecord.Identity));
                     }
                     catch (Exception exception) when (IsManagementException(exception))
                     { failures.Add(new(record.Path, exception.Message)); }
@@ -228,7 +230,8 @@ public sealed partial class MainWindowViewModel
         if (IsConflictComplete) QueueConflictRowsRefresh();
     }
 
-    public async Task DisableFilesAsync(IReadOnlyList<string> paths)
+    public async Task DisableFilesAsync(IReadOnlyList<string> paths,
+        IReadOnlyDictionary<string, FileStamp>? expectedStamps = null)
     {
         if (IsBusy || paths.Count == 0 || !confirmModChange("禁用")) return;
         var generation = resultGeneration;
@@ -236,7 +239,7 @@ public sealed partial class MainWindowViewModel
         IsBusy = true;
         try
         {
-            var result = await Task.Run(() => modDisableService.Disable(paths));
+            var result = await Task.Run(() => modDisableService.Disable(paths, expectedStamps));
             if (result.CompletedPaths.Count > 0)
             {
                 if (generation == resultGeneration)
@@ -265,7 +268,7 @@ public sealed partial class MainWindowViewModel
         {
             var preflight = await Task.Run(() => fileActionService.Preflight(
                 records.Select(record => new FileDeletionCandidate(record.DisabledPath, record.Size,
-                    record.LastWriteTimeUtc, "", record)).ToArray(), []));
+                    record.LastWriteTimeUtc, "", record, record.Identity)).ToArray(), []));
             if (!preflight.CanExecute) { fileActionDialogs.ShowProblems("暂时不能删除", preflight.Problems); return; }
             if (!fileActionDialogs.ConfirmDeletion(preflight)) return;
             var result = await fileActionService.DeleteAsync(preflight);

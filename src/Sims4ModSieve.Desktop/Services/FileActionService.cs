@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Desktop.Services;
@@ -8,7 +9,9 @@ public sealed record FileDeletionCandidate(
     long ExpectedSize,
     DateTime ExpectedLastWriteTimeUtc,
     string GroupLabel,
-    DisabledModRecord? DisabledMod = null);
+    DisabledModRecord? DisabledMod = null,
+    FileIdentity? ExpectedIdentity = null,
+    string? ExpectedSha256 = null);
 
 public sealed record FileActionFailure(string Path, string Message);
 
@@ -46,6 +49,8 @@ public interface IFileMetadataAccess
     bool FileExists(string path);
 
     FileStamp GetFileStamp(string path);
+
+    Stream OpenRead(string path);
 }
 
 public sealed class PhysicalFileMetadataAccess : IFileMetadataAccess
@@ -55,8 +60,11 @@ public sealed class PhysicalFileMetadataAccess : IFileMetadataAccess
     public FileStamp GetFileStamp(string path)
     {
         var info = new FileInfo(path);
-        return new FileStamp(info.Length, info.LastWriteTimeUtc);
+        return new FileStamp(info.Length, info.LastWriteTimeUtc, PhysicalFileIdentity.Read(path));
     }
+
+    public Stream OpenRead(string path) => new FileStream(path, FileMode.Open, FileAccess.Read,
+        FileShare.ReadWrite | FileShare.Delete, 128 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
 }
 
 public interface IRecycleBinAdapter
@@ -136,7 +144,8 @@ public sealed class FileActionService(
         {
             if (candidate.DisabledMod is { } disabled && (!ModDisableService.IsValidRecord(disabled)
                 || !StringComparer.OrdinalIgnoreCase.Equals(disabled.DisabledPath, candidate.Path)
-                || disabled.Size != candidate.ExpectedSize || disabled.LastWriteTimeUtc != candidate.ExpectedLastWriteTimeUtc))
+                || disabled.Size != candidate.ExpectedSize || disabled.LastWriteTimeUtc != candidate.ExpectedLastWriteTimeUtc
+                || disabled.Identity != candidate.ExpectedIdentity))
             {
                 problems.Add(new(candidate.Path, "禁用记录与所选文件不匹配"));
                 continue;
@@ -158,8 +167,14 @@ public sealed class FileActionService(
                 continue;
             }
 
+            if (candidate.ExpectedIdentity is null || currentStamp.Identity is null)
+            {
+                problems.Add(new FileActionFailure(candidate.Path, "缺少可靠文件身份，未操作；请重新扫描或人工核对旧记录"));
+                continue;
+            }
             if (currentStamp.Length != candidate.ExpectedSize
-                || currentStamp.LastWriteTimeUtc != candidate.ExpectedLastWriteTimeUtc)
+                || currentStamp.LastWriteTimeUtc != candidate.ExpectedLastWriteTimeUtc
+                || currentStamp.Identity != candidate.ExpectedIdentity)
             {
                 problems.Add(new FileActionFailure(candidate.Path, "文件在扫描后发生变化，请重新扫描"));
                 continue;
@@ -182,28 +197,56 @@ public sealed class FileActionService(
         CancellationToken cancellationToken = default)
     {
         EnsureHistory();
-        var refreshed = Preflight(preflight.Candidates, preflight.FullySelectedGroups);
-        if (!refreshed.CanExecute)
-        {
-            return new FileActionBatchResult([], refreshed.Problems, CanUndoLastDelete);
-        }
-
         var ready = new List<FileDeletionCandidate>();
         var preparationFailures = new List<FileActionFailure>();
-        foreach (var candidate in refreshed.Candidates)
+        await Task.Run(async () =>
         {
-            try
+            foreach (var candidate in preflight.Candidates)
             {
-                if (candidate.DisabledMod is { } disabled)
+                cancellationToken.ThrowIfCancellationRequested();
+                var refreshed = Preflight([candidate], []);
+                if (!refreshed.CanExecute) { preparationFailures.AddRange(refreshed.Problems); continue; }
+                try
+                {
+                    if (candidate.ExpectedSha256 is { } expectedHash)
+                    {
+                        await using var stream = metadata.OpenRead(candidate.Path);
+                        var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
+                        if (!StringComparer.OrdinalIgnoreCase.Equals(actualHash, expectedHash))
+                        {
+                            preparationFailures.Add(new(candidate.Path, "文件内容在扫描后发生变化，请重新扫描"));
+                            continue;
+                        }
+                        refreshed = Preflight([candidate], []);
+                        if (!refreshed.CanExecute) { preparationFailures.AddRange(refreshed.Problems); continue; }
+                    }
+                    ready.Add(candidate);
+                }
+                catch (Exception exception) when (IsHistoryException(exception) || exception is InvalidOperationException)
+                { preparationFailures.Add(new(candidate.Path, "文件校验或禁用删除记录失败：" + exception.Message)); }
+            }
+            foreach (var candidate in ready.ToArray())
+            {
+                var finalCheck = Preflight([candidate], []);
+                if (finalCheck.CanExecute) continue;
+                ready.Remove(candidate);
+                preparationFailures.AddRange(finalCheck.Problems);
+            }
+            foreach (var candidate in ready.ToArray())
+            {
+                if (candidate.DisabledMod is not { } disabled) continue;
+                try
                 {
                     if (modDisableService is null) throw new InvalidOperationException("未连接禁用记录服务");
                     modDisableService.PrepareRecycle([disabled]);
                 }
-                ready.Add(candidate);
+                catch (Exception exception) when (IsHistoryException(exception) || exception is InvalidOperationException)
+                {
+                    ready.Remove(candidate);
+                    preparationFailures.Add(new(candidate.Path, "禁用删除记录未保存：" + exception.Message));
+                }
             }
-            catch (Exception exception) when (IsHistoryException(exception) || exception is InvalidOperationException)
-            { preparationFailures.Add(new(candidate.Path, "禁用删除记录未保存：" + exception.Message)); }
-        }
+            }, cancellationToken).ConfigureAwait(false);
         if (ready.Count == 0) return new([], preparationFailures, CanUndoLastDelete);
         var result = await recycleBin
             .MoveToRecycleBinAsync(
@@ -217,10 +260,10 @@ public sealed class FileActionService(
             var now = DateTime.UtcNow;
             foreach (var item in result.CompletedItems)
             {
-                var deleted = new DeletedFileRecord(Guid.NewGuid().ToString("N"), item, refreshed.Candidates.Single(candidate =>
+                var deleted = new DeletedFileRecord(Guid.NewGuid().ToString("N"), item, ready.Single(candidate =>
                     StringComparer.OrdinalIgnoreCase.Equals(candidate.Path, item.OriginalPath)).ExpectedSize, now,
-                    refreshed.Candidates.Single(candidate => StringComparer.OrdinalIgnoreCase.Equals(candidate.Path, item.OriginalPath)).ExpectedLastWriteTimeUtc,
-                    refreshed.Candidates.Single(candidate => StringComparer.OrdinalIgnoreCase.Equals(candidate.Path, item.OriginalPath)).DisabledMod);
+                    ready.Single(candidate => StringComparer.OrdinalIgnoreCase.Equals(candidate.Path, item.OriginalPath)).ExpectedLastWriteTimeUtc,
+                    ready.Single(candidate => StringComparer.OrdinalIgnoreCase.Equals(candidate.Path, item.OriginalPath)).DisabledMod);
                 history!.Add(deleted);
                 if (deleted.DisabledMod is not null)
                 {
@@ -239,6 +282,7 @@ public sealed class FileActionService(
     public async Task<FileActionBatchResult> UndoLastDeleteAsync(
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (lastDeletedItems.Count == 0)
         {
             return new FileActionBatchResult([], [], false);
@@ -249,22 +293,30 @@ public sealed class FileActionService(
         var paths = new List<string>();
         var failures = new List<FileActionFailure>();
         var restoredRecords = new List<DeletedFileRecord>();
-        foreach (var item in restoring)
+        for (var index = 0; index < restoring.Count; index++)
         {
+            var item = restoring[index];
             var record = history!.FirstOrDefault(entry => SameItem(item, entry.Item));
-            var restored = await RestoreItemAsync(item, record?.DisabledMod, cancellationToken).ConfigureAwait(false);
+            FileActionBatchResult restored;
+            try { restored = await RestoreItemAsync(item, record?.DisabledMod, cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (paths.Count > 0)
+            {
+                failures.AddRange(restoring.Skip(index).Select(remaining => new FileActionFailure(remaining.OriginalPath, "恢复已取消，文件仍在回收站")));
+                break;
+            }
+            catch (Exception exception) when (IsHistoryException(exception))
+            {
+                failures.Add(new(item.OriginalPath, exception.Message));
+                continue;
+            }
             paths.AddRange(restored.CompletedPaths);
             failures.AddRange(restored.Failures);
-            if (record is not null && restored.CompletedPaths.Contains(item.OriginalPath, StringComparer.OrdinalIgnoreCase)) restoredRecords.Add(record);
+            if (!restored.CompletedPaths.Contains(item.OriginalPath, StringComparer.OrdinalIgnoreCase)) continue;
+            if (record is not null) { restoredRecords.Add(record); history!.Remove(record); }
+            lastDeletedItems = lastDeletedItems.Where(pending => !SameItem(pending, item)).ToArray();
+            failures.AddRange(SaveHistory());
         }
-        var result = new FileActionBatchResult(paths, failures, CanUndoLastDelete, restoredRecords, paths);
-        var completed = result.CompletedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        lastDeletedItems = lastDeletedItems
-            .Where(item => !completed.Contains(item.OriginalPath))
-            .ToArray();
-
-        history!.RemoveAll(record => restoring.Any(item => SameItem(item, record.Item)) && completed.Contains(record.Item.OriginalPath));
-        return result with { CanUndo = CanUndoLastDelete, Failures = result.Failures.Concat(SaveHistory()).ToArray() };
+        return new FileActionBatchResult(paths, failures, CanUndoLastDelete, restoredRecords, paths);
     }
     private void EnsureHistory()
     {
@@ -341,6 +393,7 @@ public sealed class FileActionService(
 
     public async Task<FileActionBatchResult> RestoreDeletedAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         EnsureHistory();
         var selected = history!.Where(record => ids.Contains(record.Id, StringComparer.Ordinal)).ToArray();
         var presence = await recycleBin.QueryAsync(selected.Select(record => record.Item).ToArray(), cancellationToken).ConfigureAwait(false);
@@ -348,9 +401,22 @@ public sealed class FileActionService(
         var failures = new List<FileActionFailure>();
         var restoredRecords = new List<DeletedFileRecord>();
         var restoredUndoPaths = new List<string>();
-        foreach (var record in selected.Where(record => presence.PresentItems.Any(item => SameItem(item, record.Item))))
+        var present = selected.Where(record => presence.PresentItems.Any(item => SameItem(item, record.Item))).ToArray();
+        for (var index = 0; index < present.Length; index++)
         {
-            var result = await RestoreItemAsync(record.Item, record.DisabledMod, cancellationToken).ConfigureAwait(false);
+            var record = present[index];
+            FileActionBatchResult result;
+            try { result = await RestoreItemAsync(record.Item, record.DisabledMod, cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (completed.Count > 0)
+            {
+                failures.AddRange(present.Skip(index).Select(remaining => new FileActionFailure(remaining.Item.OriginalPath, "恢复已取消，文件仍在回收站")));
+                break;
+            }
+            catch (Exception exception) when (IsHistoryException(exception))
+            {
+                failures.Add(new(record.Item.OriginalPath, exception.Message));
+                continue;
+            }
             failures.AddRange(result.Failures);
             if (!result.CompletedPaths.Contains(record.Item.OriginalPath, StringComparer.OrdinalIgnoreCase)) continue;
             completed.Add(record.Item.OriginalPath);
@@ -358,9 +424,10 @@ public sealed class FileActionService(
             if (lastDeletedItems.Any(item => SameItem(item, record.Item))) restoredUndoPaths.Add(record.Item.OriginalPath);
             history!.Remove(record);
             lastDeletedItems = lastDeletedItems.Where(item => !SameItem(item, record.Item)).ToArray();
+            failures.AddRange(SaveHistory());
         }
         var missing = presence.MissingItems.Select(item => new FileActionFailure(item.OriginalPath, "找不到回收站中的文件"));
-        return new(completed, failures.Concat(presence.Failures).Concat(missing).Concat(SaveHistory()).ToArray(), CanUndoLastDelete, restoredRecords, restoredUndoPaths);
+        return new(completed, failures.Concat(presence.Failures).Concat(missing).ToArray(), CanUndoLastDelete, restoredRecords, restoredUndoPaths);
     }
 
 }

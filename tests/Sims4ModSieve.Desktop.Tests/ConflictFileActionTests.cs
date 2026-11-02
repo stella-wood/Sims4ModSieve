@@ -1,5 +1,6 @@
 using System.IO;
 using System.ComponentModel;
+using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Automation.Peers;
@@ -20,6 +21,47 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class ConflictFileActionTests
 {
+    private static DuplicateReport Duplicates(params string[] paths)
+    {
+        var files = paths.Select(path =>
+        {
+            var info = new FileInfo(path);
+            return new DuplicateFile(path, info.Length, info.LastWriteTimeUtc, [], [], true,
+                path.Count(character => character == '\\'), PhysicalFileIdentity.Read(path));
+        }).ToArray();
+        var selection = new DuplicateSelectionService().Select(files);
+        var sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(paths[0])));
+        return new(DateTime.UnixEpoch, DateTime.UnixEpoch, [], paths.Length, paths.Length,
+            [new(sha256, files[0].Size, DuplicateSection.Ordinary, files, selection.KeepPath, selection.DeletePaths)], []);
+    }
+
+    private static ConflictResultSession V2(ResourceContentComparison[] comparisons,
+        (string Path, int Count)[] inventories, DuplicateReport? duplicates = null, ScriptModuleScanReport? scripts = null)
+    {
+        var session = new ConflictResultSession();
+        var stamps = inventories.ToDictionary(item => item.Path, item => File.Exists(item.Path)
+            ? new FileStamp(new FileInfo(item.Path).Length, File.GetLastWriteTimeUtc(item.Path), PhysicalFileIdentity.Read(item.Path))
+            : Stamp, StringComparer.OrdinalIgnoreCase);
+        var report = new PackageConflictScanReport(DateTime.UnixEpoch, DateTime.UnixEpoch, [], inventories.Length,
+            inventories.Length, [], [], [])
+        {
+            ResourceInventories = inventories.Select(item => new PackageResourceInventory(item.Path, stamps[item.Path], item.Count)
+            { ResourceTypeCounts = new Dictionary<uint, int> { [0x034AEECB] = item.Count } }).ToArray(),
+        };
+        var updatedComparisons = comparisons.Select(comparison => comparison with
+        {
+            ContentGroups = comparison.ContentGroups.Select(group => group with
+            {
+                Occurrences = group.Occurrences.Select(item => item with { PackageStamp = stamps[item.PackagePath] }).ToArray(),
+            }).ToArray(),
+        }).ToArray();
+        var contents = Contents(updatedComparisons);
+        contents = contents with { Packages = contents.Packages.Select(item => item with
+        { ScannedStamp = stamps[item.Path], StampAfterRead = stamps[item.Path] }).ToArray() };
+        session.Replace(report, contents, scripts ?? Scripts(), duplicates: duplicates);
+        return session;
+    }
+
     [TestMethod]
     public Task DuplicateNavigationDoesNotScanOrChangeSourcesResultsOrSelection() => WpfTestHost.RunAsync(async () =>
     {
@@ -467,6 +509,7 @@ public sealed class ConflictFileActionTests
     }
     private sealed class TestRecycleBin : IRecycleBinAdapter
     {
+        private int nextPidl;
         public List<string> Deleted { get; } = [];
         public string? DeleteFailure { get; set; }
         public string? RestoreFailure { get; set; }
@@ -479,7 +522,8 @@ public sealed class ConflictFileActionTests
             Deleted.AddRange(paths);
             DeleteStarted.TrySetResult();
             if (WaitDelete) await DeleteRelease.Task;
-            return new RecycleBinDeleteResult(paths.Where(path => path != DeleteFailure).Select(path => new RecycleBinItem(path, [])).ToArray(),
+            return new RecycleBinDeleteResult(paths.Where(path => path != DeleteFailure)
+                .Select(path => new RecycleBinItem(path, [1, 2, (byte)++nextPidl, 0])).ToArray(),
                 paths.Where(path => path == DeleteFailure).Select(path => new FileActionFailure(path, "模拟删除失败")).ToArray());
         }
         public Task<FileActionBatchResult> RestoreAsync(IReadOnlyList<RecycleBinItem> items, CancellationToken cancellationToken = default) => Task.FromResult(new FileActionBatchResult(
