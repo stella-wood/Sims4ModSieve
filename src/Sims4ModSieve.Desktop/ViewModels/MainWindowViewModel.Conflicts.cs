@@ -249,8 +249,7 @@ public sealed partial class MainWindowViewModel
                 return (Rows: rows, ParentCount: rows.Count(row => row.Depth == 0));
             }, cancellation.Token);
             if (!ReferenceEquals(session, conflictSession) || request != conflictRowsRequest || !IsConflictComplete) return;
-            restoreViewport?.Invoke(projection.Rows);
-            PublishConflictRows(projection.Rows, projection.ParentCount);
+            PublishConflictRows(projection.Rows, projection.ParentCount, restoreViewport);
         }
         catch (OperationCanceledException) { }
         catch (Exception)
@@ -265,9 +264,12 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    private void PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount)
+    private void PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount,
+        Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
     {
-        conflictRows = rows.Select(row => row with { IsDisabled = DisabledRecordFor(row) is not null }).ToArray();
+        var publishedRows = rows.Select(row => row with { IsDisabled = DisabledRecordFor(row) is not null }).ToArray();
+        restoreViewport?.Invoke(publishedRows);
+        conflictRows = publishedRows;
         visibleConflictParentCount = parentCount;
         OnPropertyChanged(nameof(ConflictRows));
         OnPropertyChanged(nameof(VisibleConflictParentCount));
