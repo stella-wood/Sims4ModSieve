@@ -8,6 +8,24 @@ namespace Sims4ModSieve.Core.Tests.Scripts;
 [TestClass]
 public sealed class ScriptModuleScannerTests
 {
+    [TestMethod]
+    public async Task ApplicationDirectoryNeverReachesScriptReader()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var app = temp.CreateDirectory("Mods", "Sieve");
+        var nested = temp.CreateDirectory("Mods", "Sieve", "nested");
+        WriteScript(temp, "Mods/first.ts4script", ("shared.pyc", Pyc("same")));
+        WriteScript(temp, "Mods/Sieve-backup/second.ts4script", ("shared.pyc", Pyc("same")));
+        temp.WriteFile("Mods/Sieve/nested/own.ts4script", "invalid archive must never be opened");
+        var scanner = new ScriptModuleScanner(new PhysicalFileSystemAccess(), app);
+        var report = await scanner.ScanAsync(new([new("mods", mods), new("app", app), new("nested", nested)]));
+        Assert.AreEqual(2, report.DiscoveredArchiveCount);
+        Assert.AreEqual(2, report.AnalyzedArchiveCount);
+        Assert.AreEqual(1, report.Collisions.Count);
+        Assert.IsTrue(report.Issues.Any(issue => issue.Code == "application-directory-skipped"));
+    }
+
     /// <summary>Python 3.7 的 .pyc magic（3394），结尾是 \r\n。</summary>
     private static readonly byte[] Py37Magic = [0x42, 0x0D, 0x0D, 0x0A];
 

@@ -5,9 +5,10 @@ namespace Sims4ModSieve.Core.Duplicates;
 public sealed class DuplicateScanner(
     IFileSystemAccess fileSystem,
     IStableFileHasher fileHasher,
-    DuplicateSelectionService selectionService)
+    DuplicateSelectionService selectionService,
+    string? applicationDirectory = null)
 {
-    private readonly SourceFileDiscovery _discovery = new(fileSystem);
+    private readonly SourceFileDiscovery _discovery = new(fileSystem, applicationDirectory);
 
     public static DuplicateScanner CreateDefault()
     {

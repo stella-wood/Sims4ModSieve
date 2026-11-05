@@ -5,8 +5,10 @@ namespace Sims4ModSieve.Core.Duplicates;
 /// 使「同一个物理文件只处理一次」「不跟随 reparse point」「单个目录失败不影响其他来源」
 /// 这些规则在两处保持一致。
 /// </summary>
-internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem)
+internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? applicationDirectory = null)
 {
+    private readonly ApplicationDirectoryGuard applicationGuard = new(applicationDirectory);
+
     public static IReadOnlyList<NormalizedSource> NormalizeSources(
         IReadOnlyList<ScanSource> requestedSources,
         List<ScanIssue> issues)
@@ -140,6 +142,12 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var directory = pending.Pop();
+                if (applicationGuard.Contains(directory))
+                {
+                    issues.Add(new ScanIssue("application-directory-skipped", ScanIssueStage.Discovery,
+                        directory, "程序目录已跳过，请将程序放在 Mods 和 Tray 文件夹之外。", source.Id));
+                    continue;
+                }
                 IReadOnlyList<string> entries;
 
                 try

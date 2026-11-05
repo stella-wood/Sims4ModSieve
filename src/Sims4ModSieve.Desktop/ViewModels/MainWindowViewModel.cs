@@ -209,6 +209,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(ModsRootDisplay));
                 OnPropertyChanged(nameof(HasModsRoot));
                 OnPropertyChanged(nameof(ModsRootActionText));
+                OnPropertyChanged(nameof(ApplicationLocationWarning));
+                OnPropertyChanged(nameof(HasApplicationLocationWarning));
             }
         }
     }

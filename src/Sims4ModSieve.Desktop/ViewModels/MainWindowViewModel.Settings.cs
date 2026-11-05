@@ -60,6 +60,8 @@ public sealed partial class MainWindowViewModel
             OnPropertyChanged(nameof(HasNoTrayRoot));
             OnPropertyChanged(nameof(TrayRootActionText));
             OnPropertyChanged(nameof(HasTrayRootAvailabilityWarning));
+            OnPropertyChanged(nameof(ApplicationLocationWarning));
+            OnPropertyChanged(nameof(HasApplicationLocationWarning));
         }
     }
     public string TrayRootDisplay => TrayRoot ?? "未设置";
@@ -67,6 +69,8 @@ public sealed partial class MainWindowViewModel
     public bool HasNoTrayRoot => !HasTrayRoot;
     public string TrayRootActionText => HasTrayRoot ? "更改" : "选择文件夹";
     public bool HasTrayRootAvailabilityWarning => HasTrayRoot && !Directory.Exists(TrayRoot);
+    public string ApplicationLocationWarning => settingsSupport.GetApplicationLocationWarning(ModsRoot, TrayRoot);
+    public bool HasApplicationLocationWarning => ApplicationLocationWarning.Length > 0;
     public string SettingsFeedback { get => settingsFeedback; private set => SetProperty(ref settingsFeedback, value); }
     public string ModsFolderFeedback { get => modsFolderFeedback; private set => SetProperty(ref modsFolderFeedback, value); }
     public string TrayFolderFeedback { get => trayFolderFeedback; private set => SetProperty(ref trayFolderFeedback, value); }

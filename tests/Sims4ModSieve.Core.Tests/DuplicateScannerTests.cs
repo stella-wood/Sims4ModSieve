@@ -7,6 +7,28 @@ namespace Sims4ModSieve.Core.Tests;
 public sealed class DuplicateScannerTests
 {
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ApplicationDirectoryIsSkippedForNestedAndExplicitSources(bool explicitSource)
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var app = temp.CreateDirectory("Mods", "Sieve");
+        var nested = temp.CreateDirectory("Mods", "Sieve", "nested");
+        var first = temp.WriteFile("Mods/first.package", "same");
+        var sibling = temp.WriteFile("Mods/Sieve-backup/second.package", "same");
+        temp.WriteFile("Mods/Sieve/nested/own.package", "same");
+        var sources = new List<ScanSource> { new("mods", mods) };
+        if (explicitSource) { sources.Add(new("app", app)); sources.Add(new("nested", nested)); }
+        var fileSystem = new PhysicalFileSystemAccess();
+        var scanner = new DuplicateScanner(fileSystem, new StableFileHasher(fileSystem), new(), app);
+        var report = await scanner.ScanAsync(new(sources));
+        Assert.AreEqual(2, report.DiscoveredFileCount);
+        CollectionAssert.AreEquivalent(new[] { first, sibling }, report.Groups.Single().Files.Select(file => file.Path).ToArray());
+        Assert.IsTrue(report.Issues.Any(issue => issue.Code == "application-directory-skipped"));
+    }
+
+    [TestMethod]
     public async Task FindsExactDuplicatesAcrossSourcesAndPrefersModsCopy()
     {
         using var temp = new TempDirectory();

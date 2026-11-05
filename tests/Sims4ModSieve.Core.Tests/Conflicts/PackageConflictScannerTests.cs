@@ -8,6 +8,25 @@ namespace Sims4ModSieve.Core.Tests.Conflicts;
 [TestClass]
 public sealed class PackageConflictScannerTests
 {
+    [TestMethod]
+    public async Task ApplicationDirectoryNeverReachesPackageReader()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var app = temp.CreateDirectory("Mods", "Sieve");
+        var nested = temp.CreateDirectory("Mods", "Sieve", "nested");
+        var first = Placeholder(temp, "Mods", "first.package");
+        var sibling = Placeholder(temp, "Mods", "Sieve-backup", "second.package");
+        Placeholder(temp, "Mods", "Sieve", "nested", "own.package");
+        var reader = new FakePackageIndexReader().WithIndex("first.package", Hair).WithIndex("second.package", Hair);
+        var scanner = new PackageConflictScanner(new PhysicalFileSystemAccess(), reader, app);
+        var report = await scanner.ScanAsync(new([new("mods", mods), new("app", app), new("nested", nested)]));
+        Assert.AreEqual(2, report.DiscoveredPackageCount);
+        Assert.AreEqual(2, report.AnalyzedPackageCount);
+        CollectionAssert.AreEquivalent(new[] { first, sibling }, report.ResourceInventories.Select(file => file.Path).ToArray());
+        Assert.IsTrue(report.Issues.Any(issue => issue.Code == "application-directory-skipped"));
+    }
+
     private static readonly ResourceKey Hair = new(0x034AEECB, 0x00000000, 0x0000_0000_AAAA_0001);
     private static readonly ResourceKey Shirt = new(0x034AEECB, 0x00000000, 0x0000_0000_AAAA_0002);
     private static readonly ResourceKey Tuning = new(0x0333406C, 0x00000000, 0x0000_0000_BBBB_0001);

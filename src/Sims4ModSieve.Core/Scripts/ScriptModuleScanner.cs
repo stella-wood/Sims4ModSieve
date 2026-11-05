@@ -25,11 +25,11 @@ public interface IScriptModuleScanner
 /// <para>按 Python 3.7 的候选顺序与缓存头部规则进行静态比较。
 /// 无法确认兼容性的字节码不产生成功哈希；不会执行或反编译代码。</para>
 /// </remarks>
-public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem) : IScriptModuleScanner
+public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem, string? applicationDirectory = null) : IScriptModuleScanner
 {
     public const string ScriptExtension = ".ts4script";
 
-    private readonly SourceFileDiscovery _discovery = new(fileSystem);
+    private readonly SourceFileDiscovery _discovery = new(fileSystem, applicationDirectory);
 
     public async Task<ScriptModuleScanReport> ScanAsync(
         ScriptModuleScanRequest request,
