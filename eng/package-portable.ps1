@@ -11,10 +11,10 @@ if ((Split-Path $out -Parent) -ne $releaseDir -or (Split-Path $zip -Parent) -ne 
 foreach ($target in @((Join-Path $root 'artifacts'), $releaseDir, $out, $zip)) { if ((Test-Path $target) -and ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse point: $target" } }
 if (Test-Path $out) { Remove-Item -LiteralPath $out -Recurse -Force }
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
-& "$PSScriptRoot/dotnet.cmd" restore $project --locked-mode --nologo -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:RuntimeFrameworkVersion=8.0.33
+& "$PSScriptRoot/dotnet.cmd" restore $project --locked-mode --nologo -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:RuntimeFrameworkVersion=10.0.14
 if ($LASTEXITCODE -ne 0) { throw 'Locked RID restore failed.' }
 & "$PSScriptRoot/check-vulnerabilities.ps1"
-& "$PSScriptRoot/dotnet.cmd" publish $project -c Release --self-contained true --no-restore --nologo -p:RuntimeIdentifier=win-x64 -p:Version=$Version -p:RuntimeFrameworkVersion=8.0.33 -o $out
+& "$PSScriptRoot/dotnet.cmd" publish $project -c Release --self-contained true --no-restore --nologo -p:RuntimeIdentifier=win-x64 -p:Version=$Version -p:RuntimeFrameworkVersion=10.0.14 -o $out
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 $required = @(
     'Sims4ModSieve.exe', 'Sims4ModSieve.dll', 'Sims4ModSieve.runtimeconfig.json',
@@ -27,16 +27,16 @@ $required = @(
     'licenses/StbImageSharp-2.30.16-UNLICENSE.txt',
     'licenses/StbImageWriteSharp-1.16.7-README-LICENSE.txt',
     'licenses/YamlDotNet-16.3.0-LICENSE.txt',
-    'licenses/dotnet-runtime-8.0.33/LICENSE.TXT',
-    'licenses/dotnet-runtime-8.0.33/THIRD-PARTY-NOTICES.TXT',
-    'licenses/dotnet-runtime-8.0.33/WINDOWSDESKTOP-LICENSE.txt'
+    'licenses/dotnet-runtime-10.0.14/LICENSE.TXT',
+    'licenses/dotnet-runtime-10.0.14/THIRD-PARTY-NOTICES.TXT',
+    'licenses/dotnet-runtime-10.0.14/WINDOWSDESKTOP-LICENSE.txt'
 )
 foreach ($item in $required) { if (-not (Test-Path (Join-Path $out $item))) { throw "Missing package file: $item" } }
 $runtime = Get-Content (Join-Path $out 'Sims4ModSieve.runtimeconfig.json') -Raw | ConvertFrom-Json
-if (@($runtime.runtimeOptions.includedFrameworks | Where-Object { $_.version -eq '8.0.33' }).Count -ne 2) { throw 'Unexpected bundled .NET runtime version.' }
+if (@($runtime.runtimeOptions.includedFrameworks | Where-Object { $_.version -eq '10.0.14' }).Count -ne 2) { throw 'Unexpected bundled .NET runtime version.' }
 $commit = (git -C $root rev-parse HEAD).Trim()
 $dirty = [bool](git -C $root status --porcelain)
-"Sims 4 Mod Sieve $Version`nSourceCommit: $commit`nDirty: $dirty`nRuntime: .NET 8.0.33 self-contained win-x64" | Set-Content -LiteralPath (Join-Path $out 'BUILD-INFO.txt') -Encoding utf8
+"Sims 4 Mod Sieve $Version`nSourceCommit: $commit`nDirty: $dirty`nRuntime: .NET 10.0.14 self-contained win-x64" | Set-Content -LiteralPath (Join-Path $out 'BUILD-INFO.txt') -Encoding utf8
 $manifest = Get-ChildItem $out -Recurse -File | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object FullName | ForEach-Object {
     $relative = [IO.Path]::GetRelativePath($out, $_.FullName).Replace('\', '/')
     "$(($_ | Get-FileHash -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"

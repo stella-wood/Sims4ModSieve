@@ -28,7 +28,7 @@ Mod 冲突检测首次从首页或顶部导航进入四功能总览，同次运�
 ## 系统要求
 
 - Windows 10 或 Windows 11；当前便携包面向 x64
-- 从源码构建需要 .NET SDK 8.0.424 或兼容的 .NET 8 SDK
+- 从源码构建需要 .NET SDK 10.0.403 或兼容的 .NET 10 SDK
 
 仓库的 `global.json` 固定了开发所使用的 SDK 版本。`eng\dotnet.cmd` 会优先使用项目内的本地 SDK；本地 SDK 不存在时会自动使用系统 `dotnet`。
 
@@ -80,7 +80,7 @@ $env:SIMS4_MOD_SIEVE_RUN_RECYCLE_BIN_TEST='1'
 Release 构建输出位于：
 
 ```text
-src\Sims4ModSieve.Desktop\bin\Release\net8.0-windows\
+src\Sims4ModSieve.Desktop\bin\Release\net10.0-windows\
 ```
 
 桌面程序名为 `Sims4ModSieve.exe`。顶部「设置」提供常规、删除与忽略、诊断与反馈、关于四个分类。可立即保存共用默认 Mods 与独立 Tray 位置，打开目录，或查找并确认采用系统文档下的默认目录；Tray 仅保存位置，图库检测尚未开放。设置页修改默认 Mods 不改变已添加的扫描范围；检测页原有「更改」仍将新位置加入当前页。配置兼容和会话规则见 [设置页面方案](docs/design/设置页面方案-v1.md)。

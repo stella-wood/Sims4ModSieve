@@ -33,14 +33,15 @@
 | `Nito.Disposables` | 2.2.1 | MIT |
 | `StbImageSharp` | 2.30.16 | Unlicense OR MIT；上游声明 Public Domain or MIT |
 | `StbImageWriteSharp` | 1.16.7 | 上游声明 Public Domain |
-| `System.Collections.Immutable` | 8.0.0 | MIT |
 | `YamlDotNet` | 16.3.0 | MIT |
 
 各包按实际分发版本随附完整授权文本于 `licenses/`；`Nito.AsyncEx` 的六个拆分包共用该仓库同版本许可证。
 `BCnEncoder.Net` 的两个许可文本均取自 nuspec 指定提交。StbImageSharp 的 Unlicense 与上游 README 授权声明、StbImageWriteSharp 的上游 Public Domain 声明一并提供。
 `LlamaLogic.Packages` 4.9.0 不再引入 ImageSharp；其索引读取在本项目的 53 项 Packages 测试中通过。
 
-自包含 win-x64 包同时携带 .NET 8.0.33 Runtime 的 `LICENSE.TXT`、`THIRD-PARTY-NOTICES.TXT` 与 WindowsDesktop Runtime `LICENSE`。这些文件取自发布时解析的官方运行时 NuGet 包。
+自包含 win-x64 包同时携带 .NET 10.0.14 Runtime 的 `LICENSE.TXT`、`THIRD-PARTY-NOTICES.TXT` 与 WindowsDesktop Runtime `LICENSE`。这些文件取自发布时解析的官方运行时 NuGet 包。
+
+升级目标框架后，`System.Collections.Immutable` 由 .NET 10 运行时提供，不再分发单独的 8.0.0 NuGet 程序集。
 
 ## Source Han Sans CN Light — SIL Open Font License 1.1
 

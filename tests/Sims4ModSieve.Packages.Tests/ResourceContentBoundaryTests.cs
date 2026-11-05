@@ -20,7 +20,9 @@ public sealed class ResourceContentBoundaryTests
     {
         var content = new byte[length];
         new Random(17).NextBytes(content);
-        var compressed = DbpfFixtureBuilder.Zlib(content);
+        // 空写入在不同运行时不一定产生流；这里固定完整空 DEFLATE 块及 Adler-32=1。
+        byte[] compressed = length == 0 ? [0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01]
+            : DbpfFixtureBuilder.Zlib(content);
         var budget = new ResourceContentBudget((long)compressed.Length + length);
         var result = await Read(compressed, DbpfFixtureBuilder.CompressionZlib, (uint)length, budget);
         Assert.IsTrue(result.IsSuccess, result.Issue?.Code + ": " + result.Issue?.Detail);
