@@ -3,7 +3,7 @@ param([string]$Solution)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 if (-not $Solution) { $Solution = Join-Path $root 'Sims4ModSieve.sln' }
-$json = & "$PSScriptRoot\dotnet.cmd" list $Solution package --vulnerable --include-transitive --format json --output-version 1
+$json = & "$PSScriptRoot\dotnet.cmd" list $Solution package --no-restore --vulnerable --include-transitive --format json --output-version 1
 if ($LASTEXITCODE -ne 0) { throw 'NuGet vulnerability query failed.' }
 $raw = $json -join "`n"
 $report = $raw | ConvertFrom-Json
