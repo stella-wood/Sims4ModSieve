@@ -34,7 +34,7 @@ Mod 冲突检测首次从首页或顶部导航进入四功能总览，同次运�
 
 ## 使用便携版
 
-当前候选版本为 `0.1.0-alpha.1`。便携 ZIP 自带 .NET 运行时，解压后运行 `Sims4ModSieve.exe`，普通用户无需安装 SDK 或 Desktop Runtime。配置和日志仍保存在 `%LOCALAPPDATA%\Sims4ModSieve\`。
+当前候选版本为 `0.1.0-alpha.1`。便携 ZIP 自带 .NET 运行时，解压后运行 `Sims4ModSieve.exe`，普通用户无需安装 SDK 或 Desktop Runtime。托管程序集已合入 EXE，仍须保留旁边的原生 DLL 和其他文件；启动不解压 bundle 到临时目录。配置和日志仍保存在 `%LOCALAPPDATA%\Sims4ModSieve\`。
 
 卸载前先处理已禁用的 Mod，步骤见 [便携版使用说明 · 卸载](docs/release/便携版使用说明.md#卸载)。
 

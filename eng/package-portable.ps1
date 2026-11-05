@@ -11,16 +11,15 @@ if ((Split-Path $out -Parent) -ne $releaseDir -or (Split-Path $zip -Parent) -ne 
 foreach ($target in @((Join-Path $root 'artifacts'), $releaseDir, $out, $zip)) { if ((Test-Path $target) -and ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse point: $target" } }
 if (Test-Path $out) { Remove-Item -LiteralPath $out -Recurse -Force }
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
-& "$PSScriptRoot/dotnet.cmd" restore $project --locked-mode --nologo -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -p:RuntimeFrameworkVersion=10.0.14
+& "$PSScriptRoot/dotnet.cmd" restore $project --locked-mode --nologo -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64
 if ($LASTEXITCODE -ne 0) { throw 'Locked RID restore failed.' }
 & "$PSScriptRoot/check-vulnerabilities.ps1"
-& "$PSScriptRoot/dotnet.cmd" publish $project -c Release --self-contained true --no-restore --nologo -p:RuntimeIdentifier=win-x64 -p:Version=$Version -p:RuntimeFrameworkVersion=10.0.14 -o $out
+& "$PSScriptRoot/dotnet.cmd" publish $project -c Release --no-restore --nologo -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64 -p:Version=$Version -o $out
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 $required = @(
-    'Sims4ModSieve.exe', 'Sims4ModSieve.dll', 'Sims4ModSieve.runtimeconfig.json',
-    'coreclr.dll', 'PresentationFramework.dll', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md',
-    'LlamaLogic.Packages.dll', 'ICSharpCode.SharpZipLib.dll', 'BCnEncoder.dll',
-    'StbImageSharp.dll', 'StbImageWriteSharp.dll', 'YamlDotNet.dll',
+    'Sims4ModSieve.exe', 'PresentationNative_cor3.dll', 'wpfgfx_cor3.dll',
+    'PenImc_cor3.dll', 'D3DCompiler_47_cor3.dll', 'vcruntime140_cor3.dll',
+    'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'Assets/Fonts/source-han-sans-LICENSE.txt',
     'licenses/LlamaLogic.Packages-4.9.0-LICENSE.txt',
     'licenses/SharpZipLib-1.4.2-LICENSE.txt',
     'licenses/BCnEncoder.Net-2.2.0-LICENSE-MIT.txt',
@@ -32,11 +31,10 @@ $required = @(
     'licenses/dotnet-runtime-10.0.14/WINDOWSDESKTOP-LICENSE.txt'
 )
 foreach ($item in $required) { if (-not (Test-Path (Join-Path $out $item))) { throw "Missing package file: $item" } }
-$runtime = Get-Content (Join-Path $out 'Sims4ModSieve.runtimeconfig.json') -Raw | ConvertFrom-Json
-if (@($runtime.runtimeOptions.includedFrameworks | Where-Object { $_.version -eq '10.0.14' }).Count -ne 2) { throw 'Unexpected bundled .NET runtime version.' }
+& "$PSScriptRoot/verify-portable-bundle.ps1" -PackageDirectory $out
 $commit = (git -C $root rev-parse HEAD).Trim()
 $dirty = [bool](git -C $root status --porcelain)
-"Sims 4 Mod Sieve $Version`nSourceCommit: $commit`nDirty: $dirty`nRuntime: .NET 10.0.14 self-contained win-x64" | Set-Content -LiteralPath (Join-Path $out 'BUILD-INFO.txt') -Encoding utf8
+"Sims 4 Mod Sieve $Version`nSourceCommit: $commit`nDirty: $dirty`nRuntime: .NET 10.0.14 self-contained win-x64`nLayout: single-file managed assemblies; native libraries beside executable; no bundle extraction`nSatelliteResourceLanguages: zh-Hans;en" | Set-Content -LiteralPath (Join-Path $out 'BUILD-INFO.txt') -Encoding utf8
 $manifest = Get-ChildItem $out -Recurse -File | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object FullName | ForEach-Object {
     $relative = [IO.Path]::GetRelativePath($out, $_.FullName).Replace('\', '/')
     "$(($_ | Get-FileHash -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"
