@@ -129,7 +129,14 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 4. WPF 测试要 STA；一个进程里不要反复创建 `Application`。
 5. 运行中的应用会锁 EXE／DLL，先关掉再构建。
 
-## 10. 完成标准
+## 10. 测试范围：
+- 改动过程中只跑相关的测试项目，用 --filter 缩到相关的测试类，例如：
+  .\eng\dotnet.cmd test .\tests\Sims4ModSieve.Core.Tests -c Release --no-restore --nologo -m:1 --filter "FullyQualifiedName~DuplicateGroup"
+- 只改 Core 就只跑 Core.Tests；改 Packages 跑 Packages.Tests；改界面跑 Desktop.Tests 里对应的类。
+- 只改了文档、注释、文案或纯外观数值，不跑测试，回复里说明「未跑测试，原因：……」。
+- 整套测试只在准备提交或开 PR 前跑一次。
+
+## 11. 完成标准
 
 - 改在正确的控件和代码路径上，没有扩大范围。
 - 编译 0 警告 0 错误，相关测试通过。
@@ -140,7 +147,7 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 - 高风险操作只用临时文件验证，不碰真实 Mods。
 - 界面改动要实际启动看过。点击区域、渲染、删除与撤回要有行为证据，编译通过不算完成。
 
-## 11. 常用命令
+## 12. 常用命令
 
 ```powershell
 .\eng\dotnet.cmd build .\Sims4ModSieve.sln -c Release --no-restore --nologo -m:1
@@ -150,12 +157,12 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 
 真实回收站往返测试见 README。
 
-## 12. 代码来源
+## 13. 代码来源
 
 - 第三方代码只按许可证使用，来源写进 `THIRD-PARTY-NOTICES.md`。
 - 格式规则以源码或规范为依据。真实样本只能证伪：样本里没见过某个值，不代表它不存在。
 
-## 13. 与用户协作
+## 14. 与用户协作
 
 - 用户说「这个颜色」「这个位置」，以截图标注和最近一句为准，先弄清是背景、文件区、按钮还是文字。
 - 用户纠正后立刻放弃旧方案，不替它辩护，也不跳到另一个极端。
