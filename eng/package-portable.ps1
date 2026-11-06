@@ -1,12 +1,16 @@
-param([string]$Version = '0.1.0-alpha.1')
+[CmdletBinding()]
+param()
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $root 'src/Sims4ModSieve.Desktop/Sims4ModSieve.Desktop.csproj'
+$versionOutput = & "$PSScriptRoot/dotnet.cmd" msbuild $project -nologo -getProperty:Version
+if ($LASTEXITCODE -ne 0) { throw 'Could not read the project version.' }
+$Version = ($versionOutput -join "`n").Trim()
+if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { throw "Invalid package version: $Version" }
 $releaseDir = [IO.Path]::GetFullPath((Join-Path $root 'artifacts/release'))
 $out = [IO.Path]::GetFullPath((Join-Path $releaseDir "Sims4ModSieve-$Version-win-x64"))
 $zip = "$out.zip"
-if ($Version -ne '0.1.0-alpha.1') { throw 'Update the checked-in project version before packaging a different release.' }
 if ((Split-Path $out -Parent) -ne $releaseDir -or (Split-Path $zip -Parent) -ne $releaseDir -or -not $out.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Package target is outside artifacts/release.' }
 foreach ($target in @((Join-Path $root 'artifacts'), $releaseDir, $out, $zip)) { if ((Test-Path $target) -and ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse point: $target" } }
 if (Test-Path $out) { Remove-Item -LiteralPath $out -Recurse -Force }

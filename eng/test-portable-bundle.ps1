@@ -1,7 +1,11 @@
 $ErrorActionPreference = 'Stop'
 $workspace = Split-Path $PSScriptRoot -Parent
 $verify = Join-Path $workspace 'eng/verify-portable-bundle.ps1'
-$source = Join-Path $workspace 'artifacts/release/Sims4ModSieve-0.1.0-alpha.1-win-x64'
+$project = Join-Path $workspace 'src/Sims4ModSieve.Desktop/Sims4ModSieve.Desktop.csproj'
+$versionOutput = & "$PSScriptRoot/dotnet.cmd" msbuild $project -nologo -getProperty:Version
+if ($LASTEXITCODE -ne 0) { throw 'Could not read the project version.' }
+$Version = ($versionOutput -join "`n").Trim()
+$source = Join-Path $workspace "artifacts/release/Sims4ModSieve-$Version-win-x64"
 $evidenceDirectory = Join-Path $workspace 'artifacts/portable-bundle-tests'
 New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
 $case = Join-Path $evidenceDirectory ([Guid]::NewGuid().ToString('N'))
@@ -25,6 +29,11 @@ try {
     }
 } finally { $archive.Dispose() }
 Write-Host 'PASS ZipRetainsPackageFolder'
+$buildInfo = Get-Content -LiteralPath (Join-Path $source 'BUILD-INFO.txt')
+if ($buildInfo[0] -ne "Sims 4 Mod Sieve $Version") { throw 'BUILD-INFO version does not match the project.' }
+$productVersion = (Get-Item -LiteralPath (Join-Path $source 'Sims4ModSieve.exe')).VersionInfo.ProductVersion
+if ($productVersion.Split('+')[0] -ne $Version.Split('+')[0]) { throw 'Executable version does not match the project.' }
+Write-Host 'PASS PackageMetadataMatchesProjectVersion'
 $reader = [IO.BinaryReader]::new([IO.File]::OpenRead($exe))
 try {
     $reader.BaseStream.Position = $headerOffset + 12
