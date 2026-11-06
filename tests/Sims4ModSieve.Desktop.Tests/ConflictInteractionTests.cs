@@ -18,6 +18,146 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class ConflictInteractionTests
 {
+    [TestMethod]
+    public Task StateAndTypeCheckboxesFilterTheirIntersectionAndUseResultNames() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        var session = new ConflictResultSession();
+        session.Replace(ConflictResultSessionTests.Packages([(A, 3), (B, 10), (C, 4)], issues: [
+            new("unsupported-version", Sims4ModSieve.Core.Conflicts.PackageConflictScanIssueStage.IndexRead, A + ".failed", "unsupported"),
+            new("source-unavailable", Sims4ModSieve.Core.Conflicts.PackageConflictScanIssueStage.SourceValidation, @"C:\Offline", "unavailable")]),
+            Contents(Resource(1, (A, "a"), (B, "a")), Resource(2, (A, "b"), (B, "b")),
+                Resource(3, (A, "c"), (B, "c")), Resource(4, (B, "d"), (C, "e"))), Scripts());
+        await SetSessionAsync(model, session, "all");
+        var popup = Descendants<Popup>(window).Single(element => element.Name == "ConflictFilterPopup");
+        popup.IsOpen = true;
+        await WpfTestHost.LayoutAsync(window);
+        var typeChoices = Descendants<Grid>(popup.Child).Single(grid => grid.Name == "ConflictTypeChoices");
+        Assert.IsFalse(Descendants<CheckBox>(typeChoices).Any(box => Equals(box.Content, "未分析")));
+        CollectionAssert.AreEqual(new[] { "全部", "异常", "有隐患", "未分析" },
+            Descendants<CheckBox>(Descendants<Grid>(popup.Child).Single(grid => grid.Name == "ConflictStatusChoices")).Select(box => box.Content.ToString()).ToArray());
+        Assert.IsTrue(Descendants<CheckBox>(typeChoices).Any(box => Equals(box.Content, "同名脚本")));
+        Assert.IsTrue(model.IncludeAllConflictTypes);
+        Assert.IsFalse(model.HasActiveConflictFilter);
+        Assert.AreEqual(4, model.VisibleConflictParentCount);
+        model.IncludeAllConflictTypes = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.ConflictRows.Count);
+        var collectionChoice = Descendants<CheckBox>(typeChoices).Single(box => Equals(box.Content, "合集包含"));
+        collectionChoice.IsChecked = true;
+        await model.ConflictRowsRefreshTask;
+        var collection = model.ConflictRows.Single();
+        Assert.AreEqual("合集包含", collection.Title);
+        Assert.AreEqual("有隐患", collection.StateText);
+        Assert.IsTrue(model.HasActiveConflictFilter);
+        model.IncludeAllConflictStates = false;
+        model.IncludeConflictIncomplete = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.ConflictRows.Count);
+        model.IncludeConflictCanOrganize = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(collection.Key, model.ConflictRows.Single().Key);
+        model.IncludeAllConflictTypes = true;
+        model.IncludeConflictCanOrganize = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(2, model.VisibleConflictParentCount);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.IsCardStart).All(row => row.StateText == "未分析"));
+        model.IncludeAllConflictStates = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(4, model.VisibleConflictParentCount);
+        Assert.IsFalse(model.HasActiveConflictFilter);
+        Save(window, "conflict-unanalyzed-filter.png", popup.Child as FrameworkElement);
+        popup.IsOpen = false;
+        Save(window, "conflict-unanalyzed-results.png");
+    });
+
+    [TestMethod]
+    [DataRow("row")]
+    [DataRow("relation")]
+    [DataRow("copy")]
+    public Task GroupLinksExpandTargetAndCenterTitle(string route) => WpfTestHost.RunAsync(async () =>
+    {
+        var paths = Enumerable.Range(0, 40).Select(index => new[] { $@"C:\Mods\jump{index:D2}a.package", $@"C:\Mods\jump{index:D2}b.package", $@"C:\Mods\jump{index:D2}c.package" }).ToArray();
+        var duplicates = ConflictV2SessionTests.Duplicates(paths[0][0], paths[0][1]) with
+        {
+            Groups = paths.Select((pair, index) => ConflictV2SessionTests.Duplicates(pair[0], pair[1]).Groups.Single() with { Sha256 = $"HASH{index:D2}" }).ToArray(),
+        };
+        var session = ConflictV2SessionTests.V2(paths.Select((pair, index) => Resource((ulong)index + 1,
+            (pair[0], "same"), (pair[1], "same"), (pair[2], "other"))).ToArray(),
+            paths.SelectMany(pair => pair.Select(path => (path, 1))).ToArray(), duplicates);
+        var source = session.Cards.Single(card => card.Type == "suspected" && card.Files.Any(file => file.Path == paths[20][0]));
+        session.ToggleExpanded(source.Key);
+        session.SetIgnoredFiles([paths[20][1]]);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        var list = Descendants<ListBox>(window).Single(element => element.Name == "ConflictRowsList");
+        var sourceRow = model.ConflictRows.Single(row => row.OwnerKey == source.Key && row.HasCopies);
+        list.ScrollIntoView(sourceRow);
+        await WpfTestHost.LayoutAsync(window);
+        var link = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, sourceRow) && button.Command == model.JumpToConflictGroupCommand);
+        Assert.AreEqual(sourceRow.DuplicateLink, link.CommandParameter);
+        model.IncludeConflictCollections = false;
+        await model.ConflictRowsRefreshTask;
+        list.ScrollIntoView(model.ConflictRows.Single(row => row.Key == sourceRow.Key));
+        await WpfTestHost.LayoutAsync(window);
+        sourceRow = model.ConflictRows.Single(row => row.Key == sourceRow.Key);
+        link = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, sourceRow) && button.Command == model.JumpToConflictGroupCommand);
+        var targetKey = sourceRow.DuplicateLink!.Key;
+        if (route == "row") Invoke(link);
+        else
+        {
+            var details = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, sourceRow) && button.Name == "FileDetailsButton");
+            Assert.IsTrue(details.Focus());
+            model.OpenConflictRelationshipsCommand.Execute(sourceRow);
+            await Task.Delay(280);
+            await WpfTestHost.LayoutAsync(window);
+            var dialog = Descendants<ConflictRelationshipsDialog>(window).Single();
+            Assert.IsTrue(dialog.IsVisible);
+            if (route == "copy")
+            {
+                Descendants<Button>(dialog).Single(button => button.Name == "OwnCopiesToggle").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WpfTestHost.LayoutAsync(window);
+                link = Descendants<Button>(dialog).Single(button => button.IsVisible && button.DataContext is ConflictRelationshipDisplayRow { HasCopyLink: true });
+            }
+            else
+            {
+                targetKey = source.Key;
+                link = Descendants<Button>(dialog).First(button => button.IsVisible && button.DataContext is ConflictGroupLink group && group.Key == targetKey);
+            }
+            link.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Task.Delay(230);
+            Assert.IsFalse(dialog.IsVisible);
+            Assert.IsNull(model.ConflictRelationships);
+        }
+        await WpfTestHost.LayoutAsync(window);
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        await window.Dispatcher.InvokeAsync(() => window.UpdateLayout(), DispatcherPriority.ApplicationIdle);
+        var target = model.ConflictRows.Single(row => row.Key == targetKey);
+        Assert.IsTrue(target.IsExpanded);
+        Assert.IsTrue(model.IncludeAllConflictTypes);
+        Assert.IsTrue(model.IncludeConflictCollections);
+        var viewer = Descendants<ScrollViewer>(list).First();
+        var presenter = Descendants<ScrollContentPresenter>(viewer).First();
+        var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(target);
+        Assert.IsNotNull(item);
+        Assert.AreEqual(presenter.ActualHeight / 2, item.TranslatePoint(new Point(0, item.ActualHeight / 2), presenter).Y, 2d);
+        Assert.AreEqual(route == "relation" ? 2 : 1, model.ConflictRows.Count(row => row.OwnerKey == target.Key && row.File is not null));
+        Save(window, $"conflict-{route}-jump-centered.png");
+        model.ShowIgnoredConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(2, model.ConflictRows.Count(row => row.OwnerKey == target.Key && row.File is not null));
+        if (route != "relation") Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == "已忽略"));
+        Save(window, $"conflict-{route}-jump-ignored.png");
+    });
+
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out System.Drawing.Point point);
     [DllImport("user32.dll")]

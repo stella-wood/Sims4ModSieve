@@ -79,7 +79,8 @@ public sealed class ConflictPageVirtualizationTests
             var card = model.ConflictRows[0];
             model.ToggleConflictExpandedCommand.Execute(card);
             await model.ConflictRowsRefreshTask;
-            Assert.AreEqual(10504, model.ConflictRows.Count);
+            Assert.AreEqual(view == "scripts" ? 10506 : 10504, model.ConflictRows.Count);
+            Assert.AreEqual(view == "scripts" ? 2 : 0, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.Content));
             Assert.AreEqual(10500, model.VisibleConflictParentCount);
             Assert.IsTrue(model.ConflictRows.All(row => row.Depth <= 1));
             await ExpandAsync(model, ConflictRowKind.Technical);

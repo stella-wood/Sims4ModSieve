@@ -156,8 +156,8 @@ public partial class ConflictRelationshipsDialog : UserControl
         Animate(open: false, () =>
         {
             Visibility = Visibility.Collapsed;
-            after();
             previousFocus?.Focus();
+            after();
             relationships = null;
             closing = false;
         });

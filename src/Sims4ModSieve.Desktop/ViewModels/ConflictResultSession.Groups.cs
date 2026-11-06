@@ -231,11 +231,11 @@ public sealed partial class ConflictResultSession
                 .Where(match => match.HasConfirmedDifference).Select(match => match.Key).Distinct().Count();
             var explanation = type switch
             {
-                "override" => $"这 {files.Length} 个文件有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同；游戏对每个编号只会使用一份资源",
+                "override" => $"有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同；游戏对每个编号只会使用一份资源",
                 "collection" => $"合集里包含{files.Length - 1}个另外单独放着的文件，"
                     + $"{group.Members.Count(member => member.ContainedContentIdentical == true)}个已被包含，"
                     + $"{group.Members.Count(member => member.ContainedContentIdentical == false)}个存在不同。还有{group.BundleUniqueResourceCount}样资源只在合集里有。",
-                _ => (files.Length == 2 ? "两份文件" : $"这 {files.Length} 份文件") + $"有 {group.ResourceKeys.Count} 项资源编号相同"
+                _ => $"有 {group.ResourceKeys.Count} 项资源编号相同"
                     + (different > 0 ? $"，其中 {different} 项内容不同，可能是同一 mod 的不同版本" : ""),
             };
             cards.Add(new(key, type, title, type == "override" ? ConflictPairPriority.NeedsReview : ConflictPairPriority.CanOrganize,
@@ -255,8 +255,8 @@ public sealed partial class ConflictResultSession
             if (pairs.Length == 0) continue;
             var priority = pairs.Min(match => match.Priority);
             cards.Add(new("module" + Identity(collision.ModuleName), "scripts", collision.ModuleName, priority, files,
-                priority == ConflictPairPriority.NeedsReview ? "这几个 mod 带了同名脚本，游戏只会加载其中一份"
-                    : priority == ConflictPairPriority.CanOrganize ? "这些文件带的这个脚本模块内容相同" : "部分脚本未完成比较，暂时无法确认全部内容是否相同",
+                priority == ConflictPairPriority.NeedsReview ? $"带有同名脚本，模块内容有 {collision.ContentGroups.Count} 个版本；游戏只会加载其中一份"
+                    : priority == ConflictPairPriority.CanOrganize ? "带有同名脚本，模块内容相同" : "带有同名脚本，部分模块未完成比较，暂时无法确认全部内容是否相同",
                 Module: collision));
         }
         foreach (var source in duplicateReport?.Groups ?? [])
@@ -299,11 +299,21 @@ public sealed partial class ConflictResultSession
                     || view == "scripts" && card.Module is not null || view == "duplicates" && card.Duplicate is not null);
             cards.Add((card.Priority, card.Key, included, () =>
             {
+                var ignoredCount = card.Files.Count(file => IsFileIgnored(file.Path));
+                var paths = card.Files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var copyCount = card.Duplicate is not null ? card.Files.Count - 1
+                    : Cards.Where(other => other.Duplicate is not null)
+                        .Sum(other => Math.Max(0, other.Files.Count(file => paths.Contains(file.Path)) - 1));
+                var counts = new List<string>();
+                if (copyCount > 0) counts.Add($"{copyCount} 份重复");
+                if (ignoredCount > 0) counts.Add($"{ignoredCount} 已忽略");
+                var summary = $"这 {card.Files.Count} 份文件" + (counts.Count > 0 ? " (含 " + string.Join("、", counts) + ")" : "");
                 var kind = card.Package is not null ? ConflictRowKind.Resource : card.Module is not null ? ConflictRowKind.Module : ConflictRowKind.Duplicate;
                 if (!add(new(card.Key, kind, 0, card.Title, Priority: card.Priority, IsExpandable: true,
-                    FileCountText: $"{card.Files.Count} 个文件", IsIgnored: ignored, OwnerKey: card.Key))) return;
+                    FileCountText: $"{card.Files.Count} 文件" + (ignoredCount > 0 ? $" · {ignoredCount} 已忽略" : ""), IsIgnored: ignored, OwnerKey: card.Key))) return;
+                var separator = !card.HasRemovedFiles && card.Type is "override" or "suspected" or "scripts" ? counts.Count > 0 ? " " : "" : "；";
                 add(new(card.Key + "/explanation", ConflictRowKind.Explanation, 1,
-                    card.Duplicate is null || card.HasRemovedFiles ? card.Explanation : $"共有 {DuplicateGroupCount} 组重复文件，",
+                    summary + separator + (card.Duplicate is null || card.HasRemovedFiles ? card.Explanation : $"共有 {DuplicateGroupCount} 组重复文件，"),
                     OwnerKey: card.Key, IsIgnored: ignored, DuplicateLink: card.Duplicate is null || card.HasRemovedFiles ? null : Link(card)));
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var contentLabels = new HashSet<string>(StringComparer.Ordinal);
@@ -314,27 +324,49 @@ public sealed partial class ConflictResultSession
                 var moduleContentCounts = card.Module?.ContentGroups.ToDictionary(group => group.Sha256,
                     group => group.Occurrences.Where(item => activeFiles.Contains(item.ArchivePath))
                         .Select(item => item.ArchivePath).Distinct(StringComparer.OrdinalIgnoreCase).Count(), StringComparer.Ordinal);
+                IEnumerable<ConflictFile> displayFiles = card.Files;
+                if (card.Module is { ContentGroups.Count: > 1 } script)
+                    displayFiles = card.Files.OrderBy(file =>
+                    {
+                        var index = script.ContentGroups.ToList().FindIndex(group => group.Occurrences.Any(item =>
+                            StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path)));
+                        return index < 0 ? int.MaxValue : index;
+                    }).ThenBy(file => file.Path, StringComparer.OrdinalIgnoreCase);
                 var visibleIndex = 0;
-                foreach (var file in card.Files)
+                foreach (var file in displayFiles)
                 {
                     token.ThrowIfCancellationRequested();
                     if (!seen.Add(file.Path)) continue;
                     var duplicate = card.Duplicate is null ? DuplicateFor(file.Path) : null;
                     var siblings = duplicate?.Files.Where(copy => card.Files.Any(member => StringComparer.OrdinalIgnoreCase.Equals(member.Path, copy.Path))).ToArray() ?? [];
-                    if (showIgnored && siblings.Any(copy => IsFileIgnored(copy.Path))) siblings = [];
-                    var visibleSiblings = showIgnored ? siblings : siblings.Where(copy => !IsFileIgnored(copy.Path)).ToArray();
+                    var visibleSiblings = siblings.Where(copy => !IsFileIgnored(copy.Path)).ToArray();
                     var representative = visibleSiblings.FirstOrDefault(copy => StringComparer.OrdinalIgnoreCase.Equals(copy.Path, duplicate!.Duplicate!.SuggestedKeepPath))
-                        ?? visibleSiblings.FirstOrDefault() ?? file;
+                        ?? visibleSiblings.FirstOrDefault()
+                        ?? siblings.FirstOrDefault(copy => StringComparer.OrdinalIgnoreCase.Equals(copy.Path, duplicate!.Duplicate!.SuggestedKeepPath))
+                        ?? siblings.FirstOrDefault() ?? file;
                     seen.UnionWith(siblings.Select(copy => copy.Path));
                     var key = FileKey(card.Key, representative.Path);
                     var fileIgnored = IsFileIgnored(representative.Path);
                     if (!showIgnored && fileIgnored) continue;
-                    if (card.Module is { ContentGroups.Count: > 1 } module && card.Files.Count >= 3)
+                    if (card.Module is { ContentGroups.Count: > 1 } module)
                     {
                         var contentGroup = module.ContentGroups.FirstOrDefault(group => group.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, representative.Path)));
-                        if (contentGroup is not null && moduleContentCounts![contentGroup.Sha256] > 1 && contentLabels.Add(contentGroup.Sha256))
+                        if (contentGroup is not null && contentLabels.Add(contentGroup.Sha256))
+                        {
+                            var versionPaths = contentGroup.Occurrences.Where(item => activeFiles.Contains(item.ArchivePath))
+                                .Select(item => item.ArchivePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                            var folded = Cards.Where(other => other.Duplicate is not null)
+                                .Sum(other => Math.Max(0, other.Files.Count(copy => versionPaths.Contains(copy.Path)) - 1));
+                            var version = module.ContentGroups.ToList().IndexOf(contentGroup) + 1;
+                            var ignoredVersionCount = versionPaths.Count(IsFileIgnored);
                             add(new(card.Key + "/content" + contentLabels.Count, ConflictRowKind.Content, 1,
-                                $"以下 {moduleContentCounts[contentGroup.Sha256]} 个内容相同", OwnerKey: card.Key, IsIgnored: ignored));
+                                $"模块版本 {version} · {moduleContentCounts![contentGroup.Sha256]} 个文件"
+                                    + (folded > 0 ? $" (含 {folded} 份重复)" : "")
+                                    + (ignoredVersionCount > 0 ? $" · {ignoredVersionCount} 已忽略" : ""),
+                                OwnerKey: card.Key, IsIgnored: ignored));
+                        }
+                        else if (contentGroup is null && contentLabels.Add("/uncompared"))
+                            add(new(card.Key + "/uncompared", ConflictRowKind.Content, 1, "模块未分析", OwnerKey: card.Key, IsIgnored: ignored));
                     }
                     var member = card.Package?.Members.First(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, representative.Path));
                     var sharedResources = annotationPairs?.Where(pair =>

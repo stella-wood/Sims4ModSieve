@@ -18,6 +18,51 @@ public sealed class ConflictResultSessionTests
     internal static readonly IReadOnlySet<string> Closed = new HashSet<string>();
     internal static readonly Regex TechnicalText = new(@"[0-9A-Fa-f]{8}[:/-][0-9A-Fa-f]{8}|\b[0-9A-Fa-f]{32,}\b", RegexOptions.Compiled);
 
+    internal static ConflictResultSession UnanalyzedSession()
+    {
+        var session = new ConflictResultSession();
+        session.Replace(Packages(paths: [A], issues: [
+            new(PackageReadIssueCode.UnsupportedVersion, PackageConflictScanIssueStage.IndexRead, A, "unsupported"),
+            new("source-unavailable", PackageConflictScanIssueStage.SourceValidation, @"C:\Offline", "unavailable")]),
+            Contents(), Scripts(issues: [new(ScriptArchiveIssueCode.EntryCorrupt, ScriptArchiveIssueStage.Entry,
+                C + ".ts4script", "corrupt", EntryName: "module.pyc")]));
+        return session;
+    }
+
+    [TestMethod]
+    public void UnanalyzedFilesAndRangesRespectTypeStateAndIgnoreFilters()
+    {
+        var session = UnanalyzedSession();
+        IReadOnlyList<ConflictResultRow> Filter(string[] types, string state = "all", bool ignored = false, string view = "all") =>
+            session.BuildVisibleRows(view, state, Closed, showIgnored: ignored, types: new HashSet<string>(types));
+        Assert.AreEqual(0, Filter([]).Count);
+        foreach (var type in new[] { "override", "collection", "suspected", "duplicates", "scripts" })
+            Assert.AreEqual(0, Filter([type]).Count);
+        string[] allTypes = ["override", "collection", "suspected", "duplicates", "scripts"];
+        var rows = Filter(allTypes);
+        Assert.AreEqual(2, rows.Count(row => row.Kind == ConflictRowKind.Problem));
+        Assert.AreEqual(1, rows.Count(row => row.Kind == ConflictRowKind.RangeProblem));
+        var numbers = rows.Where(row => row.IsCardStart).ToDictionary(row => row.Key, row => row.GroupIndex);
+        Assert.AreEqual(3, Filter(allTypes, "incomplete").Count(row => row.IsCardStart));
+        Assert.AreEqual(0, Filter(allTypes, "different,same").Count);
+        Assert.AreEqual(1, Filter(allTypes, view: "scripts").Count(row => row.IsCardStart));
+        session.SetIgnoredFiles([A]);
+        Assert.AreEqual(2, Filter(allTypes).Count(row => row.IsCardStart));
+        var shown = Filter(allTypes, ignored: true);
+        Assert.IsTrue(shown.Single(row => row.File?.Path == A).IsFileIgnored);
+        foreach (var row in shown.Where(row => row.IsCardStart)) Assert.AreEqual(numbers[row.Key], row.GroupIndex);
+    }
+
+    [TestMethod]
+    public void UnfinishedScriptCardsRemainInScriptsType()
+    {
+        var session = Session([], scripts: Scripts([Collision("pkg.partial", (A, "same"), (B, null))]));
+        var scripts = session.BuildVisibleRows("all", "incomplete", Closed, types: new HashSet<string> { "scripts" });
+        Assert.AreEqual(1, scripts.Count);
+        Assert.AreEqual(ConflictRowKind.Module, scripts.Single().Kind);
+        Assert.AreEqual(0, session.BuildVisibleRows("all", "incomplete", Closed, types: new HashSet<string> { "collection" }).Count);
+    }
+
     [TestMethod]
     public void ThreeFilesUseOneCardAndInlineIdenticalFilesWithoutChangingPairFacts()
     {
@@ -124,7 +169,8 @@ public sealed class ConflictResultSessionTests
         Assert.AreEqual(ConflictPairPriority.CanOrganize, cards[1].Priority);
         session.ToggleExpanded(cards[0].Key);
         Assert.AreEqual(3, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.File));
-        Assert.AreEqual("以下 2 个内容相同", Rows(session, "scripts").Single(row => row.Kind == ConflictRowKind.Content).Title);
+        CollectionAssert.AreEqual(new[] { "模块版本 1 · 2 个文件", "模块版本 2 · 1 个文件" },
+            Rows(session, "scripts").Where(row => row.Kind == ConflictRowKind.Content).Select(row => row.Title).ToArray());
         Assert.AreEqual(1, Rows(session, "scripts", "same").Count);
         Assert.AreSame(collisions[0], session.Scripts.Single(pair => pair.FirstPath == A && pair.SecondPath == B).Modules[0].Collision);
     }
@@ -255,7 +301,7 @@ public sealed class ConflictResultSessionTests
         var card = Rows(session, "scripts").Single();
         session.ToggleExpanded(card.Key);
         AssertOrdinaryRows(Rows(session, "scripts"));
-        Assert.AreEqual(0, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.Content));
+        Assert.AreEqual(2, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.Content));
         Assert.AreEqual(2, Rows(session, "scripts").Count(row => row.Kind == ConflictRowKind.File));
         var detail = Rows(session, "scripts").Single(row => row.IsTechnicalToggle);
         session.ToggleExpanded(detail.Key);

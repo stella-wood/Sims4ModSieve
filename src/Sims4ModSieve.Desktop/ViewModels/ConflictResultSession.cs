@@ -23,13 +23,15 @@ public sealed record ConflictResultRow(
     public bool IsDisabled { get; init; }
     public bool IsFileIgnored { get; init; }
     public string FilePath => File is null ? "" : File.Path + (IsDisabled ? ".off" : "");
-    public string DisableMenuText => IsDisabled ? "启用" : "禁用";
-    public string IgnoreMenuText => IsFileIgnored ? "取消忽略" : "忽略该文件";
+    public string DisableMenuText => (IsDisabled ? "启用" : "禁用") + (HasCopies ? "（仅此1文件）" : "");
+    public string IgnoreMenuText => (IsFileIgnored ? "取消忽略" : "忽略该文件") + (HasCopies ? "（仅此1文件）" : "");
+    public string DeleteMenuText => "删除" + (HasCopies ? "（仅此1文件）" : "");
+    public string DeleteTooltip => "移动到回收站" + (HasCopies ? "（仅此1文件）" : "");
     public string StateText => Priority switch
     {
-        ConflictPairPriority.NeedsReview => "需查看",
-        ConflictPairPriority.CanOrganize => "可整理",
-        ConflictPairPriority.Incomplete => "未完成",
+        ConflictPairPriority.NeedsReview => "异常",
+        ConflictPairPriority.CanOrganize => "有隐患",
+        ConflictPairPriority.Incomplete => "未分析",
         _ => string.Empty,
     };
     public bool HasState => Priority is not null;
@@ -42,7 +44,7 @@ public sealed record ConflictResultRow(
     public bool HasAnnotation => Annotation.Length > 0;
     public bool HasTag => Tag.Length > 0;
     public bool HasCopies => CopyCount > 0;
-    public string CopiesLabel => $"另有{CopyCount}份重复 →";
+    public string CopiesLabel => $"另有 {CopyCount} 份重复 →";
     public bool IsDuplicateExplanation => Kind == ConflictRowKind.Explanation && DuplicateLink is not null;
     public string GroupLabel => GroupIndex > 0 ? $"第 {GroupIndex} 组" : string.Empty;
     public string ExpandName => (IsExpanded ? "收起 " : "展开 ") + Title;
@@ -244,6 +246,8 @@ public sealed partial class ConflictResultSession
         bool showIgnored = false, IReadOnlySet<string>? types = null)
     {
         var rows = new List<ConflictResultRow>();
+        var includeUngroupedProblems = types is null
+            || new[] { "override", "collection", "suspected", "duplicates", "scripts" }.All(types.Contains);
         var cards = new List<(ConflictPairPriority Priority, string Key, bool Included, Action Build)>();
         var currentOwnerKey = string.Empty;
         var ignoredProblemKeys = Problems.Where(problem => IsFileIgnored(problem.Path))
@@ -291,6 +295,7 @@ public sealed partial class ConflictResultSession
             if (reasons.Length == 0) continue;
             var key = "problem" + Identity(problem.Path.ToUpperInvariant());
             Card(ConflictPairPriority.Incomplete, key, (view is "all" or "problems" || view == (isScript ? "scripts" : "resources"))
+                && includeUngroupedProblems
                 && (showIgnored || !IsFileIgnored(problem.Path)), () =>
             {
                 var file = new ConflictFile(problem.Path, PackageReport?.ResourceInventories
@@ -314,7 +319,8 @@ public sealed partial class ConflictResultSession
             var problem = RangeProblems[index];
             if (removedPaths.Contains(problem.Path)) continue;
             var key = "range" + Identity(problem.Path.ToUpperInvariant()) + index;
-            Card(ConflictPairPriority.Incomplete, key, view is "all" or "problems" || view == (problem.IsScript ? "scripts" : "resources"), () =>
+            Card(ConflictPairPriority.Incomplete, key, (view is "all" or "problems" || view == (problem.IsScript ? "scripts" : "resources"))
+                && includeUngroupedProblems, () =>
             {
                 if (!Add(new(key, ConflictRowKind.RangeProblem, 0, "检查范围问题", Tooltip: problem.Path,
                     Priority: ConflictPairPriority.Incomplete, IsExpandable: true))) return;

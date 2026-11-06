@@ -277,6 +277,7 @@
                             <TextBlock Text="{Binding FilePath}" ToolTip="{Binding FilePath}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False" />
                             <WrapPanel>
                                 <TextBlock Text="{Binding File.Metadata}" FontSize="11" Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False" />
+                                <TextBlock Text="已忽略" Margin="8,0,0,0" FontSize="11" Foreground="{StaticResource MutedBrush}" Visibility="{Binding IsFileIgnored, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <Button Margin="18,0,0,0" Style="{StaticResource EntranceActionStyle}" Padding="0" FontSize="11" Foreground="#A892C5" Content="{Binding CopiesLabel}" Visibility="{Binding HasCopies, Converter={StaticResource BooleanToVisibilityConverter}}"
                                         Command="{Binding DataContext.JumpToConflictGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding DuplicateLink}" />
                             </WrapPanel>
@@ -286,8 +287,8 @@
                         <Button Style="{StaticResource ConflictRowActionStyle}" ToolTip="打开所在文件夹" AutomationProperties.Name="打开所在文件夹" Command="{Binding DataContext.OpenConflictFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                             <Path Width="16" Height="16" IsHitTestVisible="False" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Data="M1,4 L6,4 L8,6 L15,6 L15,14 L1,14 Z M1,6 L1,2 L6,2 L8,4 L14,4 L14,6" />
                         </Button>
-                        <Button x:Name="FileIgnoreButton" Style="{StaticResource ConflictRowActionStyle}" ToolTip="忽略／取消忽略文件" AutomationProperties.Name="忽略／取消忽略文件" Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
-                        <Button Style="{StaticResource ConflictRowActionStyle}" IsEnabled="{Binding File.HasStamp}" ToolTip="移动到回收站" AutomationProperties.Name="移动到回收站" Command="{Binding DataContext.DeleteConflictFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+                        <Button x:Name="FileIgnoreButton" Style="{StaticResource ConflictRowActionStyle}" ToolTip="{Binding IgnoreMenuText}" AutomationProperties.Name="{Binding IgnoreMenuText}" Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
+                        <Button Style="{StaticResource ConflictRowActionStyle}" IsEnabled="{Binding File.HasStamp}" ToolTip="{Binding DeleteTooltip}" AutomationProperties.Name="{Binding DeleteTooltip}" Command="{Binding DataContext.DeleteConflictFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                             <Path Width="16" Height="16" IsHitTestVisible="False" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Data="M2,4 L14,4 M6,4 L6,2 L10,2 L10,4 M4,4 L5,14 L11,14 L12,4 M7,6 L7,12 M9,6 L9,12" />
                         </Button>
                     </StackPanel>
@@ -565,14 +566,14 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsConflictNotScanning}">
                             <Button x:Name="ConflictAllFilter" Content="全部" Tag="{Binding IsAllFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="all" Style="{StaticResource ConflictAllFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="全部" />
-                            <Button x:Name="ConflictNeedsReviewFilter" Tag="{Binding IsDifferentFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="different" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="需查看">
-                                <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictNeedReviewBrush}" Margin="0,0,6,0" /><TextBlock Text="需查看" /></StackPanel>
+                            <Button x:Name="ConflictNeedsReviewFilter" Tag="{Binding IsDifferentFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="different" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="异常">
+                                <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictNeedReviewBrush}" Margin="0,0,6,0" /><TextBlock Text="异常" /></StackPanel>
                             </Button>
-                            <Button x:Name="ConflictCanOrganizeFilter" Tag="{Binding IsSameFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="same" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="可整理">
-                                <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictCanOrganizeBrush}" Margin="0,0,6,0" /><TextBlock Text="可整理" /></StackPanel>
+                            <Button x:Name="ConflictCanOrganizeFilter" Tag="{Binding IsSameFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="same" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="有隐患">
+                                <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictCanOrganizeBrush}" Margin="0,0,6,0" /><TextBlock Text="有隐患" /></StackPanel>
                             </Button>
-                            <Button x:Name="ConflictIncompleteFilter" Tag="{Binding IsIncompleteFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="incomplete" Style="{StaticResource ConflictQuickFilterStyle}" AutomationProperties.Name="未完成">
-                                <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,6,0" /><TextBlock Text="未完成" /></StackPanel>
+                            <Button x:Name="ConflictIncompleteFilter" Tag="{Binding IsIncompleteFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="incomplete" Style="{StaticResource ConflictQuickFilterStyle}" AutomationProperties.Name="未分析">
+                                <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,6,0" /><TextBlock Text="未分析" /></StackPanel>
                             </Button>
                         </StackPanel>
                         <ToggleButton x:Name="ConflictFilterButton" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource ConflictFilterButtonStyle}"
@@ -592,9 +593,9 @@
                                         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="72" /><ColumnDefinition Width="72" /><ColumnDefinition Width="Auto" SharedSizeGroup="ConflictFilterLastColumn" /></Grid.ColumnDefinitions>
                                         <CheckBox Content="全部" IsChecked="{Binding IncludeAllConflictStates}" Margin="0,4,0,4" HorizontalAlignment="Left" AutomationProperties.Name="全部状态" />
-                                        <CheckBox Grid.Column="1" Content="需查看" IsChecked="{Binding IncludeConflictNeedsReview}" Margin="0,4,0,4" HorizontalAlignment="Left" />
-                                        <CheckBox Grid.Column="2" Content="可整理" IsChecked="{Binding IncludeConflictCanOrganize}" Margin="0,4,0,4" HorizontalAlignment="Left" />
-                                        <CheckBox Grid.Row="1" Content="未完成" IsChecked="{Binding IncludeConflictIncomplete}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Column="1" Content="异常" IsChecked="{Binding IncludeConflictNeedsReview}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Column="2" Content="有隐患" IsChecked="{Binding IncludeConflictCanOrganize}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Row="1" Content="未分析" IsChecked="{Binding IncludeConflictIncomplete}" Margin="0,4,0,4" HorizontalAlignment="Left" />
                                     </Grid>
                                     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />
                                     <Grid x:Name="ConflictTypeChoices">
@@ -602,7 +603,7 @@
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="72" /><ColumnDefinition Width="Auto" MinWidth="72" /><ColumnDefinition Width="Auto" SharedSizeGroup="ConflictFilterLastColumn" /></Grid.ColumnDefinitions>
                                         <CheckBox Content="全部" IsChecked="{Binding IncludeAllConflictTypes}" Margin="0,4,0,4" HorizontalAlignment="Left" AutomationProperties.Name="全部类型" />
                                         <CheckBox Grid.Column="1" Content="资源覆盖冲突" IsChecked="{Binding IncludeConflictOverrides}" Margin="0,4,0,4" HorizontalAlignment="Left" />
-                                        <CheckBox Grid.Column="2" Content="脚本" IsChecked="{Binding IncludeConflictScripts}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Column="2" Content="同名脚本" IsChecked="{Binding IncludeConflictScripts}" Margin="0,4,0,4" HorizontalAlignment="Left" />
                                         <CheckBox Grid.Row="1" Content="合集包含" IsChecked="{Binding IncludeConflictCollections}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="1" Content="疑似同一 mod" IsChecked="{Binding IncludeConflictSuspected}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="2" Content="重复文件" IsChecked="{Binding IncludeConflictDuplicates}" Margin="0,4,0,4" />
                                     </Grid>
                                     <Border x:Name="ConflictIgnoredSeparator" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />

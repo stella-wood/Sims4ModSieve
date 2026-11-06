@@ -75,7 +75,7 @@ public sealed partial class MainWindowViewModel
     public bool IncludeAllConflictTypes { get => conflictView == "all" && conflictTypes.Count == 5; set { conflictTypes.Clear(); if (value) conflictTypes.UnionWith(["override", "collection", "suspected", "duplicates", "scripts"]); SelectConflictView(value ? "all" : "none"); } }
     public bool IncludeConflictResources
     {
-        get => (conflictView is "all" or "resources") && conflictTypes.Any(type => type != "scripts");
+        get => (conflictView is "all" or "resources") && conflictTypes.Any(type => type is "override" or "collection" or "suspected" or "duplicates");
         set
         {
             foreach (var type in new[] { "override", "collection", "suspected", "duplicates" })

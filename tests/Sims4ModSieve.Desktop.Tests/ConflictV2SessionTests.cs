@@ -43,6 +43,73 @@ public sealed class ConflictV2SessionTests
         Resource(1, (A, "a"), (B, "a")), Resource(2, (A, "b"), (B, "b")), Resource(3, (A, "c"), (B, "c")),
         Resource(4, (B, "d"), (C, "e"))], [(A, 3), (B, 10), (C, 4)]);
 
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public Task ScriptVersionsKeepFilesTogetherAndExplainFoldedCopies(bool foldCopies, bool ignoreCopies) => WpfTestHost.RunAsync(async () =>
+    {
+        var paths = Enumerable.Range(0, 8).Select(index => $@"C:\Mods\script{index}.ts4script").ToArray();
+        var report = Duplicates(paths.Where((_, index) => index % 2 == 0).ToArray());
+        report = report with { Groups = [report.Groups.Single(),
+            Duplicates(paths.Where((_, index) => index % 2 == 1).ToArray()).Groups.Single() with { Sha256 = "SECOND-HASH" }] };
+        var session = V2([], [], foldCopies ? report : null,
+            Scripts([Collision("kit_diff.common", paths.Select((path, index) => (path, (string?)(index % 2 == 0 ? "a" : "b"))).ToArray())]));
+        var card = session.Cards.Single(card => card.Module is not null);
+        session.ToggleExpanded(card.Key);
+        if (ignoreCopies) session.SetIgnoredFiles([paths[2], paths[1]]);
+        foreach (var showIgnored in new[] { false, true })
+        {
+            var rows = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: showIgnored);
+            var segment = rows.Where(row => row.OwnerKey == card.Key && row.Kind is ConflictRowKind.Content or ConflictRowKind.File).ToArray();
+            Assert.AreEqual("模块版本 1 · 4 个文件" + (foldCopies ? " (含 3 份重复)" : "") + (ignoreCopies ? " · 1 已忽略" : ""), segment[0].Title);
+            var second = Array.FindIndex(segment, row => row.Kind == ConflictRowKind.Content && row.Title.StartsWith("模块版本 2", StringComparison.Ordinal));
+            Assert.IsTrue(second > 0);
+            Assert.AreEqual("模块版本 2 · 4 个文件" + (foldCopies ? " (含 3 份重复)" : "") + (ignoreCopies ? " · 1 已忽略" : ""), segment[second].Title);
+            CollectionAssert.AreEqual((foldCopies ? new[] { paths[0] } : paths.Where((_, index) => index % 2 == 0)).ToArray(),
+                segment.Take(second).Where(row => row.File is not null).Select(row => row.File!.Path).ToArray());
+            CollectionAssert.AreEqual((foldCopies ? new[] { paths[ignoreCopies ? 3 : 1] } : paths.Where((_, index) => index % 2 == 1)).ToArray(),
+                segment.Skip(second).Where(row => row.File is not null).Select(row => row.File!.Path).ToArray());
+            Assert.IsTrue(segment.Where(row => row.File is not null).All(row => row.CopyCount == (foldCopies ? 3 : 0)));
+        }
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        await WpfTestHost.LayoutAsync(window);
+        Save(window, $"script-versions-{foldCopies}-{ignoreCopies}.png");
+    });
+
+    [TestMethod]
+    [DataRow(true, 2)]
+    [DataRow(true, 16)]
+    [DataRow(false, 2)]
+    [DataRow(false, 16)]
+    public Task ConflictExplanationRendersOneFileCount(bool different, int fileCount) => WpfTestHost.RunAsync(async () =>
+    {
+        var paths = Enumerable.Range(0, fileCount).Select(index => $@"C:\Mods\explanation{index}.package").ToArray();
+        var session = V2([Resource(1, paths.Select((path, index) => (path, (string?)(different ? index.ToString() : "same"))).ToArray())],
+            paths.Select(path => (path, different ? 10 : 1)).ToArray());
+        var card = session.Cards.Single();
+        Assert.AreEqual(different ? "override" : "suspected", card.Type);
+        session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        await WpfTestHost.LayoutAsync(window);
+        var explanation = model.ConflictRows.Single(row => row.Key == card.Key + "/explanation");
+        var expected = $"这 {fileCount} 份文件有 1 项资源编号相同"
+            + (different ? "，其中 1 项内容不同；游戏对每个编号只会使用一份资源" : "");
+        Assert.AreEqual(expected, explanation.Title);
+        var text = Descendants<TextBlock>(window).Single(text => ReferenceEquals(text.DataContext, explanation) && text.Name == "Title");
+        Assert.IsTrue(text.IsVisible);
+        Assert.AreEqual(expected, text.Text);
+        Save(window, $"conflict-explanation-{card.Type}-{fileCount}.png");
+    });
+
     internal static ConflictResultSession VersionSession(bool tiedLatest = false)
     {
         var stamps = new Dictionary<string, FileStamp>
@@ -311,6 +378,47 @@ public sealed class ConflictV2SessionTests
         session.ApplyRestoredPaths([C]);
         Assert.AreEqual(2, session.Cards.Count);
         Assert.AreEqual(mixed.GroupIndex, session.Cards.Single(card => card.Key == mixed.Key).GroupIndex);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(3)]
+    [DataRow(5)]
+    public void CopyCountsAndFoldingStayStableAcrossIgnoredSwitch(int ignoredCount)
+    {
+        var copies = Enumerable.Range(0, 5).Select(index => $@"C:\Mods\copy{index}.package").ToArray();
+        var paths = copies.Concat(new[] { B, C }).ToArray();
+        var session = V2([Resource(1, paths.Select(path => (path, (string?)(copies.Contains(path) ? "same" : path))).ToArray())],
+            paths.Select(path => (path, 1)).ToArray(), Duplicates(copies));
+        var mixed = session.Cards.Single(card => card.Type == "suspected");
+        var duplicate = session.Cards.Single(card => card.Duplicate is not null);
+        session.SetIgnoredFiles(copies.Take(ignoredCount));
+        session.ToggleExpanded(mixed.Key);
+        session.ToggleExpanded(duplicate.Key);
+        foreach (var showIgnored in new[] { false, true, false })
+        {
+            var rows = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: showIgnored);
+            Assert.AreEqual("7 文件" + (ignoredCount > 0 ? $" · {ignoredCount} 已忽略" : ""), rows.Single(row => row.Key == mixed.Key).FileCountText);
+            var explanation = rows.Single(row => row.Key == mixed.Key + "/explanation");
+            Assert.AreEqual("这 7 份文件 (含 4 份重复" + (ignoredCount > 0 ? $"、{ignoredCount} 已忽略" : "")
+                + ") 有 1 项资源编号相同，其中 1 项内容不同，可能是同一 mod 的不同版本", explanation.Title);
+            var files = rows.Where(row => row.OwnerKey == mixed.Key && row.File is not null).ToArray();
+            Assert.AreEqual(!showIgnored && ignoredCount == 5 ? 2 : 3, files.Length);
+            if (showIgnored || ignoredCount < 5)
+            {
+                var representative = files.Single(row => row.HasCopies);
+                Assert.AreEqual(4, representative.CopyCount);
+                Assert.AreEqual(duplicate.Key, representative.DuplicateLink!.Key);
+                Assert.AreEqual(ignoredCount == 5, representative.IsFileIgnored);
+                StringAssert.Contains(representative.DeleteMenuText, "仅此1文件");
+                StringAssert.Contains(representative.DisableMenuText, "仅此1文件");
+                StringAssert.Contains(representative.IgnoreMenuText, "仅此1文件");
+            }
+            var duplicateFiles = rows.Where(row => row.OwnerKey == duplicate.Key && row.File is not null).ToArray();
+            CollectionAssert.AreEquivalent((showIgnored ? copies : copies.Skip(ignoredCount)).ToArray(), duplicateFiles.Select(row => row.File!.Path).ToArray());
+            Assert.AreEqual(showIgnored ? ignoredCount : 0, duplicateFiles.Count(row => row.IsFileIgnored && row.IsIgnored));
+        }
     }
 
     [TestMethod]

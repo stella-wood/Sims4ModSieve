@@ -71,7 +71,7 @@ public partial class ConflictPage : UserControl
         Add("复制路径", model.CopyConflictPathCommand);
         menu.Items.Add(new Separator { Style = (Style)FindResource("FileMenuSeparatorStyle") });
         Add(row.DisableMenuText, model.ToggleConflictFileEnabledCommand);
-        Add("删除", model.DeleteConflictFileCommand);
+        Add(row.DeleteMenuText, model.DeleteConflictFileCommand);
         menu.Items.Add(new Separator { Style = (Style)FindResource("FileMenuSeparatorStyle") });
         Add("查看文件关系", model.OpenConflictRelationshipsCommand);
         Add(row.IgnoreMenuText, model.IgnoreConflictCommand);
@@ -135,7 +135,21 @@ public partial class ConflictPage : UserControl
         ConflictRowsList.ScrollIntoView(row);
         ConflictRowsList.UpdateLayout();
         if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is ListBoxItem item)
+        {
             item.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.First));
+            void CenterTitle()
+            {
+                if (!ReferenceEquals(DataContext, model) || !model.ConflictRows.Contains(row) || !ConflictRowsList.IsVisible) return;
+                if (TechnicalVisuals<ScrollViewer>(ConflictRowsList).FirstOrDefault() is not { } scroll
+                    || TechnicalVisuals<ScrollContentPresenter>(scroll).FirstOrDefault() is not { } presenter) return;
+                if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is not ListBoxItem target) return;
+                var center = target.TranslatePoint(new Point(0, target.ActualHeight / 2), presenter).Y;
+                scroll.ScrollToVerticalOffset(scroll.VerticalOffset + center - presenter.ActualHeight / 2);
+                scroll.UpdateLayout();
+            }
+            CenterTitle();
+            Dispatcher.BeginInvoke(CenterTitle, DispatcherPriority.ApplicationIdle);
+        }
     }, DispatcherPriority.Loaded);
 
     private Action<IReadOnlyList<ConflictResultRow>>? CaptureConflictViewport(bool anchorToGroup)
