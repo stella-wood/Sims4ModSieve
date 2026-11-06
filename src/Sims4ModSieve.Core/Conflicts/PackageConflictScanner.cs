@@ -23,7 +23,8 @@ public interface IPackageConflictScanner
 /// </remarks>
 public sealed class PackageConflictScanner(
     IFileSystemAccess fileSystem,
-    IPackageIndexReader indexReader) : IPackageConflictScanner
+    IPackageIndexReader indexReader,
+    string? applicationDirectory = null) : IPackageConflictScanner
 {
     public const string PackageExtension = ".package";
 
@@ -32,7 +33,7 @@ public sealed class PackageConflictScanner(
     /// </summary>
     public static int DefaultMaxDegreeOfParallelism { get; } = Math.Clamp(Environment.ProcessorCount, 1, 4);
 
-    private readonly SourceFileDiscovery _discovery = new(fileSystem);
+    private readonly SourceFileDiscovery _discovery = new(fileSystem, applicationDirectory);
 
     public Task<PackageConflictScanReport> ScanAsync(
         PackageConflictScanRequest request,

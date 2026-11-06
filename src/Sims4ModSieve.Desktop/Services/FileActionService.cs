@@ -110,8 +110,12 @@ public sealed class FileActionService(
     IRecycleBinAdapter recycleBin,
     IFileMetadataAccess metadata,
     FileManagementStore? historyStore = null,
-    ModDisableService? modDisableService = null) : IFileActionService
+    ModDisableService? modDisableService = null,
+    string? applicationDirectory = null,
+    Action<string>? logProtectedPath = null) : IFileActionService
 {
+    private readonly ApplicationDirectoryGuard applicationGuard = new(applicationDirectory,
+        logProtectedPath ?? UnexpectedErrorHandler.LogProtectedPath);
     private readonly FileManagementStore historyStore = historyStore ?? new FileManagementStore();
     private List<DeletedFileRecord>? history;
     private IReadOnlyList<RecycleBinItem> lastDeletedItems = Array.Empty<RecycleBinItem>();
@@ -142,6 +146,12 @@ public sealed class FileActionService(
 
         foreach (var candidate in uniqueCandidates)
         {
+            try { applicationGuard.EnsureAllowed(candidate.Path); }
+            catch (IOException exception)
+            {
+                problems.Add(new(candidate.Path, exception.Message));
+                continue;
+            }
             if (candidate.DisabledMod is { } disabled && (!ModDisableService.IsValidRecord(disabled)
                 || !StringComparer.OrdinalIgnoreCase.Equals(disabled.DisabledPath, candidate.Path)
                 || disabled.Size != candidate.ExpectedSize || disabled.LastWriteTimeUtc != candidate.ExpectedLastWriteTimeUtc
@@ -345,6 +355,15 @@ public sealed class FileActionService(
         CancellationToken cancellationToken)
     {
         var failures = new List<FileActionFailure>();
+        if (disabled is not null)
+        {
+            try { applicationGuard.EnsureAllowed(disabled.DisabledPath); }
+            catch (IOException exception)
+            { return new([], [new(item.OriginalPath, exception.Message)], CanUndoLastDelete); }
+        }
+        try { applicationGuard.EnsureAllowed(item.OriginalPath); }
+        catch (IOException exception)
+        { return new([], [new(item.OriginalPath, exception.Message)], CanUndoLastDelete); }
         if (disabled is not null)
         {
             try

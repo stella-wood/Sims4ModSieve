@@ -18,8 +18,11 @@ public sealed record DisabledModRecord(string Id, string OriginalPath, long Size
 public sealed record DisabledModsResult(IReadOnlyList<DisabledModRecord> Records, IReadOnlyList<FileActionFailure> Failures);
 public sealed record ModDisableBatchResult(IReadOnlyList<string> CompletedPaths, IReadOnlyList<FileActionFailure> Failures);
 
-public sealed class ModDisableService(string? directory = null)
+public sealed class ModDisableService(string? directory = null, string? applicationDirectory = null,
+    Action<string>? logProtectedPath = null)
 {
+    private readonly ApplicationDirectoryGuard applicationGuard = new(applicationDirectory,
+        logProtectedPath ?? UnexpectedErrorHandler.LogProtectedPath);
     private readonly object gate = new();
     private readonly string ledgerPath = Path.Combine(directory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve"), "disabled-mods.json");
@@ -57,6 +60,8 @@ public sealed class ModDisableService(string? directory = null)
         lock (gate)
         {
             if (!IsValidRecord(record)) throw new InvalidDataException("禁用恢复记录格式无效");
+            applicationGuard.EnsureAllowed(record.OriginalPath);
+            applicationGuard.EnsureAllowed(record.DisabledPath);
             if (TryReadStamp(record.DisabledPath) is not null) throw new IOException("已禁用路径已有同名文件，未覆盖");
             var records = ReadAndReconcile().Records.ToList();
             if (records.Any(item => item.Id != record.Id && !item.Recycled
@@ -140,6 +145,7 @@ public sealed class ModDisableService(string? directory = null)
                 try
                 {
                     var original = Path.GetFullPath(path);
+                    applicationGuard.EnsureAllowed(original);
                     if (!seen.Add(original)) continue;
                     if (!IsModPath(original)) throw new InvalidDataException("只能禁用 .package 或 .ts4script 文件");
                     if (records.Any(item => !item.Recycled && StringComparer.OrdinalIgnoreCase.Equals(item.OriginalPath, original)))
@@ -201,6 +207,7 @@ public sealed class ModDisableService(string? directory = null)
                 }
                 try
                 {
+                    applicationGuard.EnsureAllowed(record.OriginalPath);
                     RequireStamp(record.DisabledPath, record);
                     File.Move(record.DisabledPath, record.OriginalPath);
                     completed.Add(record.OriginalPath);
@@ -323,8 +330,9 @@ public sealed class ModDisableService(string? directory = null)
         record.Identity is not null && stamp.Identity is not null && stamp.Size == record.Size
         && stamp.Modified == record.LastWriteTimeUtc && stamp.Identity == record.Identity;
 
-    private static void RequireStamp(string path, DisabledModRecord record)
+    private void RequireStamp(string path, DisabledModRecord record)
     {
+        applicationGuard.EnsureAllowed(path);
         if (record.Identity is null) throw new IOException("旧禁用记录缺少文件身份，请人工核对文件与记录后处理");
         if (!Matches(ReadStamp(path), record)) throw new IOException("文件发生变化，未改动，请重新核对");
     }

@@ -8,6 +8,27 @@ namespace Sims4ModSieve.Core.Tests.Scripts;
 [TestClass]
 public sealed class ScriptModuleScannerTests
 {
+    [TestMethod]
+    public async Task ScriptModsBesideProgramReachReaderButProgramResourcesDoNot()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var app = mods;
+        var nested = temp.CreateDirectory("Mods", "Sieve", "nested");
+        WriteScript(temp, "Mods/first.ts4script", ("shared.pyc", Pyc("same")));
+        WriteScript(temp, "Mods/Sieve-backup/second.ts4script", ("shared.pyc", Pyc("same")));
+        WriteScript(temp, "Mods/Sieve/nested/third.ts4script", ("shared.pyc", Pyc("same")));
+        temp.WriteFile("Mods/Assets/own.ts4script", "invalid archive must never be opened");
+        temp.WriteFile("Mods/zh-Hans/own.ts4script", "invalid archive must never be opened");
+        File.WriteAllText(Path.Combine(app, "Sims4ModSieve.exe"), "not a script");
+        var scanner = new ScriptModuleScanner(new PhysicalFileSystemAccess(), app);
+        var report = await scanner.ScanAsync(new([new("mods", mods), new("app", app), new("nested", nested)]));
+        Assert.AreEqual(3, report.DiscoveredArchiveCount);
+        Assert.AreEqual(3, report.AnalyzedArchiveCount);
+        Assert.AreEqual(1, report.Collisions.Count);
+        Assert.AreEqual(0, report.Issues.Count);
+    }
+
     /// <summary>Python 3.7 的 .pyc magic（3394），结尾是 \r\n。</summary>
     private static readonly byte[] Py37Magic = [0x42, 0x0D, 0x0D, 0x0A];
 

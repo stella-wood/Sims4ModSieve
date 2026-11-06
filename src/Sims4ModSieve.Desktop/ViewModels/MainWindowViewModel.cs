@@ -209,6 +209,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(ModsRootDisplay));
                 OnPropertyChanged(nameof(HasModsRoot));
                 OnPropertyChanged(nameof(ModsRootActionText));
+                RefreshApplicationLocationWarning();
             }
         }
     }
@@ -476,12 +477,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
             IssueCount = report.Issues.Count;
             DiscoveredFileCount = report.DiscoveredFileCount;
-            StatusText = report.Groups.Count == 0
+            StatusText = report.DiscoveredFileCount == 0 && report.Issues.Count == 0
+                ? "这个文件夹里没有找到 mod 文件"
+                : report.DiscoveredFileCount == 0 ? "扫描未完成，请查看原因" : report.Groups.Count == 0
                 ? "扫描完成，没有发现重复文件"
                 : $"扫描完成，发现 {report.Groups.Count} 组重复文件";
-            StatusDetail = report.Issues.Count == 0
+            var firstIssue = report.Issues.FirstOrDefault();
+            StatusDetail = firstIssue is null
                 ? $"共查看 {report.DiscoveredFileCount:N0} 个文件，结果完整。"
-                : $"共查看 {report.DiscoveredFileCount:N0} 个文件；有 {report.Issues.Count} 项未能读取，可重新扫描。";
+                : $"共查看 {report.DiscoveredFileCount:N0} 个文件；有 {report.Issues.Count} 项未完成检查。\n"
+                    + (firstIssue.Code.EndsWith("-failed", StringComparison.Ordinal) ? "无法读取：" : "未完成检查：")
+                    + $"{firstIssue.Path}\n{firstIssue.Message}";
             timingOutcome = "完成";
         }
         catch (OperationCanceledException)
@@ -695,6 +701,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(ConflictSources));
             StartConflictScanCommand?.RaiseCanExecuteChanged();
         }
+        RefreshApplicationLocationWarning();
     }
 
     private void OnSourcePropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -703,6 +710,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             StartScanCommand.RaiseCanExecuteChanged();
             StartConflictScanCommand?.RaiseCanExecuteChanged();
+            RefreshApplicationLocationWarning();
         }
     }
 

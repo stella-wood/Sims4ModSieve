@@ -35,6 +35,9 @@ public sealed class UnexpectedErrorHandler : IUnexpectedErrorHandler
             MessageBoxImage.Error);
     }
 
+    internal static void LogProtectedPath(string path) =>
+        new UnexpectedErrorHandler().TryAppend("已拒绝修改程序目录", new IOException(path));
+
     private bool TryAppend(string title, Exception exception)
     {
         try

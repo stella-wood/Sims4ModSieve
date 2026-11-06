@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
+using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Desktop.Services;
 
@@ -44,6 +45,18 @@ public sealed partial class SettingsSupportService
         if (kind is not ("Mods" or "Tray")) throw new ArgumentException("未知的文件夹类型", nameof(kind));
         var candidate = Path.Combine(documentsDirectory, "Electronic Arts", "The Sims 4", kind);
         return Directory.Exists(candidate) ? candidate : null;
+    }
+
+    public string GetApplicationLocationWarning(string? modsRoot, string? trayRoot, IEnumerable<string>? scanRoots = null)
+    {
+        var guard = new ApplicationDirectoryGuard(applicationDirectory);
+        foreach (var root in new[] { modsRoot, trayRoot, FindDefaultFolder("Mods"), FindDefaultFolder("Tray") }
+            .Concat(scanRoots ?? []))
+        {
+            if (root is not null && guard.IsLocatedAt(root))
+                return "建议把 Sims4ModSieve 放进单独的文件夹，避免与 Mod 混放";
+        }
+        return string.Empty;
     }
 
     public async Task<IReadOnlyList<DiagnosticLog>> ReadDiagnosticsAsync()

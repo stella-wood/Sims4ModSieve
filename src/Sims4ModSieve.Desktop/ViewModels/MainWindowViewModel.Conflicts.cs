@@ -118,7 +118,10 @@ public sealed partial class MainWindowViewModel
     public bool ShowExpandAllConflictIcon => !ShowCollapseAllConflictIcon;
     public string ConflictExpandCollapseToolTip => ShowCollapseAllConflictIcon ? "全部收起" : "全部展开";
     public bool ShowEmptyConflictRows => IsConflictBasic && IsConflictComplete && visibleConflictParentCount == 0;
-    public string EmptyConflictText => HasActiveConflictFilter ? "没有符合筛选条件的结果" : "已分析范围未发现冲突";
+    private bool NoConflictModFiles => IsConflictComplete && !HasConflictMatches && !HasConflictProblems
+        && conflictSession.PackageReport?.DiscoveredPackageCount == 0 && conflictSession.ScriptReport?.DiscoveredArchiveCount == 0;
+    public string EmptyConflictText => HasActiveConflictFilter ? "没有符合筛选条件的结果"
+        : NoConflictModFiles ? "这个文件夹里没有找到 mod 文件" : "已分析范围未发现冲突";
     public bool ShowConflictResources => IsConflictBasic && conflictView == "resources";
     public bool ShowConflictScripts => IsConflictBasic && conflictView == "scripts";
     public bool ShowConflictProblems => IsConflictBasic && conflictView == "problems";
@@ -487,7 +490,8 @@ public sealed partial class MainWindowViewModel
             OnPropertyChanged(nameof(ConflictView));
             PublishConflictRows(initialRows, parentCount);
             conflictRunState = "complete";
-            conflictStatus = HasConflictMatches ? "扫描完成" : "已分析范围未发现冲突";
+            conflictStatus = NoConflictModFiles ? "这个文件夹里没有找到 mod 文件"
+                : HasConflictMatches ? "扫描完成" : HasConflictProblems ? "扫描完成，部分项目未完成分析" : "已分析范围未发现冲突";
             ClearProgress();
             conflictPhase = HasConflictProblems
                 ? $"{conflictSession.Problems.Count} 个文件未完成分析 · {conflictSession.RangeProblems.Count} 项范围问题"
@@ -527,7 +531,7 @@ public sealed partial class MainWindowViewModel
         conflictRunState = "failed";
         conflictStatus = "扫描没有完成";
         conflictPhase = exception is UnauthorizedAccessException or System.IO.IOException
-            ? "请检查来源后重试" : "请重试扫描";
+            ? "无法读取：" + exception.Message : "请重试扫描";
         conflictCompleted = 0;
         conflictProgressMaximum = 1;
         conflictProgressTotal = null;

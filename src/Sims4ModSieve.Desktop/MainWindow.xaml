@@ -14,6 +14,7 @@
     <Grid Background="{StaticResource WindowBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="54" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -91,7 +92,14 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1"
+        <Border x:Name="ApplicationLocationNotice" Grid.Row="1" Margin="28,12,28,0" Padding="12"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                Visibility="{Binding HasApplicationLocationWarning, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <TextBlock Text="{Binding ApplicationLocationWarning, Mode=OneWay}" TextWrapping="Wrap"
+                       Foreground="{StaticResource MutedBrush}" />
+        </Border>
+
+        <Grid Grid.Row="2"
               Visibility="{Binding IsHomeVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
             <ScrollViewer x:Name="HomeContentScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
                 <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" /></ScrollViewer.Resources>
@@ -165,7 +173,7 @@
             </ScrollViewer>
         </Grid>
 
-        <Grid Grid.Row="1"
+        <Grid Grid.Row="2"
               Margin="28,18,28,28"
               Visibility="{Binding IsScannerVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid>
@@ -531,7 +539,7 @@
                 </Border>
             </Grid>
         </Grid>
-        <local:SettingsPage Grid.Row="1" Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
-        <local:ConflictPage Grid.Row="1" Visibility="{Binding IsConflictVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+        <local:SettingsPage Grid.Row="2" Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+        <local:ConflictPage Grid.Row="2" Visibility="{Binding IsConflictVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>
 </Window>
