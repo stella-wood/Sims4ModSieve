@@ -156,7 +156,9 @@ public sealed class DuplicateScanner(
 
         progress?.Report(new DuplicateScanProgress(
             DuplicateScanPhase.Completed,
-            groups.Count == 0 ? "扫描完成，没有发现重复文件" : $"扫描完成，发现 {groups.Count} 组重复文件",
+            candidates.Count == 0 && issues.Count == 0 ? "这个文件夹里没有找到 mod 文件"
+                : candidates.Count == 0 ? "扫描未完成，请查看原因"
+                : groups.Count == 0 ? "扫描完成，没有发现重复文件" : $"扫描完成，发现 {groups.Count} 组重复文件",
             hashCandidates.Length,
             hashCandidates.Length,
             candidates.Count));

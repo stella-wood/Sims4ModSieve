@@ -12,7 +12,7 @@ Sims 4 Mod Sieve 是一个面向 Windows 的本地离线《模拟人生 4》Mod 
 - 识别文件名不同但内容完全相同的副本
 - 正确处理同时选择父目录和显式子目录的情况
 - 跳过 reparse point，避免意外扩大扫描范围
-- 扫描跳过程序目录，文件操作保护程序自身，规则见 [程序目录保护](docs/release/application-directory-safety.md)
+- 扫描跳过程序自身的文件和资源目录，同目录的 Mod 正常参与检测，规则见 [程序文件保护](docs/release/application-directory-safety.md)
 - 先按文件大小筛选，再流式计算 SHA-256
 - Hash 前后复核文件状态，避免使用扫描期间发生变化的内容
 - 单个目录或文件读取失败时继续扫描其他内容
@@ -34,7 +34,7 @@ Mod 冲突检测首次从首页或顶部导航进入四功能总览，同次运�
 
 ## 使用便携版
 
-当前候选版本为 `0.1.0-alpha.1`。便携 ZIP 自带 .NET 运行时，解压后运行 `Sims4ModSieve.exe`，普通用户无需安装 SDK 或 Desktop Runtime。托管程序集已合入 EXE，仍须保留旁边的原生 DLL 和其他文件；启动不解压 bundle 到临时目录。配置和日志仍保存在 `%LOCALAPPDATA%\Sims4ModSieve\`。
+当前候选版本为 `0.1.0-alpha.1`。便携 ZIP 自带 .NET 运行时，解压后进入 `Sims4ModSieve-0.1.0-alpha.1-win-x64` 文件夹运行 `Sims4ModSieve.exe`，普通用户无需安装 SDK 或 Desktop Runtime。托管程序集已合入 EXE，仍须保留旁边的原生 DLL 和其他文件；启动不解压 bundle 到临时目录。配置和日志仍保存在 `%LOCALAPPDATA%\Sims4ModSieve\`。
 
 卸载前先处理已禁用的 Mod，步骤见 [便携版使用说明 · 卸载](docs/release/便携版使用说明.md#卸载)。
 

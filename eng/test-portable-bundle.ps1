@@ -13,6 +13,18 @@ function Reject([string]$Name, [string]$Expected) {
 }
 . $verify -PackageDirectory $case
 Write-Host 'PASS ValidBundle'
+$archive = [IO.Compression.ZipFile]::OpenRead($source + '.zip')
+try {
+    $packageName = Split-Path $source -Leaf
+    if (@($archive.Entries | Where-Object { $_.FullName.Replace('\', '/').Split('/')[0] -ne $packageName -or
+        ($_.Name -and -not $_.FullName.Replace('\', '/').StartsWith($packageName + '/', [StringComparison]::Ordinal)) }).Count) {
+        throw 'ZIP must contain exactly one package folder.'
+    }
+    if (-not @($archive.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "$packageName/Sims4ModSieve.exe" }).Count) {
+        throw 'ZIP package folder is missing its executable.'
+    }
+} finally { $archive.Dispose() }
+Write-Host 'PASS ZipRetainsPackageFolder'
 $reader = [IO.BinaryReader]::new([IO.File]::OpenRead($exe))
 try {
     $reader.BaseStream.Position = $headerOffset + 12

@@ -142,12 +142,7 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var directory = pending.Pop();
-                if (applicationGuard.Contains(directory))
-                {
-                    issues.Add(new ScanIssue("application-directory-skipped", ScanIssueStage.Discovery,
-                        directory, "程序目录已跳过，请将程序放在 Mods 和 Tray 文件夹之外。", source.Id));
-                    continue;
-                }
+                if (applicationGuard.Contains(directory)) continue;
                 IReadOnlyList<string> entries;
 
                 try
@@ -174,6 +169,7 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
                     try
                     {
                         path = PathRules.Normalize(entry);
+                        if (applicationGuard.Contains(path)) continue;
                         attributes = fileSystem.GetAttributes(path);
                     }
                     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)

@@ -13,13 +13,12 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ApplicationDirectorySafetyTests
 {
     [TestMethod]
-    public async Task DeleteRejectsProgramDirectoryEvenWhenPreflightIsBypassed()
+    public async Task DeleteRejectsProgramPayloadButAllowsNeighbouringMods()
     {
         using var files = new Scenario();
         var app = files.Folder("Mods", "Sieve");
-        var sibling = files.Folder("Mods", "Sieve-backup");
-        var protectedFile = Path.Combine(app, "runtimeconfig.json");
-        var allowedFile = Path.Combine(sibling, "other.package");
+        var protectedFile = Path.Combine(app, "Sims4ModSieve.runtimeconfig.json");
+        var allowedFile = Path.Combine(app, "other.package");
         File.WriteAllText(protectedFile, "protected");
         File.WriteAllText(allowedFile, "allowed");
         var metadata = new PhysicalFileMetadataAccess();
@@ -45,7 +44,7 @@ public sealed class ApplicationDirectorySafetyTests
     {
         using var files = new Scenario();
         var app = files.Folder("Sieve");
-        var path = Path.Combine(app, "settings.json");
+        var path = Path.Combine(app, "Sims4ModSieve.runtimeconfig.json");
         var record = new DeletedFileRecord("protected", new(path, [0, 0]), 1, DateTime.UtcNow);
         var history = new FileManagementStore(files.Root);
         history.Update(_ => new([], [record]));
@@ -66,8 +65,9 @@ public sealed class ApplicationDirectorySafetyTests
     {
         using var files = new Scenario();
         var app = files.Folder("Mods", "Sieve");
-        var path = Path.Combine(app, "old.package");
-        var next = Path.Combine(app, "new.package");
+        var assets = files.Folder("Mods", "Sieve", "Assets");
+        var path = Path.Combine(assets, "old.package");
+        var next = Path.Combine(assets, "new.package");
         File.WriteAllText(path, "old");
         File.WriteAllText(next, "new");
         var data = files.Folder("data");
@@ -90,11 +90,12 @@ public sealed class ApplicationDirectorySafetyTests
         using var files = new Scenario();
         var mods = files.Folder("Documents", "Electronic Arts", "The Sims 4", "Mods");
         var tray = files.Folder("Tray");
-        var support = new SettingsSupportService(files.Root, Path.Combine(files.Root, "Documents"), Path.Combine(mods, "Sieve"));
-        StringAssert.Contains(support.GetApplicationLocationWarning(null, null), "Mods");
-        support = new(files.Root, files.Root, Path.Combine(tray, "Sieve"));
-        StringAssert.Contains(support.GetApplicationLocationWarning(null, tray), "Tray");
-        StringAssert.Contains(support.GetApplicationLocationWarning(tray, null), "Mods");
+        var support = new SettingsSupportService(files.Root, Path.Combine(files.Root, "Documents"), mods);
+        StringAssert.Contains(support.GetApplicationLocationWarning(null, null), "单独的文件夹");
+        support = new(files.Root, files.Root, tray);
+        StringAssert.Contains(support.GetApplicationLocationWarning(null, tray), "单独的文件夹");
+        StringAssert.Contains(support.GetApplicationLocationWarning(tray, null), "单独的文件夹");
+        Assert.AreEqual("", new SettingsSupportService(files.Root, files.Root, Path.Combine(tray, "Sieve")).GetApplicationLocationWarning(null, tray));
         support = new(files.Root, files.Root, tray + "-backup");
         Assert.AreEqual("", support.GetApplicationLocationWarning(null, tray));
     }
@@ -104,7 +105,7 @@ public sealed class ApplicationDirectorySafetyTests
     {
         using var files = new Scenario();
         var mods = files.Folder("Mods");
-        var app = files.Folder("Mods", "Sieve");
+        var app = mods;
         var safe = files.Folder("OtherMods");
         files.Store.Save(new(mods, []));
         var support = new SettingsSupportService(files.Root, files.Root, app);
@@ -116,7 +117,7 @@ public sealed class ApplicationDirectorySafetyTests
             await WpfTestHost.LayoutAsync(window);
             var notice = (Border)window.FindName("ApplicationLocationNotice");
             Assert.IsTrue(notice.IsVisible);
-            StringAssert.Contains(((TextBlock)notice.Child).Text, "Mods");
+            StringAssert.Contains(((TextBlock)notice.Child).Text, "单独的文件夹");
             var imageDirectory = Environment.GetEnvironmentVariable("SIMS4_APPLICATION_GUARD_REVIEW_DIR");
             if (!string.IsNullOrEmpty(imageDirectory))
             {
@@ -133,6 +134,8 @@ public sealed class ApplicationDirectorySafetyTests
             await WpfTestHost.LayoutAsync(window);
             Assert.IsTrue(notice.IsVisible);
             model.ChangeDefaultModsRootCommand.Execute(null);
+            model.Sources.Clear();
+            model.ConflictSources.Clear();
             await WpfTestHost.LayoutAsync(window);
             Assert.IsFalse(notice.IsVisible);
             Assert.IsFalse(model.HasApplicationLocationWarning);

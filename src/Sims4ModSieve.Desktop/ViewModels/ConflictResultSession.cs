@@ -184,8 +184,8 @@ public sealed partial class ConflictResultSession
             var category = Classify(issue.Code, packageStage: issue.ReadStage);
             if (issue.Stage is PackageConflictScanIssueStage.SourceValidation or PackageConflictScanIssueStage.Discovery
                 || issue.Code is "entry-metadata-failed" or "source-metadata-failed")
-                ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Detail));
-            else Add(issue.Path, true, null, new(issue.Code, null, issue.Detail, category));
+                ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Detail ?? issue.Message));
+            else Add(issue.Path, true, null, new(issue.Code, null, issue.Detail ?? issue.Message, category));
         }
         foreach (var issue in scripts.Issues)
         {
@@ -193,9 +193,9 @@ public sealed partial class ConflictResultSession
             var category = Classify(issue.Code, scriptStage: issue.Stage);
             if (issue.Stage is ScriptArchiveIssueStage.SourceValidation or ScriptArchiveIssueStage.Discovery
                 || issue.Code is "entry-metadata-failed" or "source-metadata-failed")
-                ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Detail, IsScript: true));
+                ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Detail ?? issue.Message, IsScript: true));
             else Add(issue.Path, issue.EntryName is null, issue.EntryName is null ? null : "script:" + issue.EntryName,
-                new(issue.Code, issue.EntryName, issue.Detail, category));
+                new(issue.Code, issue.EntryName, issue.Detail ?? issue.Message, category));
         }
 
         foreach (var issue in duplicates?.Issues ?? [])

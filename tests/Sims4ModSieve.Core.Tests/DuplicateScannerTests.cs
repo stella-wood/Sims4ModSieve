@@ -7,25 +7,36 @@ namespace Sims4ModSieve.Core.Tests;
 public sealed class DuplicateScannerTests
 {
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task ApplicationDirectoryIsSkippedForNestedAndExplicitSources(bool explicitSource)
+    [DataRow(false, false)]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public async Task MixedProgramDirectoryScansModsAndSkipsOnlyPayload(bool sharedRoot, bool explicitSource)
     {
         using var temp = new TempDirectory();
         var mods = temp.CreateDirectory("Mods");
-        var app = temp.CreateDirectory("Mods", "Sieve");
-        var nested = temp.CreateDirectory("Mods", "Sieve", "nested");
-        var first = temp.WriteFile("Mods/first.package", "same");
-        var sibling = temp.WriteFile("Mods/Sieve-backup/second.package", "same");
-        temp.WriteFile("Mods/Sieve/nested/own.package", "same");
+        var app = sharedRoot ? mods : temp.CreateDirectory("Mods", "Sieve");
+        var nested = Directory.CreateDirectory(Path.Combine(app, "nested")).FullName;
+        var first = Path.Combine(app, "first.package");
+        var second = Path.Combine(nested, "second.package");
+        File.WriteAllText(first, "same");
+        File.WriteAllText(second, "same");
+        var sibling = temp.WriteFile("Mods/Sieve-backup/third.ts4script", "same");
+        foreach (var name in new[] { "Sims4ModSieve.exe", "coreclr.dll", "Sims4ModSieve.runtimeconfig.json", "BUILD-INFO.txt" })
+            File.WriteAllText(Path.Combine(app, name), "same");
+        foreach (var folder in new[] { "Assets", "licenses", "zh-Hans" })
+        {
+            Directory.CreateDirectory(Path.Combine(app, folder));
+            File.WriteAllText(Path.Combine(app, folder, "payload.package"), "same");
+        }
         var sources = new List<ScanSource> { new("mods", mods) };
         if (explicitSource) { sources.Add(new("app", app)); sources.Add(new("nested", nested)); }
         var fileSystem = new PhysicalFileSystemAccess();
         var scanner = new DuplicateScanner(fileSystem, new StableFileHasher(fileSystem), new(), app);
         var report = await scanner.ScanAsync(new(sources));
-        Assert.AreEqual(2, report.DiscoveredFileCount);
-        CollectionAssert.AreEquivalent(new[] { first, sibling }, report.Groups.Single().Files.Select(file => file.Path).ToArray());
-        Assert.IsTrue(report.Issues.Any(issue => issue.Code == "application-directory-skipped"));
+        Assert.AreEqual(3, report.DiscoveredFileCount);
+        CollectionAssert.AreEquivalent(new[] { first, second, sibling }, report.Groups.Single().Files.Select(file => file.Path).ToArray());
+        Assert.AreEqual(0, report.Issues.Count);
     }
 
     [TestMethod]

@@ -9,22 +9,25 @@ namespace Sims4ModSieve.Core.Tests.Conflicts;
 public sealed class PackageConflictScannerTests
 {
     [TestMethod]
-    public async Task ApplicationDirectoryNeverReachesPackageReader()
+    public async Task PackageModsBesideProgramReachReaderButProgramResourcesDoNot()
     {
         using var temp = new TempDirectory();
         var mods = temp.CreateDirectory("Mods");
-        var app = temp.CreateDirectory("Mods", "Sieve");
+        var app = mods;
         var nested = temp.CreateDirectory("Mods", "Sieve", "nested");
         var first = Placeholder(temp, "Mods", "first.package");
         var sibling = Placeholder(temp, "Mods", "Sieve-backup", "second.package");
-        Placeholder(temp, "Mods", "Sieve", "nested", "own.package");
-        var reader = new FakePackageIndexReader().WithIndex("first.package", Hair).WithIndex("second.package", Hair);
+        var third = Placeholder(temp, "Mods", "Sieve", "nested", "third.package");
+        Placeholder(temp, "Mods", "Assets", "own.package");
+        Placeholder(temp, "Mods", "licenses", "own.package");
+        File.WriteAllText(Path.Combine(app, "Sims4ModSieve.dll"), "not a package");
+        var reader = new FakePackageIndexReader().WithIndex("first.package", Hair).WithIndex("second.package", Hair).WithIndex("third.package", Hair);
         var scanner = new PackageConflictScanner(new PhysicalFileSystemAccess(), reader, app);
         var report = await scanner.ScanAsync(new([new("mods", mods), new("app", app), new("nested", nested)]));
-        Assert.AreEqual(2, report.DiscoveredPackageCount);
-        Assert.AreEqual(2, report.AnalyzedPackageCount);
-        CollectionAssert.AreEquivalent(new[] { first, sibling }, report.ResourceInventories.Select(file => file.Path).ToArray());
-        Assert.IsTrue(report.Issues.Any(issue => issue.Code == "application-directory-skipped"));
+        Assert.AreEqual(3, report.DiscoveredPackageCount);
+        Assert.AreEqual(3, report.AnalyzedPackageCount);
+        CollectionAssert.AreEquivalent(new[] { first, sibling, third }, report.ResourceInventories.Select(file => file.Path).ToArray());
+        Assert.AreEqual(0, report.Issues.Count);
     }
 
     private static readonly ResourceKey Hair = new(0x034AEECB, 0x00000000, 0x0000_0000_AAAA_0001);

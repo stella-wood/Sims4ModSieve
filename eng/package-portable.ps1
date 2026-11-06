@@ -40,12 +40,13 @@ $manifest = Get-ChildItem $out -Recurse -File | Where-Object Name -ne 'SHA256SUM
     "$(($_ | Get-FileHash -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"
 }
 $manifest | Set-Content -LiteralPath (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
-Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zip -CompressionLevel Optimal
+Compress-Archive -LiteralPath $out -DestinationPath $zip -CompressionLevel Optimal
 Add-Type -AssemblyName System.IO.Compression
 $archive = [IO.Compression.ZipFile]::OpenRead($zip)
 try {
     $names = @($archive.Entries | Where-Object { $_.Name } | ForEach-Object { $_.FullName.Replace('\', '/') })
-    $files = @(Get-ChildItem $out -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($out, $_.FullName).Replace('\', '/') })
+    $packageName = Split-Path $out -Leaf
+    $files = @(Get-ChildItem $out -Recurse -File | ForEach-Object { "$packageName/" + [IO.Path]::GetRelativePath($out, $_.FullName).Replace('\', '/') })
     if ($names.Count -ne $files.Count -or @($files | Where-Object { $_ -notin $names }).Count) { throw 'ZIP contents do not match publish directory.' }
 } finally { $archive.Dispose() }
 (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() | Set-Content -LiteralPath "$zip.sha256" -Encoding ascii

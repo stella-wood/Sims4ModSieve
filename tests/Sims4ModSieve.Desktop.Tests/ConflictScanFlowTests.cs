@@ -268,7 +268,7 @@ public sealed class ConflictScanFlowTests
         Assert.IsFalse(viewModel.HasConflictMatches);
         Assert.IsTrue(viewModel.HasConflictProblems);
         Assert.IsFalse(viewModel.ShowConflictWarning);
-        Assert.AreEqual("已分析范围未发现冲突", viewModel.ConflictStatus);
+        Assert.AreEqual("扫描完成，部分项目未完成分析", viewModel.ConflictStatus);
         Assert.IsTrue(viewModel.ConflictProblems.Any(row => PathsEqual(row.Path, badPackage)));
     }
 

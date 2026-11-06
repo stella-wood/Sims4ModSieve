@@ -47,14 +47,14 @@ public sealed partial class SettingsSupportService
         return Directory.Exists(candidate) ? candidate : null;
     }
 
-    public string GetApplicationLocationWarning(string? modsRoot, string? trayRoot)
+    public string GetApplicationLocationWarning(string? modsRoot, string? trayRoot, IEnumerable<string>? scanRoots = null)
     {
         var guard = new ApplicationDirectoryGuard(applicationDirectory);
-        foreach (var (kind, root) in new[] { ("Mods", modsRoot), ("Tray", trayRoot),
-            ("Mods", FindDefaultFolder("Mods")), ("Tray", FindDefaultFolder("Tray")) })
+        foreach (var root in new[] { modsRoot, trayRoot, FindDefaultFolder("Mods"), FindDefaultFolder("Tray") }
+            .Concat(scanRoots ?? []))
         {
-            if (root is not null && guard.IsLocatedWithin(root))
-                return $"有隐患 · 程序放在了 {kind} 文件夹中，请关闭后移到别处，避免随游戏文件一起移动或同步。程序目录会跳过扫描并拒绝文件操作。";
+            if (root is not null && guard.IsLocatedAt(root))
+                return "建议把 Sims4ModSieve 放进单独的文件夹，避免与 Mod 混放";
         }
         return string.Empty;
     }
