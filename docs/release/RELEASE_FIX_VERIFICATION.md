@@ -49,16 +49,18 @@
 - 最终打包从仓库以外的当前工作目录调用脚本，成功生成候选包；随后原样普通解决方案锁定还原再次通过，见 `root-package.log`、`root-post-package-restore.log`。当前依赖漏洞查询没有报告直接或传递漏洞，原始 JSON 位于 `artifacts/release/vulnerabilities.json`。
 - 主 agent 独立读取最终 ZIP 全部 507 个清单负载文件，逐项核对 ZIP 内字节、发布目录和 SHA-256 清单，且 ZIP 外部校验和一致；`SixLabors.ImageSharp.dll` 和 `BCnEncoder.NET.ImageSharp.dll` 均已移除。见 `root-package-verification.json`。
 - 最终可执行文件在 `DOTNET_ROOT` 指向不存在目录时成功创建主窗口，加载的 `coreclr.dll` 来自便携目录；真实第二个桌面程序进程退出，首实例保持；正常关闭退出码为 0，现有用户配置文件哈希未变化。见 `root-portable-startup.log`。未触发扫描或文件动作，这仍是开发机冒烟，不能替代干净系统验证。
+- 修复提交后，从干净提交 `7a7e9c4cd82499a5d216a196fa099b646b07b6b2` 重新打包，`BUILD-INFO.txt` 记录 `Dirty: False`，见 `artifacts/release-fixes/postcommit-package.log`。沙箱内还原曾报 NuGet 源不可用的 NU1900；在沙箱外按原脚本还原和打包成功，未关闭漏洞门禁，直接和传递依赖查询没有报告漏洞。随后普通解决方案锁定还原通过，见 `postcommit-post-package-restore.log`。
+- 提交后的 ZIP 再次独立校验全部 507 个负载文件、清单自身与 ZIP 外部校验值，并解压到含中文和空格的新目录。直接启动解压后的程序，自带运行时、真实第二实例退出和正常关闭均通过，现有用户配置文件哈希未变化；见 `postcommit-package-verification.json` 与 `postcommit-package-verification.log`。本次补验没有新增产品测试，也没有重跑完整测试套件；615 通过、4 跳过为上文整合阶段的完整测试结果。
 
 ## 最终本地候选
 
-`artifacts/release/Sims4ModSieve-0.1.0-alpha.1-win-x64.zip`，80,591,223 字节，SHA-256：
+`artifacts/release/Sims4ModSieve-0.1.0-alpha.1-win-x64.zip`，80,591,224 字节，SHA-256：
 
 ```text
-52628d74925e1a8836a9d85eb202bdf92076e0b2d7324d794562e0ace3566136
+ce473fa84f9e3e8a41df8462cb29a9cdb66d6998d96729b1b30026d99af7de49
 ```
 
-包内含使用说明、项目及第三方许可、自带 .NETCore / WindowsDesktop 8.0.33、逐文件清单和 `BUILD-INFO.txt`。该候选包在修复提交前构建，`SourceCommit` 记录基线提交，`Dirty=True`；后续从提交重新构建时会得到新的源码标识与包校验和。原审计报告和本验收记录不随便携包分发。
+包内含使用说明、项目及第三方许可、自带 .NETCore / WindowsDesktop 8.0.33、逐文件清单和 `BUILD-INFO.txt`。当前候选包从修复提交 `7a7e9c4cd82499a5d216a196fa099b646b07b6b2` 构建，`Dirty: False`；它已替换此前未提交工作树构建的候选，不能再使用旧的 ZIP 校验值。原审计报告和本验收记录不随便携包分发。
 
 本轮代码与本机行为验收通过；**发布决定仍为暂缓**，须完成最终 ZIP 在无 SDK、无缓存的干净 Windows 10/11 x64 上的运行验证。新的 GitHub Actions 工作流仅在本地执行了等效步骤，未推送触发远端运行。
 
