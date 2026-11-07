@@ -36,7 +36,7 @@
                 <StackPanel Grid.Column="1" Margin="8,0,12,0">
                     <WrapPanel>
                         <TextBlock MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}" Text="{Binding Partner.File.Name}" FontFamily="/Sims4ModSieve;component/Assets/Fonts/#Source Han Sans CN" FontWeight="Light" FontSize="13" TextWrapping="Wrap" Margin="0,0,8,0" />
-                        <ItemsControl MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}" ItemsSource="{Binding Partner.Relationships}" ItemTemplate="{StaticResource RelationAnnotationTemplate}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
+                        <ItemsControl MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}" ItemsSource="{Binding Partner.Annotations}" ItemTemplate="{StaticResource RelationAnnotationTemplate}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
                         <Button x:Name="CopiesToggle" Style="{StaticResource RelationLinkStyle}" Foreground="#A892C5" Margin="6,0,0,0" Click="CopiesToggle_Click" Visibility="{Binding Partner.HasCopies, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.Name="{Binding Partner.CopiesLabel}">
                             <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding CopiesLabel}" /><Path x:Name="CopyArrow" Data="M2,1 L6,5 L2,9" Stroke="#A892C5" StrokeThickness="1" Width="10" Height="10" Margin="3,0,0,0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5" /></StackPanel>
                         </Button>

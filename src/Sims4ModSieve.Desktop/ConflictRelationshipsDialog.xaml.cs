@@ -14,7 +14,7 @@ public sealed record ConflictRelationshipDisplayRow(ConflictRelationshipRow? Par
     public bool IsCopy => Copy is not null;
     public bool HasCopyLink => CopyLink is not null;
     public string CopiesLabel => Partner?.CopiesLabel ?? string.Empty;
-    public IReadOnlyList<ConflictGroupLink> Links => Partner?.Relationships.Select(item => item.Link).Distinct().ToArray() ?? [];
+    public IReadOnlyList<ConflictGroupLink> Links => Partner?.Relationships.Select(item => item.Link).Distinct().OrderBy(link => link.GroupIndex).ToArray() ?? [];
 }
 
 public partial class ConflictRelationshipsDialog : UserControl

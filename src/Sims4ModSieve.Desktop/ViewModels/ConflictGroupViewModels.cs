@@ -104,6 +104,8 @@ public sealed record ConflictRelationshipRow(ConflictFile File, ConflictPairPrio
     IReadOnlyList<ConflictRelationship> Relationships, IReadOnlyList<ConflictFile> Copies,
     ConflictGroupLink? DuplicateLink)
 {
+    public IReadOnlyList<ConflictRelationship> Annotations => Relationships.GroupBy(item => (item.Label, item.ContainsMain, item.ContainedByMain))
+        .Select(group => group.First() with { Detail = string.Join("\n", group.Select(item => item.Detail).Where(detail => detail.Length > 0).Distinct()) }).ToArray();
     public string CopiesLabel => $"另有{Copies.Count}份副本";
     public bool HasCopies => Copies.Count > 0;
 }

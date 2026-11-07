@@ -252,6 +252,38 @@ public sealed partial class ConflictResultSession
 
     private void RebuildCards(PackageConflictGroupingResult result, CancellationToken token)
     {
+        var representatives = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var packagePaths = groupingInput!.Files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var duplicate in duplicateReport?.Groups ?? [])
+        {
+            var eligible = duplicate.Files.Where(file => packagePaths.Contains(file.Path) && !hashChangedPaths.Contains(file.Path)
+                && MatchesScannedStamp(file, PackageReport, ScriptReport)).ToArray();
+            if (eligible.Length < 2) continue;
+            var keep = new DuplicateSelectionService().Select(eligible).KeepPath;
+            foreach (var file in eligible) representatives[file.Path] = keep;
+        }
+        string Representative(string path) => representatives.GetValueOrDefault(path, path);
+        var packageGroups = result.Groups.GroupBy(group => group.Kind + "/"
+            + (group.BundlePath is null ? "" : Identity(Representative(group.BundlePath).ToUpperInvariant()))
+            + string.Concat(group.Members.Select(member => Representative(member.Path).ToUpperInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(Identity))
+            + string.Concat(group.ResourceKeys.Select(key => key.Tgi).Order(StringComparer.Ordinal).Select(Identity)), StringComparer.Ordinal)
+            .Select(groups =>
+            {
+                var selected = groups.OrderByDescending(group => group.Members.Count(member =>
+                    StringComparer.OrdinalIgnoreCase.Equals(member.Path, Representative(member.Path)))).First();
+                return selected with
+                {
+                    Members = selected.Members.Concat(groups.SelectMany(group => group.Members)).DistinctBy(member => member.Path, StringComparer.OrdinalIgnoreCase).ToArray(),
+                    Relations = groups.SelectMany(group => group.Relations).Distinct().ToArray(),
+                };
+            }).ToArray();
+        result = result with
+        {
+            Groups = packageGroups,
+            GroupsByFile = packageGroups.SelectMany(group => group.Members.Select(member => (member.Path, Group: group)))
+                .GroupBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => (IReadOnlyList<PackageConflictGroup>)group.Select(item => item.Group).ToArray(), StringComparer.OrdinalIgnoreCase),
+        };
         Grouping = result;
         var cards = new List<ConflictCard>();
         foreach (var group in result.Groups)
@@ -272,9 +304,9 @@ public sealed partial class ConflictResultSession
             var explanation = type switch
             {
                 "override" => $"有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同；游戏对每个编号只会使用一份资源",
-                "collection" => $"合集里包含{files.Length - 1}个另外单独放着的文件，"
-                    + $"{group.Members.Count(member => member.ContainedContentIdentical == true)}个已被包含，"
-                    + $"{group.Members.Count(member => member.ContainedContentIdentical == false)}个存在不同。还有{group.BundleUniqueResourceCount}样资源只在合集里有。",
+                "collection" => $"合集里包含{group.Members.Where(member => !member.IsBundle).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个另外单独放着的文件，"
+                    + $"{group.Members.Where(member => member.ContainedContentIdentical == true).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个已被包含，"
+                    + $"{group.Members.Where(member => member.ContainedContentIdentical == false).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个存在不同。还有{group.BundleUniqueResourceCount}样资源只在合集里有。",
                 _ => $"有 {group.ResourceKeys.Count} 项资源编号相同"
                     + (different > 0 ? $"，其中 {different} 项内容不同，可能是同一 mod 的不同版本" : ""),
             };

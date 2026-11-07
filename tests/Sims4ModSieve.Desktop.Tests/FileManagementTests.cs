@@ -43,7 +43,7 @@ public sealed class FileManagementTests
     }
 
     [TestMethod]
-    public void IgnoredNonRepresentativeCopyReturnsInEveryOriginalCard()
+    public void IgnoredNonRepresentativeCopyAppearsInDuplicateCardWithoutUnfoldingRelations()
     {
         var session = V2([Resource(1, (A, "same"), (B, "same"), (C, "other"))], [(A, 1), (B, 1), (C, 1)], Duplicates(A, B));
         foreach (var card in session.Cards) session.ToggleExpanded(card.Key);
@@ -52,8 +52,13 @@ public sealed class FileManagementTests
         Assert.IsFalse(Rows(session).Any(row => row.File?.Path == B));
         var shown = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: true);
         var copies = shown.Where(row => row.File?.Path == B).ToArray();
-        Assert.AreEqual(2, copies.Length);
+        Assert.AreEqual(1, copies.Length);
+        Assert.AreEqual(session.Cards.Single(card => card.Duplicate is not null).Key, copies.Single().OwnerKey);
         Assert.IsTrue(copies.All(row => row.IsIgnored));
+        var relation = session.Cards.Single(card => card.Package is not null);
+        var representatives = shown.Where(row => row.OwnerKey == relation.Key && row.File is not null).ToArray();
+        CollectionAssert.AreEquivalent(new[] { A, C }, representatives.Select(row => row.File!.Path).ToArray());
+        Assert.AreEqual(1, representatives.Single(row => row.File!.Path == A).CopyCount);
         Assert.AreEqual(copies.Length, copies.Select(row => row.Key).Distinct().Count());
         CollectionAssert.AreEqual(originals, session.Cards.Select(card => (card.Key, card.GroupIndex)).ToArray());
         session.SetIgnoredFiles([]);
