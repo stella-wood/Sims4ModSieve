@@ -163,8 +163,8 @@ public sealed class ConflictScanFlowTests
         Assert.AreEqual(1, viewModel.ConflictRows.Count(row => row.Kind == ConflictRowKind.Module));
         viewModel.SelectConflictFilterCommand.Execute("same");
         await viewModel.ConflictRowsRefreshTask;
-        Assert.AreEqual(1, viewModel.VisibleConflictParentCount);
-        Assert.AreEqual(1, viewModel.ConflictRows.Count(row => row.Kind == ConflictRowKind.Module));
+        Assert.AreEqual(0, viewModel.VisibleConflictParentCount);
+        Assert.AreEqual(0, viewModel.ConflictRows.Count(row => row.Kind == ConflictRowKind.Module));
         Assert.IsFalse(viewModel.ShowConflictWarning);
     }
 

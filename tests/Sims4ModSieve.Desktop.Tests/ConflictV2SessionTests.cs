@@ -47,7 +47,7 @@ public sealed class ConflictV2SessionTests
     [DataRow(false, false)]
     [DataRow(true, false)]
     [DataRow(true, true)]
-    public Task ScriptVersionsKeepFilesTogetherAndExplainFoldedCopies(bool foldCopies, bool ignoreCopies) => WpfTestHost.RunAsync(async () =>
+    public Task ScriptCopiesStayFoldedAndModuleVersionsRemainInDetails(bool foldCopies, bool ignoreCopies) => WpfTestHost.RunAsync(async () =>
     {
         var paths = Enumerable.Range(0, 8).Select(index => $@"C:\Mods\script{index}.ts4script").ToArray();
         var report = Duplicates(paths.Where((_, index) => index % 2 == 0).ToArray());
@@ -55,22 +55,20 @@ public sealed class ConflictV2SessionTests
             Duplicates(paths.Where((_, index) => index % 2 == 1).ToArray()).Groups.Single() with { Sha256 = "SECOND-HASH" }] };
         var session = V2([], [], foldCopies ? report : null,
             Scripts([Collision("kit_diff.common", paths.Select((path, index) => (path, (string?)(index % 2 == 0 ? "a" : "b"))).ToArray())]));
-        var card = session.Cards.Single(card => card.Module is not null);
+        var card = session.Cards.Single(card => card.Modules is not null);
         session.ToggleExpanded(card.Key);
         if (ignoreCopies) session.SetIgnoredFiles([paths[2], paths[1]]);
         foreach (var showIgnored in new[] { false, true })
         {
             var rows = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: showIgnored);
-            var segment = rows.Where(row => row.OwnerKey == card.Key && row.Kind is ConflictRowKind.Content or ConflictRowKind.File).ToArray();
-            Assert.AreEqual("模块版本 1 · 4 个文件" + (foldCopies ? " (含 3 份重复)" : "") + (ignoreCopies ? " · 1 已忽略" : ""), segment[0].Title);
-            var second = Array.FindIndex(segment, row => row.Kind == ConflictRowKind.Content && row.Title.StartsWith("模块版本 2", StringComparison.Ordinal));
-            Assert.IsTrue(second > 0);
-            Assert.AreEqual("模块版本 2 · 4 个文件" + (foldCopies ? " (含 3 份重复)" : "") + (ignoreCopies ? " · 1 已忽略" : ""), segment[second].Title);
-            CollectionAssert.AreEqual((foldCopies ? new[] { paths[0] } : paths.Where((_, index) => index % 2 == 0)).ToArray(),
-                segment.Take(second).Where(row => row.File is not null).Select(row => row.File!.Path).ToArray());
-            CollectionAssert.AreEqual((foldCopies ? new[] { paths[ignoreCopies ? 3 : 1] } : paths.Where((_, index) => index % 2 == 1)).ToArray(),
-                segment.Skip(second).Where(row => row.File is not null).Select(row => row.File!.Path).ToArray());
-            Assert.IsTrue(segment.Where(row => row.File is not null).All(row => row.CopyCount == (foldCopies ? 3 : 0)));
+            var files = rows.Where(row => row.OwnerKey == card.Key && row.File is not null).ToArray();
+            Assert.IsFalse(rows.Any(row => row.OwnerKey == card.Key && row.Kind == ConflictRowKind.Content));
+            CollectionAssert.AreEqual((foldCopies ? new[] { paths[0], paths[ignoreCopies ? 3 : 1] } : paths).ToArray(), files.Select(row => row.File!.Path).ToArray());
+            Assert.IsTrue(files.All(row => row.CopyCount == (foldCopies ? 3 : 0)));
+            var entry = session.TechnicalEntries(card).Single();
+            Assert.AreEqual("内容不同", entry.Conclusion);
+            Assert.AreEqual(8, entry.Cells.Count);
+
         }
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
@@ -431,8 +429,8 @@ public sealed class ConflictV2SessionTests
             Scripts([Collision("good", (first, "a"), (second, "b")), Collision("bad", (first, null), (second, "b"))]));
         Assert.IsTrue(session.Cards.Single(card => card.Package is not null).Files.Any(file => file.Path == C));
         Assert.AreEqual(ConflictProblemCategory.Access, session.Problems.Single(problem => problem.Path == C).Reasons.Single().Category);
-        Assert.IsTrue(session.Cards.Any(card => card.Module?.ModuleName == "good" && card.Files.Any(file => file.Path == first)));
-        Assert.IsTrue(session.Cards.Any(card => card.Module?.ModuleName == "bad"));
+        Assert.IsTrue(session.Cards.Any(card => card.Modules?.Any(module => module.ModuleName == "good") == true && card.Files.Any(file => file.Path == first)));
+        Assert.IsTrue(session.Cards.Any(card => card.Modules?.Any(module => module.ModuleName == "bad") == true));
         var changed = report with { Issues = [new("file-changed-during-hash", ScanIssueStage.Hashing, first, "changed")] };
         var changedSession = V2([], [], changed, Scripts([Collision("good", (first, "a"), (second, "b"), (C + ".ts4script", "c"))]));
         Assert.IsFalse(changedSession.Cards.SelectMany(card => card.Files).Any(file => file.Path == first));
@@ -788,7 +786,7 @@ public sealed class ConflictV2SessionTests
         session.ApplyDeletedPaths([A]);
         var card = session.Cards.Single();
         Assert.AreEqual(original.Key, card.Key);
-        CollectionAssert.AreEquivalent(new[] { B, C }, card.Module!.Occurrences.Select(item => item.ArchivePath).ToArray());
+        CollectionAssert.AreEquivalent(new[] { B, C }, card.Modules!.SelectMany(module => module.Occurrences).Select(item => item.ArchivePath).ToArray());
         var entry = session.TechnicalEntries(card).Single();
         Assert.AreEqual(2, entry.Cells.Count);
         Assert.IsFalse(entry.CopyText.Contains(A, StringComparison.OrdinalIgnoreCase));

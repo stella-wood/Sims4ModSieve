@@ -375,7 +375,7 @@
             <StackPanel Margin="26,16,0,8" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
                 <TextBlock x:Name="IdentifierLabel" Text="TGI" />
                 <TextBlock Text="{Binding TechnicalEntry.Identifier}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
-                <TextBlock Margin="0,6,0,18"><Run Text="种类  " /><Run Text="{Binding TechnicalEntry.TypeName, Mode=OneWay}" /></TextBlock>
+                <TextBlock Margin="0,6,0,18"><Run Text="种类  " /><Run Text="{Binding TechnicalEntry.TypeLabel, Mode=OneWay}" /></TextBlock>
                 <ItemsControl ItemsSource="{Binding TechnicalEntry.RelatedGroups}" ItemTemplate="{StaticResource ConflictTechnicalRelatedLinkTemplate}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions><TextBlock Text="文件" /><TextBlock Grid.Column="1" Text="资源版本" TextAlignment="Center" /></Grid>
             </StackPanel>
@@ -599,12 +599,13 @@
                                     </Grid>
                                     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />
                                     <Grid x:Name="ConflictTypeChoices">
-                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="72" /><ColumnDefinition Width="Auto" MinWidth="72" /><ColumnDefinition Width="Auto" SharedSizeGroup="ConflictFilterLastColumn" /></Grid.ColumnDefinitions>
                                         <CheckBox Content="全部" IsChecked="{Binding IncludeAllConflictTypes}" Margin="0,4,0,4" HorizontalAlignment="Left" AutomationProperties.Name="全部类型" />
                                         <CheckBox Grid.Column="1" Content="资源覆盖冲突" IsChecked="{Binding IncludeConflictOverrides}" Margin="0,4,0,4" HorizontalAlignment="Left" />
-                                        <CheckBox Grid.Column="2" Content="同名脚本" IsChecked="{Binding IncludeConflictScripts}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Column="2" Content="脚本冲突" IsChecked="{Binding IncludeConflictScriptConflicts}" Margin="0,4,0,4" HorizontalAlignment="Left" />
                                         <CheckBox Grid.Row="1" Content="合集包含" IsChecked="{Binding IncludeConflictCollections}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="1" Content="疑似同一 mod" IsChecked="{Binding IncludeConflictSuspected}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="2" Content="重复文件" IsChecked="{Binding IncludeConflictDuplicates}" Margin="0,4,0,4" />
+                                        <CheckBox Grid.Row="2" Content="重复文件（脚本）" IsChecked="{Binding IncludeConflictScriptDuplicates}" Margin="0,4,0,4" />
                                     </Grid>
                                     <Border x:Name="ConflictIgnoredSeparator" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />
                                     <CheckBox Content="显示已忽略" IsChecked="{Binding ShowIgnoredConflicts}" Margin="0,4,0,4" />

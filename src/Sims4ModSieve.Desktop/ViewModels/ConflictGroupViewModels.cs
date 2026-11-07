@@ -21,7 +21,7 @@ public sealed record ConflictFile(string Path, FileStamp? Stamp)
 
 public sealed record ConflictCard(string Key, string Type, string Title, ConflictPairPriority Priority,
     IReadOnlyList<ConflictFile> Files, string Explanation,
-    PackageConflictGroup? Package = null, ScriptModuleCollision? Module = null, DuplicateGroup? Duplicate = null)
+    PackageConflictGroup? Package = null, IReadOnlyList<ScriptModuleCollision>? Modules = null, DuplicateGroup? Duplicate = null)
 {
     public int GroupIndex { get; init; }
     public bool HasRemovedFiles { get; init; }
@@ -39,12 +39,14 @@ public sealed record ConflictTechnicalCell(string FileName, string Version, stri
 }
 public sealed record ConflictTechnicalEntry(string Identifier, string TypeName, IReadOnlyList<ConflictTechnicalCell> Cells)
 {
+    public string Conclusion { get; init; } = "";
+    public string TypeLabel => Conclusion.Length > 0 ? TypeName + " · " + Conclusion : TypeName;
     public bool HasDifferentVersions { get; init; }
     public bool HasIdenticalVersions { get; init; }
     public IReadOnlyList<ConflictGroupLink> RelatedGroups { get; init; } = [];
     public string TableIdentifier => Identifier.Count(character => character == ':') == 2
         ? Identifier.Insert(Identifier.LastIndexOf(':') + 1, "\n") : Identifier;
-    public string CopyText => Identifier + "\t" + TypeName + "\n\n" + string.Join("\n\n", Cells.Select(cell =>
+    public string CopyText => Identifier + "\t" + TypeLabel + "\n\n" + string.Join("\n\n", Cells.Select(cell =>
         cell.FileName + "\t" + cell.Version + "\t" + cell.Evidence));
 }
 

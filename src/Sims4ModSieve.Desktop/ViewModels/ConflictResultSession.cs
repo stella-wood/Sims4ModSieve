@@ -247,7 +247,7 @@ public sealed partial class ConflictResultSession
     {
         var rows = new List<ConflictResultRow>();
         var includeUngroupedProblems = types is null
-            || new[] { "override", "collection", "suspected", "duplicates", "scripts" }.All(types.Contains);
+            || new[] { "override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate" }.All(types.Contains);
         var cards = new List<(ConflictPairPriority Priority, string Key, bool Included, Action Build)>();
         var currentOwnerKey = string.Empty;
         var ignoredProblemKeys = Problems.Where(problem => IsFileIgnored(problem.Path))
@@ -275,7 +275,7 @@ public sealed partial class ConflictResultSession
         void Card(ConflictPairPriority priority, string key, bool included, Action build) => cards.Add((priority, key, included, build));
 
         AddGroupCards(cards, Add, view, expanded, showIgnored, types, cancellationToken);
-        var moduleGroups = Scripts.SelectMany(pair => pair.Modules).GroupBy(match => match.ModuleName, StringComparer.Ordinal).ToArray();
+        var moduleGroups = Cards.SelectMany(card => card.Modules ?? []).GroupBy(module => module.ModuleName, StringComparer.Ordinal).ToArray();
         // 已出现在资源／模块卡里的失败条目，不再复制为未完成文件卡；未碰撞的失败仍保留。
         var represented = new Dictionary<string, HashSet<(string Entry, string Code)>>(StringComparer.OrdinalIgnoreCase);
         void Represent(string path, string entry, string code)
@@ -284,7 +284,7 @@ public sealed partial class ConflictResultSession
             entries.Add((entry, code));
         }
         foreach (var matches in moduleGroups)
-            foreach (var occurrence in matches.First().Collision.Uncompared) Represent(occurrence.ArchivePath, occurrence.EntryName, occurrence.Issue?.Code ?? "script-read-unknown");
+            foreach (var occurrence in matches.First().Uncompared) Represent(occurrence.ArchivePath, occurrence.EntryName, occurrence.Issue?.Code ?? "script-read-unknown");
         foreach (var problem in Problems)
         {
             cancellationToken.ThrowIfCancellationRequested();

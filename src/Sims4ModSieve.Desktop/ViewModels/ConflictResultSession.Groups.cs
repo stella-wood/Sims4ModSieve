@@ -8,6 +8,26 @@ namespace Sims4ModSieve.Desktop.ViewModels;
 
 public sealed partial class ConflictResultSession
 {
+    private static string ScriptGroupIdentity(string topLevelName, IEnumerable<string> paths) => topLevelName + "/"
+        + string.Concat(paths.Select(path => path.ToUpperInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(Identity));
+
+    private static ConflictPairPriority ScriptPriority(IReadOnlyList<ScriptModuleCollision> modules) =>
+        modules.Any(module => module.HasConfirmedDifference) ? ConflictPairPriority.NeedsReview
+            : modules.Any(module => !module.IsComplete || module.ContentGroups.Count != 1) ? ConflictPairPriority.Incomplete
+            : ConflictPairPriority.CanOrganize;
+
+    private static string ScriptExplanation(IReadOnlyList<ScriptModuleCollision> modules)
+    {
+        var different = modules.Count(module => module.HasConfirmedDifference);
+        var incomplete = modules.Count(module => !module.IsComplete || module.ContentGroups.Count == 0);
+        var text = modules.Count == 1
+            ? $"都带了 {modules[0].ModuleName}，" + (different > 0 ? $"内容有 {modules[0].ContentGroups.Count} 种" : incomplete > 0 ? "有 1 个模块没比完" : "内容相同")
+            : $"都带了 {modules[0].TopLevelName}，共 {modules.Count} 个模块，"
+                + (different > 0 ? $"其中 {different} 个内容不同" : incomplete > 0 ? $"其中 {incomplete} 个没比完" : "内容都相同");
+        if (different > 0 && incomplete > 0) text += $"，有 {incomplete} 个模块没比完";
+        if (different > 0) text += modules.Count == 1 ? "。游戏只会加载其中一份" : "。游戏对同名模块只会加载一份";
+        return text;
+    }
     private PackageConflictGroupingInput? groupingInput;
     private DuplicateReport? duplicateReport;
     private IReadOnlySet<string> hashChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -186,20 +206,40 @@ public sealed partial class ConflictResultSession
                     : (KeepPath: copies[0].Path, DeletePaths: (IReadOnlyList<string>)Array.Empty<string>());
                 duplicate = duplicate with { Files = copies, SuggestedKeepPath = selection.KeepPath, SuggestedDeletePaths = selection.DeletePaths };
             }
-            var module = card.Module is { } originalModule ? originalModule with
+            var modules = card.Modules?.Select(originalModule => originalModule with
             {
                 ContentGroups = originalModule.ContentGroups.Select(group => group with
                 {
                     Occurrences = group.Occurrences.Where(item => !removedPaths.Contains(item.ArchivePath)).ToArray(),
                 }).Where(group => group.Occurrences.Count > 0).ToArray(),
                 Uncompared = originalModule.Uncompared.Where(item => !removedPaths.Contains(item.ArchivePath)).ToArray(),
-            } : null;
+            }).ToArray();
             return card with
             {
-                Files = files, Package = package, Duplicate = duplicate, Module = module, HasRemovedFiles = true,
+                Files = files, Package = package, Duplicate = duplicate, Modules = modules, HasRemovedFiles = true,
+                Priority = modules is null ? card.Priority : ScriptPriority(modules),
+                Type = modules is null ? card.Type : ScriptPriority(modules) == ConflictPairPriority.CanOrganize ? "script-duplicate" : "script-conflict",
+                Title = modules is null ? card.Title : ScriptPriority(modules) == ConflictPairPriority.CanOrganize ? "重复文件（脚本）" : "脚本冲突",
                 Explanation = $"已移除 {card.Files.Count - files.Length} 个文件，剩余 {files.Length} 个文件",
             };
         }).Where(card => card.Files.Count > 0).ToArray();
+        Cards = Cards.Where(card => card.Modules is null).Concat(Cards.Where(card => card.Modules is not null)
+            .GroupBy(card => ScriptGroupIdentity(card.Modules![0].TopLevelName, card.Files.Select(file => file.Path)), StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var first = group.OrderBy(card => ignoredGroups.Contains(card.Key)).ThenBy(card => card.GroupIndex).First();
+                if (group.Count() == 1) return first;
+                var modules = group.SelectMany(card => card.Modules!).DistinctBy(module => module.ModuleName, StringComparer.Ordinal)
+                    .OrderBy(module => module.ModuleName, StringComparer.Ordinal).ToArray();
+                var priority = ScriptPriority(modules);
+                return first with
+                {
+                    Modules = modules, Priority = priority, HasRemovedFiles = true,
+                    Type = priority == ConflictPairPriority.CanOrganize ? "script-duplicate" : "script-conflict",
+                    Title = priority == ConflictPairPriority.CanOrganize ? "重复文件（脚本）" : "脚本冲突",
+                    Explanation = group.First(card => card.HasRemovedFiles).Explanation,
+                };
+            })).OrderBy(card => card.GroupIndex).ToArray();
         var groups = Cards.Where(card => card.Package is not null).Select(card => card.Package!).ToArray();
         Grouping = rebuilt with
         {
@@ -241,23 +281,29 @@ public sealed partial class ConflictResultSession
             cards.Add(new(key, type, title, type == "override" ? ConflictPairPriority.NeedsReview : ConflictPairPriority.CanOrganize,
                 files, explanation, Package: group));
         }
-        var modules = Scripts.SelectMany(pair => pair.Modules).GroupBy(match => match.ModuleName, StringComparer.Ordinal);
-        foreach (var matches in modules)
+        var modules = (ScriptReport?.Collisions ?? [])
+            .Select(module => module with
+            {
+                ContentGroups = module.ContentGroups.Select(group => group with
+                {
+                    Occurrences = group.Occurrences.Where(item => !removedPaths.Contains(item.ArchivePath)
+                        && !hashChangedPaths.Contains(item.ArchivePath)).ToArray(),
+                }).Where(group => group.Occurrences.Count > 0).ToArray(),
+                Uncompared = module.Uncompared.Where(item => !removedPaths.Contains(item.ArchivePath)
+                    && !hashChangedPaths.Contains(item.ArchivePath)).ToArray(),
+            }).Where(module => module.ArchiveCount >= 2);
+        foreach (var group in modules.GroupBy(module => ScriptGroupIdentity(module.TopLevelName,
+            module.Occurrences.Select(item => item.ArchivePath)), StringComparer.Ordinal))
         {
             token.ThrowIfCancellationRequested();
-            var collision = matches.First().Collision;
-            var files = collision.Occurrences.Where(item => !removedPaths.Contains(item.ArchivePath) && !hashChangedPaths.Contains(item.ArchivePath))
-                .DistinctBy(item => item.ArchivePath, StringComparer.OrdinalIgnoreCase).Select(item => new ConflictFile(item.ArchivePath, item.ArchiveStamp)).ToArray();
-            if (files.Length < 2) continue;
-            var pairs = Scripts.Where(pair => files.Any(file => StringComparer.OrdinalIgnoreCase.Equals(file.Path, pair.FirstPath))
-                && files.Any(file => StringComparer.OrdinalIgnoreCase.Equals(file.Path, pair.SecondPath)))
-                .SelectMany(pair => pair.Modules).Where(match => match.ModuleName == collision.ModuleName).ToArray();
-            if (pairs.Length == 0) continue;
-            var priority = pairs.Min(match => match.Priority);
-            cards.Add(new("module" + Identity(collision.ModuleName), "scripts", collision.ModuleName, priority, files,
-                priority == ConflictPairPriority.NeedsReview ? $"带有同名脚本，模块内容有 {collision.ContentGroups.Count} 个版本；游戏只会加载其中一份"
-                    : priority == ConflictPairPriority.CanOrganize ? "带有同名脚本，模块内容相同" : "带有同名脚本，部分模块未完成比较，暂时无法确认全部内容是否相同",
-                Module: collision));
+            var collisions = group.OrderBy(module => module.ModuleName, StringComparer.Ordinal).ToArray();
+            var files = collisions[0].Occurrences.DistinctBy(item => item.ArchivePath, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(item => item.ArchivePath, StringComparer.OrdinalIgnoreCase)
+                .Select(item => new ConflictFile(item.ArchivePath, item.ArchiveStamp)).ToArray();
+            var priority = ScriptPriority(collisions);
+            cards.Add(new("script/" + Identity(group.Key), priority == ConflictPairPriority.CanOrganize ? "script-duplicate" : "script-conflict",
+                priority == ConflictPairPriority.CanOrganize ? "重复文件（脚本）" : "脚本冲突", priority, files,
+                ScriptExplanation(collisions), Modules: collisions));
         }
         foreach (var source in duplicateReport?.Groups ?? [])
         {
@@ -296,7 +342,7 @@ public sealed partial class ConflictResultSession
             var ignored = ignoredGroups.Contains(card.Key);
             var included = (showIgnored || !ignored) && (types is null || types.Contains(card.Type))
                 && (view == "all" || view == "resources" && card.Package is not null
-                    || view == "scripts" && card.Module is not null || view == "duplicates" && card.Duplicate is not null);
+                    || view == "scripts" && card.Modules is not null || view == "duplicates" && card.Duplicate is not null);
             cards.Add((card.Priority, card.Key, included, () =>
             {
                 var ignoredCount = card.Files.Count(file => IsFileIgnored(file.Path));
@@ -308,32 +354,21 @@ public sealed partial class ConflictResultSession
                 if (copyCount > 0) counts.Add($"{copyCount} 份重复");
                 if (ignoredCount > 0) counts.Add($"{ignoredCount} 已忽略");
                 var summary = $"这 {card.Files.Count} 份文件" + (counts.Count > 0 ? " (含 " + string.Join("、", counts) + ")" : "");
-                var kind = card.Package is not null ? ConflictRowKind.Resource : card.Module is not null ? ConflictRowKind.Module : ConflictRowKind.Duplicate;
+                var kind = card.Package is not null ? ConflictRowKind.Resource : card.Modules is not null ? ConflictRowKind.Module : ConflictRowKind.Duplicate;
                 if (!add(new(card.Key, kind, 0, card.Title, Priority: card.Priority, IsExpandable: true,
                     FileCountText: $"{card.Files.Count} 文件" + (ignoredCount > 0 ? $" · {ignoredCount} 已忽略" : ""), IsIgnored: ignored, OwnerKey: card.Key))) return;
-                var separator = !card.HasRemovedFiles && card.Type is "override" or "suspected" or "scripts" ? counts.Count > 0 ? " " : "" : "；";
+                var separator = card.Modules is not null || !card.HasRemovedFiles && card.Package?.Kind is PackageConflictRelationKind.OverrideConflict or PackageConflictRelationKind.SuspectedSameMod ? counts.Count > 0 ? " " : "" : "；";
                 add(new(card.Key + "/explanation", ConflictRowKind.Explanation, 1,
-                    summary + separator + (card.Duplicate is null || card.HasRemovedFiles ? card.Explanation : $"共有 {DuplicateGroupCount} 组重复文件，"),
+                    summary + separator + (card.Modules is not null ? ScriptExplanation(card.Modules) + (card.HasRemovedFiles ? "。" + card.Explanation : "")
+                        : card.Duplicate is null || card.HasRemovedFiles ? card.Explanation : $"共有 {DuplicateGroupCount} 组重复文件，"),
                     OwnerKey: card.Key, IsIgnored: ignored, DuplicateLink: card.Duplicate is null || card.HasRemovedFiles ? null : Link(card)));
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var contentLabels = new HashSet<string>(StringComparer.Ordinal);
                 var activeFiles = card.Files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var annotationPairs = card.Package is null ? null : card.HasRemovedFiles && card.Package.Kind != PackageConflictRelationKind.OverrideConflict
                     ? groupingInput!.Pairs.Where(pair => activeFiles.Contains(pair.FirstPath) && activeFiles.Contains(pair.SecondPath)).ToArray()
                     : card.Package.Relations.Select(relation => relation.Pair).ToArray();
-                var moduleContentCounts = card.Module?.ContentGroups.ToDictionary(group => group.Sha256,
-                    group => group.Occurrences.Where(item => activeFiles.Contains(item.ArchivePath))
-                        .Select(item => item.ArchivePath).Distinct(StringComparer.OrdinalIgnoreCase).Count(), StringComparer.Ordinal);
-                IEnumerable<ConflictFile> displayFiles = card.Files;
-                if (card.Module is { ContentGroups.Count: > 1 } script)
-                    displayFiles = card.Files.OrderBy(file =>
-                    {
-                        var index = script.ContentGroups.ToList().FindIndex(group => group.Occurrences.Any(item =>
-                            StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path)));
-                        return index < 0 ? int.MaxValue : index;
-                    }).ThenBy(file => file.Path, StringComparer.OrdinalIgnoreCase);
                 var visibleIndex = 0;
-                foreach (var file in displayFiles)
+                foreach (var file in card.Files)
                 {
                     token.ThrowIfCancellationRequested();
                     if (!seen.Add(file.Path)) continue;
@@ -348,26 +383,6 @@ public sealed partial class ConflictResultSession
                     var key = FileKey(card.Key, representative.Path);
                     var fileIgnored = IsFileIgnored(representative.Path);
                     if (!showIgnored && fileIgnored) continue;
-                    if (card.Module is { ContentGroups.Count: > 1 } module)
-                    {
-                        var contentGroup = module.ContentGroups.FirstOrDefault(group => group.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, representative.Path)));
-                        if (contentGroup is not null && contentLabels.Add(contentGroup.Sha256))
-                        {
-                            var versionPaths = contentGroup.Occurrences.Where(item => activeFiles.Contains(item.ArchivePath))
-                                .Select(item => item.ArchivePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                            var folded = Cards.Where(other => other.Duplicate is not null)
-                                .Sum(other => Math.Max(0, other.Files.Count(copy => versionPaths.Contains(copy.Path)) - 1));
-                            var version = module.ContentGroups.ToList().IndexOf(contentGroup) + 1;
-                            var ignoredVersionCount = versionPaths.Count(IsFileIgnored);
-                            add(new(card.Key + "/content" + contentLabels.Count, ConflictRowKind.Content, 1,
-                                $"模块版本 {version} · {moduleContentCounts![contentGroup.Sha256]} 个文件"
-                                    + (folded > 0 ? $" (含 {folded} 份重复)" : "")
-                                    + (ignoredVersionCount > 0 ? $" · {ignoredVersionCount} 已忽略" : ""),
-                                OwnerKey: card.Key, IsIgnored: ignored));
-                        }
-                        else if (contentGroup is null && contentLabels.Add("/uncompared"))
-                            add(new(card.Key + "/uncompared", ConflictRowKind.Content, 1, "模块未分析", OwnerKey: card.Key, IsIgnored: ignored));
-                    }
                     var member = card.Package?.Members.First(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, representative.Path));
                     var sharedResources = annotationPairs?.Where(pair =>
                             StringComparer.OrdinalIgnoreCase.Equals(pair.FirstPath, representative.Path)
@@ -444,7 +459,7 @@ public sealed partial class ConflictResultSession
                     {
                         token.ThrowIfCancellationRequested();
                         add(new(technicalKey + "/value" + index++, ConflictRowKind.Technical, 1, entry.Identifier,
-                            OwnerKey: card.Key, TechnicalEntry: entry with { Cells = [new("", entry.TypeName, "", table) { IsType = true },
+                            OwnerKey: card.Key, TechnicalEntry: entry with { Cells = [new("", entry.TypeLabel, "", table) { IsType = true },
                                 .. entry.Cells.Select(cell => cell with { FileName = "", Table = table }),
                                 .. table.HasRelatedGroups ? new ConflictTechnicalCell[] { new("", "", "", table) { IsRelated = true, RelatedGroups = entry.RelatedGroups } } : []] },
                             IsIgnored: ignored, TechnicalTable: table));
@@ -504,8 +519,8 @@ public sealed partial class ConflictResultSession
                     { HasDifferentVersions = versions.Count > 1, HasIdenticalVersions = identical };
             }).ToArray();
         }
-        if (card.Module is { } module)
-            return [new(module.ModuleName, "脚本模块", card.Files.Select(file =>
+        if (card.Modules is { } modules)
+            return modules.Select(module => new ConflictTechnicalEntry(module.ModuleName, "脚本模块", card.Files.Select(file =>
             {
                 var index = module.ContentGroups.ToList().FindIndex(group => group.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path)));
                 var occurrence = module.Occurrences.First(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path));
@@ -514,7 +529,9 @@ public sealed partial class ConflictResultSession
                 if (occurrence.IsSuccess) evidence += $"\nSHA256 {occurrence.Sha256} · 模块解压大小 {occurrence.ContentLength} 字节";
                 if (occurrence.Issue is { } issue) evidence += $"\n{issue.Code} · {issue.Stage} · {issue.Detail ?? issue.Message}";
                 return new ConflictTechnicalCell(file.Name, version, evidence);
-            }).ToArray())];
+            }).ToArray())
+            { Conclusion = module.Verdict switch { ScriptModuleVerdict.Different => "内容不同", ScriptModuleVerdict.Identical => "内容相同", _ => "未分析" },
+                HasDifferentVersions = module.HasConfirmedDifference, HasIdenticalVersions = module.Verdict == ScriptModuleVerdict.Identical }).ToArray();
         return [];
     }
 
@@ -549,12 +566,10 @@ public sealed partial class ConflictResultSession
                     ContainsMain: StringComparer.OrdinalIgnoreCase.Equals(relation.ContainedPath, path),
                     ContainedByMain: StringComparer.OrdinalIgnoreCase.Equals(relation.BundlePath, path)));
             }
-        foreach (var card in own.Where(card => card.Module is not null))
-            foreach (var pair in Scripts.Where(pair => !removedPaths.Contains(pair.FirstPath) && !removedPaths.Contains(pair.SecondPath)
-                && (StringComparer.OrdinalIgnoreCase.Equals(pair.FirstPath, path) || StringComparer.OrdinalIgnoreCase.Equals(pair.SecondPath, path))
-                && pair.Modules.Any(match => match.ModuleName == card.Module!.ModuleName)))
-                Add(StringComparer.OrdinalIgnoreCase.Equals(pair.FirstPath, path) ? pair.SecondPath : pair.FirstPath,
-                    new("同名脚本", card.Module!.ModuleName, Link(card)));
+        foreach (var card in own.Where(card => card.Modules is not null))
+            foreach (var partner in card.Files.Where(file => !StringComparer.OrdinalIgnoreCase.Equals(file.Path, path)))
+                Add(partner.Path,
+                    new(card.Title, string.Join("、", card.Modules!.Select(module => module.ModuleName)), Link(card)));
         var duplicate = DuplicateFor(path);
         foreach (var file in duplicate?.Files ?? []) related.Remove(file.Path);
         var rows = new List<ConflictRelationshipRow>();

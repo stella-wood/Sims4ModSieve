@@ -25,7 +25,7 @@ public sealed partial class MainWindowViewModel
     private string conflictSection = "overview";
     private string conflictView = "all";
     private string conflictFilter = "all";
-    private readonly HashSet<string> conflictTypes = new(["override", "collection", "suspected", "duplicates", "scripts"], StringComparer.Ordinal);
+    private readonly HashSet<string> conflictTypes = new(["override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate"], StringComparer.Ordinal);
     private bool showIgnoredConflicts;
     public bool ShowIgnoredConflicts { get => showIgnoredConflicts; set { showIgnoredConflicts = value; OnPropertyChanged(); RefreshConflictFilterChoices(); if (IsConflictComplete) QueueConflictRowsRefresh(); } }
     public bool IncludeConflictOverrides { get => conflictTypes.Contains("override"); set => SetConflictType("override", value); }
@@ -72,7 +72,7 @@ public sealed partial class MainWindowViewModel
     public string ConflictView => conflictView;
     public string ConflictFilter => conflictFilter;
     public bool IncludeAllConflictStates { get => conflictFilter == "all"; set => SelectConflictFilter(value ? "all" : string.Empty); }
-    public bool IncludeAllConflictTypes { get => conflictView == "all" && conflictTypes.Count == 5; set { conflictTypes.Clear(); if (value) conflictTypes.UnionWith(["override", "collection", "suspected", "duplicates", "scripts"]); SelectConflictView(value ? "all" : "none"); } }
+    public bool IncludeAllConflictTypes { get => conflictView == "all" && conflictTypes.Count == 6; set { conflictTypes.Clear(); if (value) conflictTypes.UnionWith(["override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate"]); SelectConflictView(value ? "all" : "none"); } }
     public bool IncludeConflictResources
     {
         get => (conflictView is "all" or "resources") && conflictTypes.Any(type => type is "override" or "collection" or "suspected" or "duplicates");
@@ -83,11 +83,17 @@ public sealed partial class MainWindowViewModel
             SelectConflictView(conflictTypes.Count == 0 ? "none" : "all");
         }
     }
-    public bool IncludeConflictScripts { get => (conflictView is "all" or "scripts") && conflictTypes.Contains("scripts"); set => SetConflictType("scripts", value); }
+    public bool IncludeConflictScriptConflicts { get => conflictTypes.Contains("script-conflict"); set => SetConflictType("script-conflict", value); }
+    public bool IncludeConflictScriptDuplicates { get => conflictTypes.Contains("script-duplicate"); set => SetConflictType("script-duplicate", value); }
+    public bool IncludeConflictScripts
+    {
+        get => (conflictView is "all" or "scripts") && (IncludeConflictScriptConflicts || IncludeConflictScriptDuplicates);
+        set { SetConflictType("script-conflict", value); SetConflictType("script-duplicate", value); }
+    }
     public bool IncludeConflictNeedsReview { get => HasConflictFilter("different"); set => SetConflictFilterChoice("different", value); }
     public bool IncludeConflictCanOrganize { get => HasConflictFilter("same"); set => SetConflictFilterChoice("same", value); }
     public bool IncludeConflictIncomplete { get => HasConflictFilter("incomplete"); set => SetConflictFilterChoice("incomplete", value); }
-    public bool HasActiveConflictFilter => conflictView != "all" || conflictFilter != "all" || conflictTypes.Count != 5 || showIgnoredConflicts;
+    public bool HasActiveConflictFilter => conflictView != "all" || conflictFilter != "all" || conflictTypes.Count != 6 || showIgnoredConflicts;
     public bool IsResourceViewSelected => conflictView == "resources";
     public bool IsScriptViewSelected => conflictView == "scripts";
     public bool IsProblemViewSelected => conflictView == "problems";
@@ -225,7 +231,7 @@ public sealed partial class MainWindowViewModel
             nameof(IncludeConflictNeedsReview), nameof(IncludeConflictCanOrganize), nameof(IncludeConflictIncomplete),
             nameof(IncludeAllConflictStates), nameof(IncludeAllConflictTypes),
             nameof(IncludeConflictOverrides), nameof(IncludeConflictCollections), nameof(IncludeConflictSuspected),
-            nameof(IncludeConflictDuplicates), nameof(ShowIgnoredConflicts), nameof(HasActiveConflictFilter) }) OnPropertyChanged(name);
+            nameof(IncludeConflictDuplicates), nameof(IncludeConflictScriptConflicts), nameof(IncludeConflictScriptDuplicates), nameof(ShowIgnoredConflicts), nameof(HasActiveConflictFilter) }) OnPropertyChanged(name);
         OnPropertyChanged(nameof(EmptyConflictText));
     }
 
@@ -289,7 +295,7 @@ public sealed partial class MainWindowViewModel
         ClearConflictFileActionHistory();
         ConflictRelationships = null;
         conflictTypes.Clear();
-        conflictTypes.UnionWith(["override", "collection", "suspected", "duplicates", "scripts"]);
+        conflictTypes.UnionWith(["override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate"]);
         showIgnoredConflicts = false;
         conflictGeneration++;
         conflictCancellation?.Cancel();

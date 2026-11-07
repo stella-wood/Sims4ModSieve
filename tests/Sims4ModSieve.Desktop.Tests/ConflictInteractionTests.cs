@@ -39,7 +39,7 @@ public sealed class ConflictInteractionTests
         Assert.IsFalse(Descendants<CheckBox>(typeChoices).Any(box => Equals(box.Content, "未分析")));
         CollectionAssert.AreEqual(new[] { "全部", "异常", "有隐患", "未分析" },
             Descendants<CheckBox>(Descendants<Grid>(popup.Child).Single(grid => grid.Name == "ConflictStatusChoices")).Select(box => box.Content.ToString()).ToArray());
-        Assert.IsTrue(Descendants<CheckBox>(typeChoices).Any(box => Equals(box.Content, "同名脚本")));
+        Assert.IsTrue(Descendants<CheckBox>(typeChoices).Any(box => Equals(box.Content, "脚本冲突")));
         Assert.IsTrue(model.IncludeAllConflictTypes);
         Assert.IsFalse(model.HasActiveConflictFilter);
         Assert.AreEqual(4, model.VisibleConflictParentCount);

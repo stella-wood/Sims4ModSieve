@@ -123,7 +123,7 @@ public sealed partial class MainWindowViewModel
         ConflictRelationships = null;
         conflictView = "all";
         conflictFilter = "all";
-        conflictTypes.UnionWith(["override", "collection", "suspected", "duplicates", "scripts"]);
+        conflictTypes.UnionWith(["override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate"]);
         if (conflictSession.IsGroupIgnored(link.Key)) showIgnoredConflicts = true;
         if (!conflictSession.GetExpandedKeysSnapshot().Contains(link.Key)) conflictSession.ToggleExpanded(link.Key);
         RefreshConflictFilterChoices();

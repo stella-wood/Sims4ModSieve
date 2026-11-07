@@ -62,7 +62,7 @@ public sealed class ConflictPageVirtualizationTests
     public Task ResourceAndScriptCardsStayVirtualizedAcrossThousandsOfGroups() => WpfTestHost.RunAsync(async () =>
     {
         var resources = Enumerable.Range(0, 10500).Select(index => Resource((ulong)index, ($@"C:\Mods\first-{index:D5}.package", "a"), ($@"C:\Mods\second-{index:D5}.package", "b"))).ToArray();
-        var modules = Enumerable.Range(0, 10500).Select(index => Collision($"library.module{index:D5}", (A + ".ts4script", "a"), (B + ".ts4script", "b"))).ToArray();
+        var modules = Enumerable.Range(0, 10500).Select(index => Collision($"library{index:D5}.module", (A + ".ts4script", "a"), (B + ".ts4script", "b"))).ToArray();
         var session = Session(resources, scripts: Scripts(modules));
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
@@ -79,8 +79,8 @@ public sealed class ConflictPageVirtualizationTests
             var card = model.ConflictRows[0];
             model.ToggleConflictExpandedCommand.Execute(card);
             await model.ConflictRowsRefreshTask;
-            Assert.AreEqual(view == "scripts" ? 10506 : 10504, model.ConflictRows.Count);
-            Assert.AreEqual(view == "scripts" ? 2 : 0, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.Content));
+            Assert.AreEqual(10504, model.ConflictRows.Count);
+            Assert.AreEqual(0, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.Content));
             Assert.AreEqual(10500, model.VisibleConflictParentCount);
             Assert.IsTrue(model.ConflictRows.All(row => row.Depth <= 1));
             await ExpandAsync(model, ConflictRowKind.Technical);
