@@ -18,6 +18,75 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ConflictScriptGroupTests
 {
     [TestMethod]
+    [DataRow(0)]
+    [DataRow(3)]
+    [DataRow(8)]
+    public Task DuplicateScriptGroupsListEveryPathWithoutCopyLinks(int ignoredCount) => WpfTestHost.RunAsync(async () =>
+    {
+        var paths = Enumerable.Range(0, 8).Select(index => $@"C:\Mods\script-copy{index}.ts4script").ToArray();
+        var session = V2([], [], Duplicates(paths), Scripts([
+            Collision("kit_duplicate.action", paths.Select(path => (path, (string?)"same")).ToArray())]));
+        var card = session.Cards.Single(item => item.Type == "script-duplicate");
+        session.ToggleExpanded(card.Key);
+        session.SetIgnoredFiles(paths.Take(ignoredCount));
+        foreach (var showIgnored in new[] { false, true })
+        {
+            var rows = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: showIgnored);
+            var files = rows.Where(row => row.OwnerKey == card.Key && row.File is not null).ToArray();
+            CollectionAssert.AreEquivalent((showIgnored ? paths : paths.Skip(ignoredCount)).ToArray(), files.Select(row => row.File!.Path).ToArray());
+            Assert.IsTrue(files.All(row => !row.HasCopies && row.DuplicateLink is null && row.Tooltip == row.File!.Path));
+            Assert.AreEqual(showIgnored ? ignoredCount : 0, files.Count(row => row.IsIgnored));
+            Assert.AreEqual("8 文件" + (ignoredCount > 0 ? $" · {ignoredCount} 已忽略" : ""), rows.Single(row => row.Key == card.Key).FileCountText);
+            Assert.AreEqual("这 8 份文件" + (ignoredCount > 0 ? $" (含 {ignoredCount} 已忽略) " : "")
+                + "都带了 kit_duplicate.action，内容相同", rows.Single(row => row.Key == card.Key + "/explanation").Title);
+        }
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, session, "all");
+        model.ShowIgnoredConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        var window = OpenWindow(model);
+        window.Height = 1050;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(Descendants<Button>(window).Any(button => button.IsVisible && button.Content is string label && label.StartsWith("另有", StringComparison.Ordinal)));
+        Save(window, $"script-duplicates-ignored-{ignoredCount}.png");
+        session.ApplyDeletedPaths([paths[0]]);
+        var remaining = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: true)
+            .Where(row => row.OwnerKey == card.Key && row.File is not null).ToArray();
+        Assert.AreEqual(7, remaining.Length);
+        Assert.IsTrue(remaining.All(row => !row.HasCopies));
+        session.ApplyRestoredPaths([paths[0]]);
+        Assert.AreEqual(card.GroupIndex, session.Cards.Single(item => item.Key == card.Key).GroupIndex);
+        Assert.AreEqual(8, session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: true)
+            .Count(row => row.OwnerKey == card.Key && row.File is not null));
+    });
+
+    [TestMethod]
+    public void DeletingDifferentScriptVersionUnfoldsRemainingDuplicatesAndUndoRestoresFolding()
+    {
+        var paths = Enumerable.Range(0, 8).Select(index => $@"C:\Mods\version{index}.ts4script").ToArray();
+        var report = Duplicates(paths.Take(4).ToArray());
+        report = report with { Groups = [report.Groups.Single(), Duplicates(paths.Skip(4).ToArray()).Groups.Single() with { Sha256 = "SECOND" }] };
+        var session = V2([], [], report, Scripts([
+            Collision("kit.common", paths.Select((path, index) => (path, (string?)(index < 4 ? "one" : "two"))).ToArray())]));
+        var card = session.Cards.Single(item => item.Modules is not null);
+        session.ToggleExpanded(card.Key);
+        Assert.AreEqual(2, Rows(session, "all").Count(row => row.OwnerKey == card.Key && row.File is not null));
+        session.ApplyDeletedPaths(paths.Skip(4));
+        Assert.AreEqual("重复文件（脚本）", session.Cards.Single(item => item.Key == card.Key).Title);
+        var files = Rows(session, "all").Where(row => row.OwnerKey == card.Key && row.File is not null).ToArray();
+        CollectionAssert.AreEquivalent(paths.Take(4).ToArray(), files.Select(row => row.File!.Path).ToArray());
+        Assert.IsTrue(files.All(row => !row.HasCopies && row.DuplicateLink is null));
+        session.ApplyRestoredPaths(paths.Skip(4));
+        Assert.AreEqual("脚本冲突", session.Cards.Single(item => item.Key == card.Key).Title);
+        Assert.AreEqual(card.GroupIndex, session.Cards.Single(item => item.Key == card.Key).GroupIndex);
+        files = Rows(session, "all").Where(row => row.OwnerKey == card.Key && row.File is not null).ToArray();
+        Assert.AreEqual(2, files.Length);
+        Assert.IsTrue(files.All(row => row.CopyCount == 3 && row.DuplicateLink is not null));
+    }
+
+    [TestMethod]
     [DataRow(false, false, "重复文件（脚本）", ConflictPairPriority.CanOrganize)]
     [DataRow(true, false, "脚本冲突", ConflictPairPriority.NeedsReview)]
     [DataRow(false, true, "脚本冲突", ConflictPairPriority.Incomplete)]
@@ -157,6 +226,7 @@ public sealed class ConflictScriptGroupTests
 
     [TestMethod]
     [DataRow(1, true)]
+    [DataRow(1, false)]
     [DataRow(3, true)]
     [DataRow(3, false)]
     public Task RealScriptSamplesRenderWholeSentencesAndModuleDetails(int moduleCount, bool different) => WpfTestHost.RunAsync(async () =>
@@ -197,10 +267,12 @@ public sealed class ConflictScriptGroupTests
         await SetSessionAsync(model, session, "all");
         await WpfTestHost.LayoutAsync(window);
         var expected = moduleCount == 1
-            ? "这 8 份文件 (含 6 份重复) 都带了 kit_diff.common，内容有 2 种。游戏只会加载其中一份"
+            ? different ? "这 8 份文件 (含 6 份重复) 都带了 kit_diff.common，内容有 2 种。游戏只会加载其中一份"
+                : "这 8 份文件都带了 kit_diff.common，内容相同"
             : different ? "这 2 份文件都带了 kit_diff，共 3 个模块，其中 1 个内容不同。游戏对同名模块只会加载一份"
             : "这 2 份文件都带了 kit_diff，共 3 个模块，内容都相同";
         Assert.AreEqual(expected, model.ConflictRows.Single(row => row.Key == card.Key + "/explanation").Title);
+        Assert.AreEqual(moduleCount == 1 && !different ? 8 : 2, model.ConflictRows.Count(row => row.OwnerKey == card.Key && row.File is not null));
         Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == expected));
         File.WriteAllText(Path.Combine(output, $"sentence-{moduleCount}-{different}.txt"), expected);
         Save(window, $"script-group-{moduleCount}-{different}.png");

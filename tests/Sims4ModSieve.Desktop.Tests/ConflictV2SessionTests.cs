@@ -16,6 +16,44 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class ConflictV2SessionTests
 {
+    [TestMethod]
+    [DataRow(2)]
+    [DataRow(5)]
+    public Task DuplicateDescriptionsUseOnlyOwnFilesAndKeepNavigation(int fileCount) => WpfTestHost.RunAsync(async () =>
+    {
+        var paths = Enumerable.Range(0, fileCount).Select(index => $@"C:\Mods\duplicate{index}.package").ToArray();
+        var report = Duplicates(paths);
+        report = report with { Groups = [report.Groups.Single(), Duplicates(@"C:\Mods\other-a.package", @"C:\Mods\other-b.package").Groups.Single() with { Sha256 = "OTHER" }] };
+        var session = V2([], [], report);
+        Assert.AreEqual(2, session.DuplicateGroupCount);
+        var card = session.Cards.Single(item => item.Files.Any(file => file.Path == paths[0]));
+        session.ToggleExpanded(card.Key);
+        foreach (var ignoredCount in new[] { 0, 1 })
+        {
+            session.SetIgnoredFiles(paths.TakeLast(ignoredCount));
+            foreach (var showIgnored in new[] { false, true })
+            {
+                var rows = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: showIgnored);
+                var description = rows.Single(row => row.Key == card.Key + "/explanation");
+                Assert.AreEqual($"这 {fileCount} 份文件" + (ignoredCount > 0 ? " (含 1 已忽略) " : "") + "内容完全相同。", description.Title);
+                Assert.IsTrue(description.IsDuplicateExplanation);
+                Assert.AreEqual(card.Key, description.DuplicateLink!.Key);
+                var files = rows.Where(row => row.OwnerKey == card.Key && row.File is not null).ToArray();
+                Assert.AreEqual(showIgnored ? fileCount : fileCount - ignoredCount, files.Length);
+                Assert.IsTrue(files.All(row => !row.HasCopies && row.DuplicateLink is null));
+            }
+        }
+        session.SetIgnoredFiles([]);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, session, "all");
+        var window = OpenWindow(model);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(Descendants<Button>(window).Single(button => button.Name == "DuplicateNavigation" && button.IsVisible).IsEnabled);
+        Save(window, $"duplicate-description-{fileCount}.png");
+    });
+
     internal static ConflictResultSession V2(ResourceContentComparison[] comparisons,
         (string Path, int Count)[] inventories, DuplicateReport? duplicates = null, ScriptModuleScanReport? scripts = null)
     {
