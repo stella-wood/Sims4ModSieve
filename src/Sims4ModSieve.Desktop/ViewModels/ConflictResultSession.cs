@@ -64,6 +64,7 @@ public sealed record ConflictProblemRow(
     string Path, bool IsWholeFile, int? IncompleteCount, string Summary, IReadOnlyList<ConflictProblemReason> Reasons,
     IReadOnlyList<string> EntryNames, bool WholeFileNeedsAttention)
 {
+    public FileStamp? Stamp { get; init; }
     public string Name => System.IO.Path.GetFileName(Path);
     public string CountText => IncompleteCount is { } count ? $"未完成 {count} 项" : "数量未知";
     public string EntryNamesText => EntryNames.Count <= 3
@@ -226,8 +227,17 @@ public sealed partial class ConflictResultSession
                 .OrderByDescending(group => group.Select(reason => reason.EntryName ?? string.Empty).Distinct(StringComparer.Ordinal).Count())
                 .ThenBy(group => group.Key).Select(group => group.Key).FirstOrDefault(ConflictProblemCategory.Unknown);
             var entryNames = reasons.Select(reason => reason.EntryName).Where(name => name is not null).Distinct(StringComparer.Ordinal).ToArray();
+            var stamp = packages.ResourceInventories.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, path))?.ScannedStamp
+                ?? scripts.Collisions.SelectMany(collision => collision.ContentGroups.SelectMany(group => group.Occurrences).Concat(collision.Uncompared))
+                    .FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, path))?.ArchiveStamp;
+            if (stamp is null)
+            {
+                // 解析失败不代表文件信息不可读；固定在会话中，删除前仍按这份快照核对。
+                try { stamp = new PhysicalFileSystemAccess().GetFileStamp(path); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+            }
             mappedProblems.Add(new(path, entry.Whole, entry.Whole ? null : entry.Entries.Count, GetProblemSummary(category), reasons,
-                entryNames!, entryNames!.Length > 0));
+                entryNames!, entryNames!.Length > 0) { Stamp = stamp });
         }
         cancellationToken.ThrowIfCancellationRequested();
         Reset();
@@ -298,10 +308,11 @@ public sealed partial class ConflictResultSession
                 && includeUngroupedProblems
                 && (showIgnored || !IsFileIgnored(problem.Path)), () =>
             {
-                var file = new ConflictFile(problem.Path, PackageReport?.ResourceInventories
-                    .FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, problem.Path))?.ScannedStamp);
-                var reasonTexts = reasons.Select(reason => ProblemEntryText(reason.Category,
-                    reason.ResourceType is { } type ? GetResourceTypeDisplayName(type) : reason.EntryName)).Distinct(StringComparer.Ordinal).ToArray();
+                var file = new ConflictFile(problem.Path, problem.Stamp);
+                var reasonTexts = reasons.Where(reason => reason.Category != ConflictProblemCategory.Placeholder)
+                    .Select(reason => ProblemEntryText(reason.Category,
+                        reason.ResourceType is { } type ? GetResourceTypeDisplayName(type) : reason.EntryName))
+                    .Distinct(StringComparer.Ordinal).DefaultIfEmpty(problem.Summary).ToArray();
                 Add(new(key, ConflictRowKind.Problem, 0, problem.Name, Tooltip: problem.Path,
                     Priority: ConflictPairPriority.Incomplete, Annotation: reasonTexts[0], IsIgnored: IsFileIgnored(problem.Path)));
                 foreach (var (text, index) in reasonTexts.Select((text, index) => (text, index)).Skip(1))

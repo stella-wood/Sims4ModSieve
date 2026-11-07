@@ -9,9 +9,11 @@ using System.Windows.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Packages;
 using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Desktop.ViewModels;
+using Sims4ModSieve.Packages;
 using static Sims4ModSieve.Desktop.Tests.ConflictResultSessionTests;
 using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
 using static Sims4ModSieve.Desktop.Tests.ConflictV2SessionTests;
@@ -21,6 +23,78 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class ConflictFileActionTests
 {
+    [TestMethod]
+    [DataRow(".ts4script", "stable")]
+    [DataRow(".package", "stable")]
+    [DataRow(".ts4script", "changed")]
+    [DataRow(".package", "changed")]
+    [DataRow(".ts4script", "missing")]
+    [DataRow(".package", "missing")]
+    public Task BrokenFilesKeepMetadataAndAllowOnlyUnchangedFileDeletion(string extension, string state) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var source = Directory.CreateDirectory(Path.Combine(files.Root, "broken")).FullName;
+        var path = Path.Combine(source, "损坏_不是有效格式" + extension);
+        File.WriteAllText(path, "not a ZIP or DBPF file");
+        var fileSystem = new PhysicalFileSystemAccess();
+        var expected = fileSystem.GetFileStamp(path);
+        var packages = await new PackageConflictScanner(fileSystem,
+            new LlamaLogicPackageIndexReader(new PackagePrechecker(fileSystem), fileSystem))
+            .ScanAsync(new([new("broken", source)]));
+        var scripts = await new ScriptModuleScanner(fileSystem).ScanAsync(new([new("broken", source)]));
+        if (state == "missing") File.Delete(path);
+        var session = new ConflictResultSession();
+        session.Replace(packages, Contents(), scripts);
+        Assert.AreEqual("文件损坏，建议重新下载", session.Problems.Single().Summary);
+        var adapter = new TestRecycleBin();
+        var model = Model(files.Root, new RecordingDuplicateRun(Duplicates(files.A, files.B)), adapter: adapter);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, session, "all");
+        var window = OpenWindow(model);
+        await WpfTestHost.LayoutAsync(window);
+        var row = model.ConflictRows.Single(item => item.File is not null);
+        var header = model.ConflictRows.Single(item => item.IsCardStart);
+        Assert.IsFalse(model.ConflictRows.Any(item => item.Kind == ConflictRowKind.Explanation && item.Title == "整个文件未分析"));
+        var button = Descendants<Button>(window).Single(item => ReferenceEquals(item.Command, model.DeleteConflictFileCommand));
+        if (state == "missing")
+        {
+            Assert.IsNull(row.File!.Stamp);
+            Assert.IsFalse(button.IsEnabled);
+            await model.DeleteConflictFileAsync(row);
+            Assert.AreEqual(0, adapter.Deleted.Count);
+            return;
+        }
+        Assert.AreEqual(expected, row.File!.Stamp);
+        Assert.IsTrue(button.IsEnabled);
+        Assert.IsFalse(row.File.Metadata.Contains("未知", StringComparison.Ordinal));
+        Assert.AreEqual(expected, session.Relationships(path)!.File.Stamp);
+        Assert.IsTrue(session.MatchesOriginalFile(path, expected.Length, expected.LastWriteTimeUtc));
+        if (state == "changed") File.AppendAllText(path, "changed after results");
+        model.SelectConflictFilterCommand.Execute("incomplete");
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(expected, model.ConflictRows.Single(item => item.File is not null).File!.Stamp);
+        Save(window, $"broken-file-{extension[1..]}-{state}.png");
+        button = Descendants<Button>(window).Single(item => ReferenceEquals(item.Command, model.DeleteConflictFileCommand));
+        ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!).Invoke();
+        await WpfTestHost.LayoutAsync(window);
+        await model.ConflictFileActionTask;
+        if (state == "changed")
+        {
+            Assert.AreEqual(0, adapter.Deleted.Count);
+            Assert.IsTrue(model.ConflictRows.Any(item => item.File?.Path == path));
+            return;
+        }
+        CollectionAssert.AreEqual(new[] { path }, adapter.Deleted.ToArray());
+        Assert.AreEqual(0, model.ConflictRows.Count);
+        Assert.IsTrue(model.CanUndoConflictDelete);
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        Assert.AreEqual(header.Key, model.ConflictRows.Single(item => item.IsCardStart).Key);
+        Assert.AreEqual(header.GroupIndex, model.ConflictRows.Single(item => item.IsCardStart).GroupIndex);
+        Assert.AreEqual(expected, model.ConflictRows.Single(item => item.File is not null).File!.Stamp);
+    });
+
     private static DuplicateReport Duplicates(params string[] paths)
     {
         var files = paths.Select(path =>

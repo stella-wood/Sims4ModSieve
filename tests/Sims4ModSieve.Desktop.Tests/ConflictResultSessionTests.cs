@@ -223,9 +223,10 @@ public sealed class ConflictResultSessionTests
         Assert.AreEqual(A, Rows(session, "problems").Single(row => row.File is not null).File!.Path);
         Assert.IsFalse(problemRow.Detail.Contains("one.pyc", StringComparison.Ordinal));
         Assert.IsFalse(problemRow.IsExpandable);
-        Assert.AreEqual(8, Rows(session, "problems").Count);
+        Assert.IsFalse(Rows(session, "problems").Any(row => row.Kind == ConflictRowKind.Explanation && row.Title == "整个文件未分析"));
+        Assert.AreEqual(7, Rows(session, "problems").Count);
         session.ToggleExpanded(Rows(session, "problems").Single(row => row.Title == "技术详情").Key);
-        Assert.AreEqual(14, Rows(session, "problems").Count);
+        Assert.AreEqual(13, Rows(session, "problems").Count);
     }
 
     [TestMethod]

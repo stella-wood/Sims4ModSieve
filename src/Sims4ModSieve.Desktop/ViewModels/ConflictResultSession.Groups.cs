@@ -119,7 +119,9 @@ public sealed partial class ConflictResultSession
         && (originalCards.SelectMany(card => card.Files).Any(file => StringComparer.OrdinalIgnoreCase.Equals(file.Path, path)
             && file.Stamp is { } stamp && stamp.Length == size && stamp.LastWriteTimeUtc == lastWriteUtc)
             || PackageReport?.ResourceInventories.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, path)
-                && item.ScannedStamp.Length == size && item.ScannedStamp.LastWriteTimeUtc == lastWriteUtc) == true);
+                && item.ScannedStamp.Length == size && item.ScannedStamp.LastWriteTimeUtc == lastWriteUtc) == true
+            || originalProblems.Any(problem => StringComparer.OrdinalIgnoreCase.Equals(problem.Path, path)
+                && problem.Stamp is { } stamp && stamp.Length == size && stamp.LastWriteTimeUtc == lastWriteUtc));
 
     public void ApplyDeletedPaths(IEnumerable<string> paths)
     {
@@ -577,8 +579,8 @@ public sealed partial class ConflictResultSession
     {
         var own = Cards.Where(card => card.Files.Any(file => StringComparer.OrdinalIgnoreCase.Equals(file.Path, path))).ToArray();
         var main = own.SelectMany(card => card.Files).FirstOrDefault(file => StringComparer.OrdinalIgnoreCase.Equals(file.Path, path));
-        if (main is null && Problems.Any(problem => StringComparer.OrdinalIgnoreCase.Equals(problem.Path, path)))
-            main = new(path, PackageReport?.ResourceInventories.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, path))?.ScannedStamp);
+        if (main is null && Problems.FirstOrDefault(problem => StringComparer.OrdinalIgnoreCase.Equals(problem.Path, path)) is { } problem)
+            main = new(path, problem.Stamp);
         if (main is null) return null;
         var related = new Dictionary<string, List<ConflictRelationship>>(StringComparer.OrdinalIgnoreCase);
         void Add(string partner, ConflictRelationship relationship)
