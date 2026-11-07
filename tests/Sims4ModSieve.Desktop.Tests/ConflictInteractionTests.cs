@@ -78,7 +78,7 @@ public sealed class ConflictInteractionTests
     [DataRow("row")]
     [DataRow("relation")]
     [DataRow("copy")]
-    public Task GroupLinksExpandTargetAndCenterTitle(string route) => WpfTestHost.RunAsync(async () =>
+    public Task GroupLinksExpandTargetAndKeepOneHeadingAbove(string route) => WpfTestHost.RunAsync(async () =>
     {
         var paths = Enumerable.Range(0, 40).Select(index => new[] { $@"C:\Mods\jump{index:D2}a.package", $@"C:\Mods\jump{index:D2}b.package", $@"C:\Mods\jump{index:D2}c.package" }).ToArray();
         var duplicates = ConflictV2SessionTests.Duplicates(paths[0][0], paths[0][1]) with
@@ -147,15 +147,55 @@ public sealed class ConflictInteractionTests
         var presenter = Descendants<ScrollContentPresenter>(viewer).First();
         var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(target);
         Assert.IsNotNull(item);
-        Assert.AreEqual(presenter.ActualHeight / 2, item.TranslatePoint(new Point(0, item.ActualHeight / 2), presenter).Y, 2d);
+        var previousHeading = model.ConflictRows.TakeWhile(row => row.Key != targetKey).Last(row => row.IsCardStart);
+        var previousItem = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(previousHeading);
+        Assert.IsNotNull(previousItem);
+        Assert.AreEqual(Math.Max(item.ActualHeight, previousItem.ActualHeight), item.TranslatePoint(new Point(), presenter).Y, 2d,
+            "目标标题上方保留一行组标题的空间");
         Assert.AreEqual(route == "relation" ? 2 : 1, model.ConflictRows.Count(row => row.OwnerKey == target.Key && row.File is not null));
-        Save(window, $"conflict-{route}-jump-centered.png");
+        Save(window, $"conflict-{route}-jump-near-top.png");
         model.ShowIgnoredConflicts = true;
         await model.ConflictRowsRefreshTask;
         await WpfTestHost.LayoutAsync(window);
         Assert.AreEqual(2, model.ConflictRows.Count(row => row.OwnerKey == target.Key && row.File is not null));
         if (route != "relation") Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == "已忽略"));
         Save(window, $"conflict-{route}-jump-ignored.png");
+    });
+
+    [TestMethod]
+    public Task GroupJumpPlacesLarge113BelowPreviousHeading() => WpfTestHost.RunAsync(async () =>
+    {
+        var pairs = Enumerable.Range(0, 112).Select(index => new[] { $@"C:\Mods\pair{index:D3}a.package", $@"C:\Mods\pair{index:D3}b.package" }).ToArray();
+        var members = Enumerable.Range(0, 63).Select(index => $@"C:\Mods\single{index:D2}.package").ToArray();
+        const string bundle = @"C:\Mods\bundle.package";
+        var session = ConflictV2SessionTests.V2(pairs.Select((pair, index) => Resource((ulong)index + 1, (pair[0], "a"), (pair[1], "b")))
+            .Concat(Enumerable.Range(1000, 3).Select(key => Resource((ulong)key, members.Append(bundle).Select(path => (path, (string?)"same")).ToArray()))).ToArray(),
+            pairs.SelectMany(pair => pair.Select(path => (path, 10))).Concat(members.Select(path => (path, 3))).Append((bundle, 1000)).ToArray());
+        var target = session.Cards.Single(card => card.Type == "collection");
+        Assert.AreEqual(113, target.GroupIndex);
+        Assert.AreEqual(64, target.Files.Count);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        model.JumpToConflictGroupCommand.Execute(new ConflictGroupLink(target.Key, target.GroupIndex));
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        await window.Dispatcher.InvokeAsync(() => window.UpdateLayout(), DispatcherPriority.ApplicationIdle);
+        var list = Descendants<ListBox>(window).Single(element => element.Name == "ConflictRowsList");
+        var presenter = Descendants<ScrollContentPresenter>(Descendants<ScrollViewer>(list).First()).First();
+        var heading = model.ConflictRows.Single(row => row.Key == target.Key);
+        Assert.IsTrue(heading.IsExpanded);
+        var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(heading);
+        var previous = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(model.ConflictRows.Single(row => row.IsCardStart && row.GroupIndex == 112));
+        Assert.IsNotNull(item);
+        Assert.IsNotNull(previous);
+        var top = item.TranslatePoint(new Point(), presenter).Y;
+        Assert.AreEqual(Math.Max(item.ActualHeight, previous.ActualHeight), top, 2d);
+        Assert.IsTrue(previous.TranslatePoint(new Point(), presenter).Y >= -1);
+        Assert.AreEqual(64, model.ConflictRows.Count(row => row.OwnerKey == target.Key && row.File is not null));
+        Save(window, "group-113-position.png");
     });
 
     [DllImport("user32.dll")]

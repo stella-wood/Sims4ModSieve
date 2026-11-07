@@ -137,18 +137,21 @@ public partial class ConflictPage : UserControl
         if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is ListBoxItem item)
         {
             item.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.First));
-            void CenterTitle()
+            void PositionTitle()
             {
                 if (!ReferenceEquals(DataContext, model) || !model.ConflictRows.Contains(row) || !ConflictRowsList.IsVisible) return;
                 if (TechnicalVisuals<ScrollViewer>(ConflictRowsList).FirstOrDefault() is not { } scroll
                     || TechnicalVisuals<ScrollContentPresenter>(scroll).FirstOrDefault() is not { } presenter) return;
                 if (ConflictRowsList.ItemContainerGenerator.ContainerFromItem(row) is not ListBoxItem target) return;
-                var center = target.TranslatePoint(new Point(0, target.ActualHeight / 2), presenter).Y;
-                scroll.ScrollToVerticalOffset(scroll.VerticalOffset + center - presenter.ActualHeight / 2);
+                var previousRow = model.ConflictRows.TakeWhile(candidate => candidate.Key != key).LastOrDefault(candidate => candidate.IsCardStart);
+                var previous = previousRow is null ? null : ConflictRowsList.ItemContainerGenerator.ContainerFromItem(previousRow) as ListBoxItem;
+                var headingSpace = Math.Max(target.ActualHeight, previous?.ActualHeight ?? 0);
+                var top = target.TranslatePoint(new Point(), presenter).Y;
+                scroll.ScrollToVerticalOffset(scroll.VerticalOffset + top - headingSpace);
                 scroll.UpdateLayout();
             }
-            CenterTitle();
-            Dispatcher.BeginInvoke(CenterTitle, DispatcherPriority.ApplicationIdle);
+            PositionTitle();
+            Dispatcher.BeginInvoke(PositionTitle, DispatcherPriority.ApplicationIdle);
         }
     }, DispatcherPriority.Loaded);
 
