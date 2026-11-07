@@ -28,10 +28,37 @@ public sealed partial class ConflictResultSession
         if (different > 0) text += modules.Count == 1 ? "。游戏只会加载其中一份" : "。游戏对同名模块只会加载一份";
         return text;
     }
+
+    private (string Text, string Tooltip) ScriptFileAnnotation(ConflictCard card, ConflictFile file)
+    {
+        var different = 0;
+        var identical = 0;
+        var incomplete = 0;
+        foreach (var module in card.Modules!)
+        {
+            var ownVersion = module.ContentGroups.FirstOrDefault(group => group.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path)));
+            if (ownVersion is not null && module.ContentGroups.Any(group => !ReferenceEquals(group, ownVersion))) different++;
+            if (ownVersion is not null && module.IsComplete && module.ContentGroups.Count == 1) identical++;
+            if (!module.IsComplete || ownVersion is null) incomplete++;
+        }
+        var inventories = card.Files.Select(member => (File: member, Inventory: scriptInventoriesByPath.GetValueOrDefault(member.Path))).ToArray();
+        int? unique = null;
+        if (inventories.All(item => item.Inventory is not null && item.Inventory.ScannedStamp == item.File.Stamp))
+        {
+            var own = inventories.Single(item => StringComparer.OrdinalIgnoreCase.Equals(item.File.Path, file.Path)).Inventory!;
+            var others = inventories.Where(item => !StringComparer.OrdinalIgnoreCase.Equals(item.File.Path, file.Path))
+                .SelectMany(item => item.Inventory!.ModuleNames).ToHashSet(StringComparer.Ordinal);
+            unique = own.ModuleNames.Count(name => !others.Contains(name));
+        }
+        return ($"撞 {different} 样 · " + (unique is { } count ? $"独有 {count} 样" : "独有数量未知"),
+            $"本组同名模块 {card.Modules.Count} 个，其中 {identical} 个内容相同、{incomplete} 个未分析；"
+            + (unique is { } known ? $"整份文件独有模块 {known} 个" : "缺少完整模块清单，独有数量未知"));
+    }
     private PackageConflictGroupingInput? groupingInput;
     private DuplicateReport? duplicateReport;
     private IReadOnlySet<string> hashChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<ResourceKey, ResourceContentComparison> comparisonsByKey = new Dictionary<ResourceKey, ResourceContentComparison>();
+    private IReadOnlyDictionary<string, ScriptArchiveInventory> scriptInventoriesByPath = new Dictionary<string, ScriptArchiveInventory>(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<ConflictProblemRow> originalProblems = [];
     private IReadOnlyList<PackageConflictPairSummary> originalResources = [];
     private IReadOnlyList<ScriptConflictPairSummary> originalScripts = [];
@@ -50,6 +77,7 @@ public sealed partial class ConflictResultSession
         duplicateReport = null;
         hashChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         comparisonsByKey = new Dictionary<ResourceKey, ResourceContentComparison>();
+        scriptInventoriesByPath = new Dictionary<string, ScriptArchiveInventory>(StringComparer.OrdinalIgnoreCase);
         originalProblems = [];
         originalResources = [];
         originalScripts = [];
@@ -68,6 +96,7 @@ public sealed partial class ConflictResultSession
         duplicateReport = duplicates;
         hashChangedPaths = changedPaths;
         comparisonsByKey = ContentReport!.Comparisons.GroupBy(comparison => comparison.Key).ToDictionary(group => group.Key, group => group.First());
+        scriptInventoriesByPath = ScriptReport!.ArchiveInventories.ToDictionary(inventory => inventory.Path, StringComparer.OrdinalIgnoreCase);
         originalProblems = Problems;
         originalResources = Resources;
         originalScripts = Scripts;
@@ -103,6 +132,7 @@ public sealed partial class ConflictResultSession
             PackageReport = PackageReport, ContentReport = ContentReport, ScriptReport = ScriptReport,
             Cards = Cards, Grouping = Grouping,
             comparisonsByKey = comparisonsByKey,
+            scriptInventoriesByPath = scriptInventoriesByPath,
             groupingInput = groupingInput, duplicateReport = duplicateReport,
             hashChangedPaths = hashChangedPaths,
             originalProblems = originalProblems, originalResources = originalResources, originalScripts = originalScripts,
@@ -432,6 +462,7 @@ public sealed partial class ConflictResultSession
                     var annotationTooltip = member is not null && !member.IsBundle && member.ContainedContentIdentical is null
                         ? $"相同TGI编号{sharedResources!.Length}个，其中{sharedResources.Count(matches => matches.All(match => match.HasConfirmedIdentical && !match.HasConfirmedDifference))}个内容相同，独有编号{member.UniqueResourceCount}个"
                         : null;
+                    if (card.Modules is not null) (annotation, annotationTooltip) = ScriptFileAnnotation(card, representative);
                     var tag = member?.IsBundle == true ? "合集"
                         : card.Type == "suspected" && representative.Stamp?.LastWriteTimeUtc == card.Files.Max(item => item.Stamp?.LastWriteTimeUtc) ? "最新"
                         : "";

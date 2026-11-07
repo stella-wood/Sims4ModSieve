@@ -9,6 +9,43 @@ namespace Sims4ModSieve.Core.Tests.Scripts;
 public sealed class ScriptModuleScannerTests
 {
     [TestMethod]
+    public async Task ArchiveChangedDuringReadDoesNotPublishModuleInventory()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        WriteScript(temp, "Mods/a.ts4script", ("private.py", "value=1"u8.ToArray()));
+
+        var report = await new ScriptModuleScanner(new ChangedAfterOpen()).ScanAsync(Request(mods));
+
+        Assert.AreEqual(0, report.ArchiveInventories.Count);
+        Assert.AreEqual(0, report.AnalyzedArchiveCount);
+        Assert.AreEqual(ScriptArchiveIssueCode.ChangedDuringRead, report.Issues.Single().Code);
+    }
+
+    [TestMethod]
+    public async Task ArchiveInventoriesKeepPrivateModulesAndDeduplicateLoadCandidates()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        var first = WriteScript(temp, "Mods/a.ts4script", ("kit/shared.pyc", Pyc("same")),
+            ("private_a.py", "value=1"u8.ToArray()), ("lib.py", "value=1"u8.ToArray()),
+            ("lib/__init__.pyc", Pyc("package")), ("README.txt", "ignored"u8.ToArray()));
+        var second = WriteScript(temp, "Mods/b.ts4script", ("kit/shared.pyc", Pyc("same")),
+            ("private_b.py", "value=2"u8.ToArray()), ("another_b.py", "value=3"u8.ToArray()));
+        var empty = WriteScript(temp, "Mods/empty.ts4script", ("README.txt", "ignored"u8.ToArray()));
+        temp.WriteFile("Mods/broken.ts4script", "not a zip");
+
+        var report = await CreateScanner().ScanAsync(Request(mods));
+
+        Assert.AreEqual(1, report.Collisions.Count);
+        Assert.AreEqual(3, report.ArchiveInventories.Count);
+        CollectionAssert.AreEqual(new[] { "kit.shared", "lib", "private_a" }, report.ArchiveInventories.Single(item => item.Path == first).ModuleNames.ToArray());
+        CollectionAssert.AreEqual(new[] { "another_b", "kit.shared", "private_b" }, report.ArchiveInventories.Single(item => item.Path == second).ModuleNames.ToArray());
+        Assert.AreEqual(0, report.ArchiveInventories.Single(item => item.Path == empty).ModuleNames.Count);
+        Assert.AreEqual(new PhysicalFileSystemAccess().GetFileStamp(first), report.ArchiveInventories.Single(item => item.Path == first).ScannedStamp);
+    }
+
+    [TestMethod]
     public async Task ScriptModsBesideProgramReachReaderButProgramResourcesDoNot()
     {
         using var temp = new TempDirectory();
@@ -309,5 +346,20 @@ public sealed class ScriptModuleScannerTests
         var fine = report.Collisions.Single(collision => collision.ModuleName == "fine");
         Assert.AreEqual(ScriptArchiveIssueCode.EntryCorrupt, broken.Uncompared.Single().Issue!.Code);
         Assert.AreEqual(ScriptModuleVerdict.Identical, fine.Verdict);
+        CollectionAssert.AreEqual(new[] { "broken", "fine" }, report.ArchiveInventories.Single(item => item.Path == path).ModuleNames.ToArray());
+    }
+    private sealed class ChangedAfterOpen : IFileSystemAccess
+    {
+        private readonly PhysicalFileSystemAccess inner = new();
+        private bool opened;
+        public bool DirectoryExists(string path) => inner.DirectoryExists(path);
+        public IReadOnlyList<string> EnumerateFileSystemEntries(string directory) => inner.EnumerateFileSystemEntries(directory);
+        public FileAttributes GetAttributes(string path) => inner.GetAttributes(path);
+        public FileStamp GetFileStamp(string path)
+        {
+            var stamp = inner.GetFileStamp(path);
+            return opened ? stamp with { Length = stamp.Length + 1 } : stamp;
+        }
+        public Stream OpenRead(string path) { opened = true; return inner.OpenRead(path); }
     }
 }

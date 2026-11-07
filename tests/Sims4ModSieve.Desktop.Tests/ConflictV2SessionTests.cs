@@ -710,6 +710,8 @@ public sealed class ConflictV2SessionTests
         Assert.IsFalse(rows.Any(row => row.IsTechnicalToggle));
         if (kind == "resources")
             Assert.AreEqual("撞 0 样 · 独有 10 样", rows.Single(row => row.File is not null).Annotation);
+        else if (kind == "scripts")
+            Assert.AreEqual("撞 0 样 · 独有数量未知", rows.Single(row => row.File is not null).Annotation);
         else Assert.IsFalse(rows.Any(row => row.HasAnnotation));
         Assert.IsNull(session.Relationships(A));
         Assert.AreEqual(0, session.Relationships(B)!.Related.Count);

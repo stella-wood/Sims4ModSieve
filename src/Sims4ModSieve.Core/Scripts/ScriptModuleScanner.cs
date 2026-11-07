@@ -135,6 +135,7 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem, string? ap
         var issues = sourceIssues.Select(FromScanIssue).ToList();
         var incomplete = new List<string>();
         var occurrences = new List<ScriptModuleOccurrence>();
+        var inventories = new List<ScriptArchiveInventory>();
         for (var index = 0; index < archivePaths.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -148,6 +149,8 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem, string? ap
             }
 
             var sourceIds = SourceIdsFor(path, validSources);
+            inventories.Add(new(path, outcome.Stamp,
+                ReadOnlyLists.Freeze(outcome.Modules.Select(module => module.Entry.ModuleName).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))));
             occurrences.AddRange(outcome.Modules.Select(module => new ScriptModuleOccurrence(
                 module.Entry.ModuleName,
                 path,
@@ -173,7 +176,7 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem, string? ap
             occurrences.Select(occurrence => occurrence.ModuleName).Distinct(StringComparer.Ordinal).Count(),
             collisions,
             OrderIssues(issues),
-            budget.ConsumedBytes);
+            budget.ConsumedBytes) { ArchiveInventories = ReadOnlyLists.Freeze(inventories) };
 
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(new ScriptModuleScanProgress(

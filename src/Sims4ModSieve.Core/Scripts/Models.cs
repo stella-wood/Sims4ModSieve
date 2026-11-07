@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Core.Scripts;
@@ -188,6 +189,9 @@ public sealed record ScriptModuleCollision(
         : ScriptModuleVerdict.Incomplete;
 }
 
+/// <summary>归档中按实际加载候选去重的完整模块名称清单，包括未碰撞和内容未比完的模块。</summary>
+public sealed record ScriptArchiveInventory(string Path, FileStamp ScannedStamp, IReadOnlyList<string> ModuleNames);
+
 /// <summary>
 /// 脚本模块碰撞扫描结果。
 /// </summary>
@@ -211,5 +215,8 @@ public sealed record ScriptModuleScanReport(
     IReadOnlyList<ScriptArchiveIssue> Issues,
     long ProcessedBytes)
 {
+    public IReadOnlyList<ScriptArchiveInventory> ArchiveInventories { get; init; } =
+        ReadOnlyLists.Freeze(Array.Empty<ScriptArchiveInventory>());
+
     public int IncompleteArchiveCount => IncompleteArchivePaths.Count;
 }
