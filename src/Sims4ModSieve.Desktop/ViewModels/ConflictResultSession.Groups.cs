@@ -20,13 +20,9 @@ public sealed partial class ConflictResultSession
     {
         var different = modules.Count(module => module.HasConfirmedDifference);
         var incomplete = modules.Count(module => !module.IsComplete || module.ContentGroups.Count == 0);
-        var text = modules.Count == 1
-            ? $"都带了 {modules[0].ModuleName}，" + (different > 0 ? $"内容有 {modules[0].ContentGroups.Count} 种" : incomplete > 0 ? "有 1 个模块没比完" : "内容相同")
-            : $"都带了 {modules[0].TopLevelName}，共 {modules.Count} 个模块，"
-                + (different > 0 ? $"其中 {different} 个内容不同" : incomplete > 0 ? $"其中 {incomplete} 个没比完" : "内容都相同");
-        if (different > 0 && incomplete > 0) text += $"，有 {incomplete} 个模块没比完";
-        if (different > 0) text += modules.Count == 1 ? "。游戏只会加载其中一份" : "。游戏对同名模块只会加载一份";
-        return text;
+        return $"都带了 {modules[0].TopLevelName}，共 {modules.Count} 个模块，"
+            + (different == 0 && incomplete == 0 ? "内容都相同"
+                : $"其中 {different} 个内容不同、{incomplete} 个没比完。游戏对同名模块只会加载一份");
     }
 
     private (string Text, string Tooltip) ScriptFileAnnotation(ConflictCard card, ConflictFile file)
@@ -339,8 +335,7 @@ public sealed partial class ConflictResultSession
                 "collection" => $"合集里包含{group.Members.Where(member => !member.IsBundle).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个另外单独放着的文件，"
                     + $"{group.Members.Where(member => member.ContainedContentIdentical == true).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个已被包含，"
                     + $"{group.Members.Where(member => member.ContainedContentIdentical == false).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个存在不同。还有{group.BundleUniqueResourceCount}样资源只在合集里有。",
-                _ => $"有 {group.ResourceKeys.Count} 项资源编号相同"
-                    + (different > 0 ? $"，其中 {different} 项内容不同，可能是同一 mod 的不同版本" : ""),
+                _ => $"有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同，可能是同一 mod 的不同版本",
             };
             cards.Add(new(key, type, title, type == "override" ? ConflictPairPriority.NeedsReview : ConflictPairPriority.CanOrganize,
                 files, explanation, Package: group));

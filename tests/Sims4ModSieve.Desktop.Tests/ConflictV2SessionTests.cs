@@ -138,7 +138,7 @@ public sealed class ConflictV2SessionTests
         await WpfTestHost.LayoutAsync(window);
         var explanation = model.ConflictRows.Single(row => row.Key == card.Key + "/explanation");
         var expected = $"这 {fileCount} 份文件有 1 项资源编号相同"
-            + (different ? "，其中 1 项内容不同；游戏对每个编号只会使用一份资源" : "");
+            + (different ? "，其中 1 项内容不同；游戏对每个编号只会使用一份资源" : "，其中 0 项内容不同，可能是同一 mod 的不同版本");
         Assert.AreEqual(expected, explanation.Title);
         var text = Descendants<TextBlock>(window).Single(text => ReferenceEquals(text.DataContext, explanation) && text.Name == "Title");
         Assert.IsTrue(text.IsVisible);

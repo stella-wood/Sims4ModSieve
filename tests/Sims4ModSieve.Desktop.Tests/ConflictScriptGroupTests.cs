@@ -38,7 +38,7 @@ public sealed class ConflictScriptGroupTests
             Assert.AreEqual(showIgnored ? ignoredCount : 0, files.Count(row => row.IsIgnored));
             Assert.AreEqual("8 文件" + (ignoredCount > 0 ? $" · {ignoredCount} 已忽略" : ""), rows.Single(row => row.Key == card.Key).FileCountText);
             Assert.AreEqual("这 8 份文件" + (ignoredCount > 0 ? $" (含 {ignoredCount} 已忽略) " : "")
-                + "都带了 kit_duplicate.action，内容相同", rows.Single(row => row.Key == card.Key + "/explanation").Title);
+                + "都带了 kit_duplicate，共 1 个模块，内容都相同", rows.Single(row => row.Key == card.Key + "/explanation").Title);
         }
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
@@ -107,10 +107,9 @@ public sealed class ConflictScriptGroupTests
         Assert.AreEqual(0, rows.Count(row => row.Kind == ConflictRowKind.Content));
         var explanation = rows.Single(row => row.Kind == ConflictRowKind.Explanation).Title;
         Assert.IsFalse(explanation.Contains('；'));
-        if (incomplete) StringAssert.Contains(explanation, "1 个" + (different ? "模块没比完" : "没比完"));
-        else Assert.AreEqual(different
-            ? "这 2 份文件都带了 kit_diff，共 3 个模块，其中 1 个内容不同。游戏对同名模块只会加载一份"
-            : "这 2 份文件都带了 kit_diff，共 3 个模块，内容都相同", explanation);
+        Assert.AreEqual("这 2 份文件都带了 kit_diff，共 3 个模块，" + (different || incomplete
+            ? $"其中 {(different ? 1 : 0)} 个内容不同、{(incomplete ? 1 : 0)} 个没比完。游戏对同名模块只会加载一份"
+            : "内容都相同"), explanation);
         var details = session.TechnicalEntries(card);
         Assert.AreEqual(3, details.Count);
         Assert.AreEqual(incomplete ? "未分析" : "内容相同", details.Single(entry => entry.Identifier.EndsWith("extra", StringComparison.Ordinal)).Conclusion);
@@ -267,9 +266,9 @@ public sealed class ConflictScriptGroupTests
         await SetSessionAsync(model, session, "all");
         await WpfTestHost.LayoutAsync(window);
         var expected = moduleCount == 1
-            ? different ? "这 8 份文件 (含 6 份重复) 都带了 kit_diff.common，内容有 2 种。游戏只会加载其中一份"
-                : "这 8 份文件都带了 kit_diff.common，内容相同"
-            : different ? "这 2 份文件都带了 kit_diff，共 3 个模块，其中 1 个内容不同。游戏对同名模块只会加载一份"
+            ? different ? "这 8 份文件 (含 6 份重复) 都带了 kit_diff，共 1 个模块，其中 1 个内容不同、0 个没比完。游戏对同名模块只会加载一份"
+                : "这 8 份文件都带了 kit_diff，共 1 个模块，内容都相同"
+            : different ? "这 2 份文件都带了 kit_diff，共 3 个模块，其中 1 个内容不同、0 个没比完。游戏对同名模块只会加载一份"
             : "这 2 份文件都带了 kit_diff，共 3 个模块，内容都相同";
         Assert.AreEqual(expected, model.ConflictRows.Single(row => row.Key == card.Key + "/explanation").Title);
         Assert.AreEqual(moduleCount == 1 && !different ? 8 : 2, model.ConflictRows.Count(row => row.OwnerKey == card.Key && row.File is not null));
