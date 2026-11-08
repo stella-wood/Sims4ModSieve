@@ -263,7 +263,7 @@
                         <ListBox x:Name="ManagementFileList" ItemsSource="{Binding Files}" ItemTemplate="{StaticResource ManagedFileTemplate}"
                             MaxHeight="150" BorderThickness="0" Padding="0" Background="Transparent" FontSize="12" FocusVisualStyle="{x:Null}"
                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Visible"
-                            ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                            ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel"
                             PreviewMouseWheel="ManagementList_PreviewMouseWheel" Visibility="{Binding HasFiles, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" /></ListBox.Resources>
                             <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">

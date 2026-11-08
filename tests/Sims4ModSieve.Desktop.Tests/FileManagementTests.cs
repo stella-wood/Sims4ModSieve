@@ -344,6 +344,53 @@ public sealed class FileManagementTests
     });
 
     [TestMethod]
+    public Task ManagementListsEndAtLastFileAfterScrollingAndShrinking() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = Model(files);
+        var window = new MainWindow(model) { Width = 1280, Height = 1100 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("files");
+        await model.FileManagementRefreshTask;
+        var page = Descendants<SettingsPage>(window).Single();
+        var outer = (ScrollViewer)page.FindName("SettingsContentScroll");
+        var sections = new[] { model.DisabledFiles, model.RecentDeletedFiles, model.IgnoredFiles };
+        foreach (var section in sections)
+            section.Replace(Enumerable.Range(0, 20).Select(index => new ManagedFileRow
+            {
+                Id = index.ToString(), Path = Path.Combine(files.Root, $"file-{index:D2}.package"),
+                SizeText = "1 KB", TimeText = "今天", CanRestore = true,
+            }));
+        await WpfTestHost.LayoutAsync(window);
+        foreach (var count in new[] { 20, 3, 2 })
+        {
+            foreach (var section in sections)
+            {
+                if (count < section.Files.Count) section.Replace(section.Files.Take(count).ToArray());
+                await WpfTestHost.LayoutAsync(window);
+                var list = Descendants<ListBox>(page).Single(control => ReferenceEquals(control.DataContext, section));
+                var scroll = Descendants<ScrollViewer>(list).Single();
+                scroll.ScrollToEnd();
+                await WpfTestHost.LayoutAsync(window);
+                var last = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(count - 1);
+                Assert.IsNotNull(last, "末项必须实现并可见");
+                var viewport = Descendants<ScrollContentPresenter>(scroll).Single();
+                var bottom = last.TransformToAncestor(viewport).TransformBounds(new Rect(last.RenderSize)).Bottom;
+                Assert.IsLessThanOrEqualTo(1d, Math.Abs(viewport.ActualHeight - bottom), "滚动到底后，列表应止于最后一个文件，不能留下空行");
+                Assert.IsTrue(scroll.VerticalOffset <= scroll.ScrollableHeight);
+                var offset = outer.VerticalOffset;
+                list.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, -120) { RoutedEvent = UIElement.PreviewMouseWheelEvent });
+                await WpfTestHost.LayoutAsync(window);
+                Assert.AreEqual(offset, outer.VerticalOffset, "列表到底后滚轮不能带动外层页面");
+            }
+        }
+        outer.ScrollToEnd();
+        await WpfTestHost.LayoutAsync(window);
+        SaveReview(window, "management-lists-bottom.png");
+    });
+
+    [TestMethod]
     public async Task MalformedPidlFailsManagedValidationBeforeShellBinding()
     {
         var adapter = new WindowsRecycleBinAdapter();
