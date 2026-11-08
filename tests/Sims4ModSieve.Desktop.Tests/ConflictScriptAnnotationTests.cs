@@ -40,8 +40,8 @@ public sealed class ConflictScriptAnnotationTests
             var card = session.Cards.Single();
             session.ToggleExpanded(card.Key);
             var files = Rows(session, "all").Where(row => row.File is not null).ToArray();
-            Assert.AreEqual($"撞 {(different ? 1 : 0)} 样 · 独有 1 样", files.Single(row => row.File!.Path == first).Annotation);
-            Assert.AreEqual($"撞 {(different ? 1 : 0)} 样 · 独有 2 样", files.Single(row => row.File!.Path == second).Annotation);
+            Assert.AreEqual($"撞 {(incomplete ? 3 : 2)} 样 · 独有 1 样", files.Single(row => row.File!.Path == first).Annotation);
+            Assert.AreEqual($"撞 {(incomplete ? 3 : 2)} 样 · 独有 2 样", files.Single(row => row.File!.Path == second).Annotation);
             Assert.AreEqual($"本组同名模块 {(incomplete ? 3 : 2)} 个，其中 {(different ? 1 : 2)} 个内容相同、{(incomplete ? 1 : 0)} 个未分析；整份文件独有模块 1 个",
                 files.Single(row => row.File!.Path == first).AnnotationTooltip);
             Assert.AreEqual(files[0].Annotation, session.ProjectionSnapshot().BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot())
@@ -88,7 +88,7 @@ public sealed class ConflictScriptAnnotationTests
     }
 
     [TestMethod]
-    public void UncomparedFileDoesNotInheritOtherFilesConfirmedCollisionCount()
+    public void UncomparedFileStillCountsSharedModuleNames()
     {
         var scripts = Scripts([Collision("kit.common", (A, null), (B, "one"), (C, "two"))]) with
         {
@@ -97,9 +97,35 @@ public sealed class ConflictScriptAnnotationTests
         var session = V2([], [], scripts: scripts);
         session.ToggleExpanded(session.Cards.Single().Key);
         var files = Rows(session, "all").Where(row => row.File is not null).ToArray();
-        Assert.AreEqual("撞 0 样 · 独有 0 样", files.Single(row => row.File!.Path == A).Annotation);
+        Assert.AreEqual("撞 1 样 · 独有 0 样", files.Single(row => row.File!.Path == A).Annotation);
         Assert.AreEqual("撞 1 样 · 独有 0 样", files.Single(row => row.File!.Path == B).Annotation);
         Assert.AreEqual("撞 1 样 · 独有 0 样", files.Single(row => row.File!.Path == C).Annotation);
+    }
+
+    [TestMethod]
+    [DataRow("same")]
+    [DataRow("different")]
+    [DataRow("incomplete")]
+    [DataRow("uncompared")]
+    public void SameNameCountsAsCollisionRegardlessOfContent(string content)
+    {
+        var scripts = Scripts([Collision("kit.common", (A, content == "uncompared" ? null : "one"),
+            (B, content == "same" ? "one" : content == "different" ? "two" : null))]) with
+        {
+            ArchiveInventories = new[] { A, B }.Select(path => new ScriptArchiveInventory(path, Stamp, ["kit.common"])).ToArray(),
+        };
+        var session = V2([], [], scripts: scripts);
+        var card = session.Cards.Single();
+        session.ToggleExpanded(card.Key);
+        Assert.IsTrue(Rows(session, "all").Where(row => row.File is not null).All(row => row.Annotation == "撞 1 样 · 独有 0 样"));
+        session.SetIgnoredFiles([B]);
+        Assert.AreEqual("撞 1 样 · 独有 0 样", Rows(session, "all").Single(row => row.File is not null).Annotation);
+        session.ApplyDeletedPaths([B]);
+        var remaining = Rows(session, "all").Single(row => row.File is not null);
+        Assert.AreEqual("撞 0 样 · 独有 1 样", remaining.Annotation);
+        StringAssert.StartsWith(remaining.AnnotationTooltip!, "本组同名模块 0 个");
+        session.ApplyRestoredPaths([B]);
+        Assert.AreEqual("撞 1 样 · 独有 0 样", Rows(session, "all").Single(row => row.File is not null).Annotation);
     }
 
     private static void WriteArchive(string path, IReadOnlyDictionary<string, string> entries)

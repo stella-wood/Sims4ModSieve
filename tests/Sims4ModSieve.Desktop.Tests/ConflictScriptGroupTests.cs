@@ -273,6 +273,8 @@ public sealed class ConflictScriptGroupTests
         Assert.AreEqual(expected, model.ConflictRows.Single(row => row.Key == card.Key + "/explanation").Title);
         Assert.AreEqual(moduleCount == 1 && !different ? 8 : 2, model.ConflictRows.Count(row => row.OwnerKey == card.Key && row.File is not null));
         Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == expected));
+        foreach (var row in model.ConflictRows.Where(row => row.OwnerKey == card.Key && row.File is not null))
+            Assert.AreEqual($"撞 {moduleCount} 样 · 独有 0 样", row.Annotation);
         File.WriteAllText(Path.Combine(output, $"sentence-{moduleCount}-{different}.txt"), expected);
         Save(window, $"script-group-{moduleCount}-{different}.png");
         model.ToggleConflictExpandedCommand.Execute(model.ConflictRows.Single(row => row.OwnerKey == card.Key && row.IsTechnicalToggle));

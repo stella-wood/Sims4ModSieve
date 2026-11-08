@@ -27,13 +27,14 @@ public sealed partial class ConflictResultSession
 
     private (string Text, string Tooltip) ScriptFileAnnotation(ConflictCard card, ConflictFile file)
     {
-        var different = 0;
+        var shared = 0;
         var identical = 0;
         var incomplete = 0;
         foreach (var module in card.Modules!)
         {
+            if (module.ArchiveCount < 2 || !module.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path))) continue;
+            shared++;
             var ownVersion = module.ContentGroups.FirstOrDefault(group => group.Occurrences.Any(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path)));
-            if (ownVersion is not null && module.ContentGroups.Any(group => !ReferenceEquals(group, ownVersion))) different++;
             if (ownVersion is not null && module.IsComplete && module.ContentGroups.Count == 1) identical++;
             if (!module.IsComplete || ownVersion is null) incomplete++;
         }
@@ -46,8 +47,8 @@ public sealed partial class ConflictResultSession
                 .SelectMany(item => item.Inventory!.ModuleNames).ToHashSet(StringComparer.Ordinal);
             unique = own.ModuleNames.Count(name => !others.Contains(name));
         }
-        return ($"撞 {different} 样 · " + (unique is { } count ? $"独有 {count} 样" : "独有数量未知"),
-            $"本组同名模块 {card.Modules.Count} 个，其中 {identical} 个内容相同、{incomplete} 个未分析；"
+        return ($"撞 {shared} 样 · " + (unique is { } count ? $"独有 {count} 样" : "独有数量未知"),
+            $"本组同名模块 {shared} 个，其中 {identical} 个内容相同、{incomplete} 个未分析；"
             + (unique is { } known ? $"整份文件独有模块 {known} 个" : "缺少完整模块清单，独有数量未知"));
     }
     private PackageConflictGroupingInput? groupingInput;
