@@ -23,10 +23,10 @@ public sealed record ConflictResultRow(
     public bool IsDisabled { get; init; }
     public bool IsFileIgnored { get; init; }
     public string FilePath => File is null ? "" : File.Path + (IsDisabled ? ".off" : "");
-    public string DisableMenuText => (IsDisabled ? "启用" : "禁用") + (HasCopies ? "（仅此1文件）" : "");
-    public string IgnoreMenuText => (IsFileIgnored ? "取消忽略" : "忽略该文件") + (HasCopies ? "（仅此1文件）" : "");
-    public string DeleteMenuText => "删除" + (HasCopies ? "（仅此1文件）" : "");
-    public string DeleteTooltip => "移动到回收站" + (HasCopies ? "（仅此1文件）" : "");
+    public string DisableMenuText => IsDisabled ? "启用" : "禁用";
+    public string IgnoreMenuText => IsFileIgnored ? "取消忽略" : "忽略该文件";
+    public string DeleteMenuText => "删除";
+    public string DeleteTooltip => "移动到回收站";
     public string StateText => Priority switch
     {
         ConflictPairPriority.NeedsReview => "异常",

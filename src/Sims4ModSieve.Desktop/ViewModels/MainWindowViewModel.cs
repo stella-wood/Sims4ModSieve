@@ -180,6 +180,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(CanEditSources));
+            OnPropertyChanged(nameof(CanEditFileManagement));
             RefreshCommands();
         }
     }

@@ -453,9 +453,9 @@ public sealed class ConflictV2SessionTests
                 Assert.AreEqual(4, representative.CopyCount);
                 Assert.AreEqual(duplicate.Key, representative.DuplicateLink!.Key);
                 Assert.AreEqual(ignoredCount == 5, representative.IsFileIgnored);
-                StringAssert.Contains(representative.DeleteMenuText, "仅此1文件");
-                StringAssert.Contains(representative.DisableMenuText, "仅此1文件");
-                StringAssert.Contains(representative.IgnoreMenuText, "仅此1文件");
+                Assert.AreEqual("删除", representative.DeleteMenuText);
+                Assert.AreEqual("禁用", representative.DisableMenuText);
+                Assert.AreEqual(ignoredCount == 5 ? "取消忽略" : "忽略该文件", representative.IgnoreMenuText);
             }
             var duplicateFiles = rows.Where(row => row.OwnerKey == duplicate.Key && row.File is not null).ToArray();
             CollectionAssert.AreEquivalent((showIgnored ? copies : copies.Skip(ignoredCount)).ToArray(), duplicateFiles.Select(row => row.File!.Path).ToArray());

@@ -766,7 +766,9 @@ public sealed class ModDisableViewModelTests
         var busyStarts = 0;
         model.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName != nameof(model.IsBusy) || !model.IsBusy) return;
+            if (args.PropertyName != nameof(model.IsFileManagementRefreshing) || !model.IsFileManagementRefreshing) return;
+            Assert.IsFalse(model.IsBusy);
+            Assert.IsTrue(model.GoHomeCommand.CanExecute(null));
             busyStarts++;
             Assert.IsFalse(model.RefreshFileManagementCommand.CanExecute(null));
             Assert.IsTrue(model.RefreshFileManagementCommand.ExecuteAsync().IsCompletedSuccessfully,
@@ -833,9 +835,15 @@ public sealed class ModDisableViewModelTests
         Assert.AreEqual(paths[0], model.DisabledFiles.Files.Single().Path);
         Assert.IsTrue(File.Exists(row.FilePath));
         await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual("已禁用 1 个文件，", model.ConflictFileActionStatusText);
+        Assert.IsTrue(model.ShowConflictFileManagementLink);
+        var settingsLink = Descendants<Button>(window).Single(button => button.Name == "ConflictFileManagementLink");
+        Assert.IsTrue(settingsLink.IsVisible && settingsLink.IsEnabled);
         Save(window, "file-disabled-row.png");
-        model.OpenSettingsCommand.Execute(null);
-        model.SelectSettingsSectionCommand.Execute("files");
+        ((IInvokeProvider)new ButtonAutomationPeer(settingsLink).GetPattern(PatternInterface.Invoke)).Invoke();
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(model.IsSettingsVisible);
+        Assert.AreEqual("files", model.SettingsSection);
         await model.FileManagementRefreshTask;
         await WpfTestHost.LayoutAsync(window);
         Save(window, "file-disabled-settings.png");
@@ -851,6 +859,7 @@ public sealed class ModDisableViewModelTests
         Assert.AreEqual(0, model.DisabledFiles.Files.Count);
         Assert.IsTrue(File.Exists(paths[0]));
         Assert.IsFalse(model.ConflictRows.Single(row => row.File?.Path == paths[0]).IsDisabled);
+        Assert.IsFalse(model.ShowConflictFileManagementLink);
         window.Close();
     });
 
@@ -881,6 +890,114 @@ public sealed class ModDisableViewModelTests
         Assert.IsTrue(File.Exists(paths[0] + ".off"));
         Assert.AreEqual(1, model.DisabledFiles.Files.Count);
         Assert.IsTrue(model.ConflictRows.Single(row => row.File?.Path == paths[0]).IsDisabled);
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task GroupHeadersCountDisabledFilesAcrossHiddenAndFoldedRows(bool folded) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var mods = files.Folder("Mods");
+        var paths = Enumerable.Range(0, 8).Select(index => NewFile(mods, $"test-{index}.package")).ToArray();
+        foreach (var path in paths)
+        {
+            File.WriteAllBytes(path, new byte[10]);
+            File.SetLastWriteTimeUtc(path, ConflictResultSessionTests.Stamp.LastWriteTimeUtc);
+        }
+        files.Store.Save(new(mods, []));
+        var disabled = new ModDisableService(files.Store.DataDirectory);
+        var service = new FileActionService(new TemporaryRecycleBin(files.Folder("Recycle")), new PhysicalFileMetadataAccess(),
+            new FileManagementStore(files.Store.DataDirectory), disabled);
+        var model = Model(files, actions: service, disableService: disabled);
+        var allPaths = paths.Concat(new[] { Path.Combine(mods, "other.package") }).ToArray();
+        var session = folded ? V2([ConflictResultSessionTests.Resource(1, allPaths.Select(path =>
+            (path, (string?)(path == allPaths[^1] ? "different" : "same"))).ToArray())], allPaths.Select(path => (path, 1)).ToArray(), Duplicates(paths))
+            : V2([], [], Duplicates(paths));
+        foreach (var card in session.Cards) session.ToggleExpanded(card.Key);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        var target = session.Cards.Single(card => card.Type == (folded ? "suspected" : "duplicates"));
+        model.AddIgnoredFiles(paths.Take(6).ToArray());
+        await model.ConflictRowsRefreshTask;
+        await model.DisableFilesAsync([paths[0], paths[3], paths[6]]);
+        foreach (var showIgnored in new[] { false, true, false })
+        {
+            model.ShowIgnoredConflicts = showIgnored;
+            await model.ConflictRowsRefreshTask;
+            await WpfTestHost.LayoutAsync(window);
+            var header = model.ConflictRows.Single(row => row.Key == target.Key);
+            Assert.AreEqual($"{target.Files.Count} 文件 · 3 禁用 · 6 已忽略", header.FileCountText);
+            Descendants<ListBox>(window).Single(list => list.Name == "ConflictRowsList").ScrollIntoView(header);
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && ReferenceEquals(text.DataContext, header) && text.Text == header.FileCountText));
+            var visible = model.ConflictRows.Where(row => row.OwnerKey == target.Key && row.File is not null).ToArray();
+            Assert.AreEqual(folded ? 1 : showIgnored ? 3 : 1, visible.Count(row => row.IsDisabled));
+            Assert.IsTrue(visible.Where(row => row.IsDisabled).All(row => row.FilePath.EndsWith(".off", StringComparison.Ordinal)));
+        }
+        Save(window, $"disabled-header-{folded}.png");
+        await model.DeleteConflictFileAsync(model.ConflictRows.Single(row => row.OwnerKey == target.Key && row.File?.Path == paths[6]));
+        Assert.AreEqual($"{target.Files.Count - 1} 文件 · 2 禁用 · 6 已忽略", model.ConflictRows.Single(row => row.Key == target.Key).FileCountText);
+        await model.RefreshFileManagementAsync();
+        await model.RecentDeletedFiles.Files.Single().RestoreCommand!.ExecuteAsync();
+        Assert.AreEqual($"{target.Files.Count} 文件 · 3 禁用 · 6 已忽略", model.ConflictRows.Single(row => row.Key == target.Key).FileCountText);
+        await RestoreAllSelectedAsync(model);
+        Assert.AreEqual($"{target.Files.Count} 文件 · 6 已忽略", model.ConflictRows.Single(row => row.Key == target.Key).FileCountText);
+        model.RemoveIgnoredFiles(paths.Take(6).ToArray());
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual($"{target.Files.Count} 文件", model.ConflictRows.Single(row => row.Key == target.Key).FileCountText);
+    });
+
+    [TestMethod]
+    public Task FileManagementRefreshDisablesOnlyItsPanelAndKeepsNavigationAvailable() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var deleted = NewFile(files.Root, "deleted.package");
+        var adapter = new TemporaryRecycleBin(files.Folder("Recycle"));
+        var actions = new FileActionService(adapter, new PhysicalFileMetadataAccess(), new FileManagementStore(files.Store.DataDirectory));
+        await actions.DeleteAsync(actions.Preflight([new(deleted, 4, File.GetLastWriteTimeUtc(deleted), "",
+            ExpectedIdentity: PhysicalFileIdentity.Read(deleted))], []));
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        adapter.QueryRelease = release.Task;
+        var model = Model(files, actions: actions);
+        var window = new MainWindow(model) { Width = 1180, Height = 1000 };
+        window.Show();
+        model.OpenSettingsCommand.Execute("files");
+        try
+        {
+            await adapter.QueryStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await WpfTestHost.LayoutAsync(window);
+            var page = Descendants<SettingsPage>(window).Single();
+            var panel = (FrameworkElement)page.FindName("FileManagementPanel");
+            Assert.IsTrue(model.IsFileManagementRefreshing);
+            Assert.IsFalse(model.IsBusy);
+            Assert.IsFalse(panel.IsEnabled);
+            Assert.IsFalse(model.RefreshFileManagementCommand.CanExecute(null));
+            Assert.IsTrue(new[] { model.GoHomeCommand, model.OpenConflictCommand, model.OpenSettingsCommand }.All(command => command.CanExecute(null)));
+            Assert.IsTrue(Descendants<RadioButton>(page).All(button => button.IsEnabled));
+            SaveReview(window, "file-management-refresh-local.png");
+            model.SelectSettingsSectionCommand.Execute("about");
+            Assert.AreEqual("about", model.SettingsSection);
+            model.GoHomeCommand.Execute(null);
+            Assert.IsTrue(model.IsHomeVisible);
+            model.OpenSettingsCommand.Execute("files");
+            Assert.IsTrue(model.IsSettingsVisible);
+            Assert.AreEqual("files", model.SettingsSection);
+            Assert.AreEqual(1, adapter.QueryCalls, "刷新中再次进入应沿用正在执行的刷新");
+        }
+        finally
+        {
+            release.TrySetResult();
+            await model.FileManagementRefreshTask;
+        }
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(model.IsFileManagementRefreshing);
+        Assert.IsFalse(model.IsBusy);
+        Assert.IsTrue(((FrameworkElement)Descendants<SettingsPage>(window).Single().FindName("FileManagementPanel")).IsEnabled);
+        Assert.IsTrue(model.RefreshFileManagementCommand.CanExecute(null));
+        Assert.AreEqual(1, model.RecentDeletedFiles.Files.Count);
     });
 
     private static async Task RestoreAllSelectedAsync(MainWindowViewModel model)
@@ -925,10 +1042,18 @@ public sealed class ModDisableViewModelTests
         public bool CanRecycleFiles { get; set; } = true;
         public string? FailDeletePath { get; set; }
         public List<string> Deleted { get; } = [];
+        public Task? QueryRelease { get; set; }
+        public int QueryCalls { get; private set; }
+        public TaskCompletionSource QueryStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool CanRecycle(string path) => CanRecycleFiles;
-        public Task<RecycleBinPresence> QueryAsync(IReadOnlyList<RecycleBinItem> items, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new RecycleBinPresence(items.Where(item => File.Exists(item.RecycledPath)).ToArray(),
-                items.Where(item => !File.Exists(item.RecycledPath)).ToArray(), []));
+        public async Task<RecycleBinPresence> QueryAsync(IReadOnlyList<RecycleBinItem> items, CancellationToken cancellationToken = default)
+        {
+            QueryCalls++;
+            QueryStarted.TrySetResult();
+            if (QueryRelease is not null) await QueryRelease;
+            return new(items.Where(item => File.Exists(item.RecycledPath)).ToArray(),
+                items.Where(item => !File.Exists(item.RecycledPath)).ToArray(), []);
+        }
         public Task<RecycleBinDeleteResult> MoveToRecycleBinAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
         {
             var items = paths.Where(path => path != FailDeletePath).Select(path =>

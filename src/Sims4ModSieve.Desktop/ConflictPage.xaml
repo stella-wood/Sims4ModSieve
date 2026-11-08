@@ -268,7 +268,7 @@
                         <StackPanel>
                             <WrapPanel>
                                 <TextBlock x:Name="Title" MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}" Text="{Binding Title}" FontFamily="等线" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" IsHitTestVisible="False" />
-                                <Border Background="#E4DFD7" Padding="5,1" Margin="8,1,0,0" Visibility="{Binding IsDisabled, Converter={StaticResource BooleanToVisibilityConverter}}"><TextBlock Text="已禁用" Foreground="{StaticResource MutedBrush}" FontSize="10" ToolTip="关系为本次扫描时的结果" /></Border>
+                                <Border Background="#E4DFD7" Padding="5,1" Margin="8,1,0,0" Visibility="{Binding IsDisabled, Converter={StaticResource BooleanToVisibilityConverter}}"><TextBlock Text="已禁用" Foreground="{StaticResource ConflictNeedReviewBrush}" FontSize="10" ToolTip="关系为本次扫描时的结果" /></Border>
                                 <Border x:Name="FileTag" Background="#EEE9F3" CornerRadius="2" Padding="5,1" Margin="8,1,0,0" IsHitTestVisible="False" Visibility="{Binding HasTag, Converter={StaticResource BooleanToVisibilityConverter}}"><TextBlock Text="{Binding Tag}" Foreground="#8B769F" FontSize="10" /></Border>
                                 <Border x:Name="AnnotationSurface" Background="Transparent" Margin="10,3,0,0" ToolTip="{Binding AnnotationTooltip}" Visibility="{Binding HasAnnotation, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <TextBlock x:Name="AnnotationText" Text="{Binding Annotation}" Foreground="{StaticResource MutedBrush}" FontSize="11" IsHitTestVisible="False" />
@@ -665,6 +665,11 @@
                                     </Grid>
                                 </Button>
                                 <TextBlock Text="{Binding ConflictFileActionStatusText}" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource DataTextStyle}" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+                                <Button x:Name="ConflictFileManagementLink" Command="{Binding OpenSettingsCommand}" CommandParameter="files"
+                                    Visibility="{Binding ShowConflictFileManagementLink, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    Style="{StaticResource EntranceActionStyle}" Padding="0" Foreground="#A892C5" FontSize="10" VerticalAlignment="Center">
+                                    <TextBlock Text="去设置处理 →" TextDecorations="Underline" />
+                                </Button>
                                 <Button x:Name="UndoConflictDeleteButton" Content="撤回" Command="{Binding UndoLastDeleteCommand}" Style="{StaticResource HeaderBackButtonStyle}" Margin="8,0,0,0" Padding="4,2" Visibility="{Binding CanUndoConflictDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             </WrapPanel>
                             <TextBlock Text="没查出冲突不代表没有冲突" Visibility="{Binding ShowConflictWarning, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#9A6A32" FontSize="11" />

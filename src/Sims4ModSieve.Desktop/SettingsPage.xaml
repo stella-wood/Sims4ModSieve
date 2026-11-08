@@ -326,7 +326,10 @@
                 <Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" />
             </ScrollViewer.Resources>
             <Grid Margin="88,52,88,50">
-                <StackPanel x:Name="FileManagementPanel" Visibility="{Binding IsFileManagementSettings, Converter={StaticResource BooleanToVisibilityConverter}}" IsEnabled="{Binding CanEditSources}">
+                <StackPanel x:Name="FileManagementPanel" Visibility="{Binding IsFileManagementSettings, Converter={StaticResource BooleanToVisibilityConverter}}" IsEnabled="{Binding CanEditFileManagement}">
+                    <StackPanel.Style><Style TargetType="StackPanel"><Style.Triggers>
+                        <DataTrigger Binding="{Binding IsFileManagementRefreshing}" Value="True"><Setter Property="Opacity" Value="0.5" /></DataTrigger>
+                    </Style.Triggers></Style></StackPanel.Style>
                     <Grid Margin="0,0,0,38">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <TextBlock x:Name="FileManagementTitle" Text="删除与忽略" Style="{StaticResource SettingsTitle}" Margin="0" />

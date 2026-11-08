@@ -34,7 +34,13 @@ public sealed partial class MainWindowViewModel
     public event Action<DuplicateGroupViewModel>? DuplicateGroupLocationRequested;
     public bool CanUndoConflictDelete => lastDeleteOwner == "conflict" && fileActionService.CanUndoLastDelete;
     private string conflictFileActionStatusText = string.Empty;
-    public string ConflictFileActionStatusText { get => conflictFileActionStatusText; private set => SetProperty(ref conflictFileActionStatusText, value); }
+    private bool showConflictFileManagementLink;
+    public bool ShowConflictFileManagementLink { get => showConflictFileManagementLink; private set => SetProperty(ref showConflictFileManagementLink, value); }
+    public string ConflictFileActionStatusText
+    {
+        get => conflictFileActionStatusText;
+        private set { ShowConflictFileManagementLink = false; SetProperty(ref conflictFileActionStatusText, value); }
+    }
 
     private void InitializeConflictActions()
     {
@@ -115,6 +121,16 @@ public sealed partial class MainWindowViewModel
             new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase) { [row.File.Path] = stamp });
         else await RestoreDisabledFilesAsync([record.Id]);
         ConflictFileActionStatusText = FileManagementFeedback;
+        if (record is null)
+        {
+            var disabledCount = disabledRecords.Count(item => PathRulesEqual(item.OriginalPath, row.File.Path)
+                && item.Size == stamp.Length && item.LastWriteTimeUtc == stamp.LastWriteTimeUtc);
+            if (disabledCount > 0)
+            {
+                ConflictFileActionStatusText = $"已禁用 {disabledCount} 个文件，";
+                ShowConflictFileManagementLink = true;
+            }
+        }
     }
 
     private async Task LocateConflictGroupAsync(ConflictGroupLink link)

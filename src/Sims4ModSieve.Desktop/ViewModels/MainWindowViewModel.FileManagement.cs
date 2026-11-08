@@ -29,10 +29,23 @@ public sealed partial class MainWindowViewModel
     public string FileManagementFeedback { get => fileManagementFeedback; private set => SetProperty(ref fileManagementFeedback, value); }
     public AsyncRelayCommand RefreshFileManagementCommand { get; private set; } = null!;
     public Task FileManagementRefreshTask { get; private set; } = Task.CompletedTask;
+    private bool isFileManagementRefreshing;
+    public bool IsFileManagementRefreshing
+    {
+        get => isFileManagementRefreshing;
+        private set
+        {
+            if (!SetProperty(ref isFileManagementRefreshing, value)) return;
+            OnPropertyChanged(nameof(CanEditFileManagement));
+            RefreshManagementCommands();
+        }
+    }
+    public bool CanEditFileManagement => !IsBusy && !IsFileManagementRefreshing;
 
     private void InitializeFileManagement()
     {
-        RefreshFileManagementCommand = ManagementCommand(RefreshFileManagementAsync);
+        RefreshFileManagementCommand = new(() => { StartFileManagementRefresh(); return FileManagementRefreshTask; },
+            exception => FileManagementFeedback = exception.Message, () => CanEditFileManagement);
         DisabledFiles = new()
         {
             Title = "已禁用", TimeHeader = "禁用时间", EmptyText = "暂无已禁用文件", HasAdd = true, IsDisabled = true,
@@ -369,14 +382,15 @@ public sealed partial class MainWindowViewModel
 
     private void StartFileManagementRefresh()
     {
+        if (IsFileManagementRefreshing) return;
         FileManagementRefreshTask = RunFileManagementRefreshAsync();
     }
 
     private async Task RunFileManagementRefreshAsync()
     {
-        IsBusy = true;
+        IsFileManagementRefreshing = true;
         try { await RefreshFileManagementAsync(); }
-        finally { IsBusy = false; RefreshManagementCommands(); }
+        finally { IsFileManagementRefreshing = false; }
     }
 
     public async Task RestoreManagedFilesAsync(IReadOnlyList<string> ids)

@@ -107,7 +107,12 @@ public sealed partial class MainWindowViewModel
 
     private void InitializeSettings()
     {
-        OpenSettingsCommand = SettingsCommand(ShowSettings);
+        OpenSettingsCommand = new(section =>
+        {
+            if (IsBusy) return;
+            ShowSettings();
+            if (section is "files") SelectSettingsSection("files");
+        }, _ => !IsBusy);
         SelectSettingsSectionCommand = new(section =>
         {
             if (!IsBusy) SelectSettingsSection(section as string);

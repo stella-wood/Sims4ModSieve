@@ -276,7 +276,21 @@ public sealed partial class MainWindowViewModel
     private void PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount,
         Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
     {
-        var publishedRows = rows.Select(row => row with { IsDisabled = DisabledRecordFor(row) is not null }).ToArray();
+        var disabledByPath = disabledRecords.ToDictionary(record => record.OriginalPath, StringComparer.OrdinalIgnoreCase);
+        bool IsDisabled(ConflictFile? file) => file?.Stamp is { } stamp
+            && disabledByPath.TryGetValue(file.Path, out var record)
+            && record.Size == stamp.Length && record.LastWriteTimeUtc == stamp.LastWriteTimeUtc;
+        var countsByKey = conflictSession.Cards.Select(card => (Card: card, Disabled: card.Files.Count(IsDisabled)))
+            .Where(item => item.Disabled > 0).ToDictionary(item => item.Card.Key, item =>
+            {
+                var ignored = item.Card.Files.Count(file => conflictSession.IsFileIgnored(file.Path));
+                return $"{item.Card.Files.Count} 文件 · {item.Disabled} 禁用" + (ignored > 0 ? $" · {ignored} 已忽略" : "");
+            });
+        var publishedRows = rows.Select(row => row with
+        {
+            IsDisabled = IsDisabled(row.File),
+            FileCountText = row.IsCardStart && countsByKey.TryGetValue(row.Key, out var counts) ? counts : row.FileCountText,
+        }).ToArray();
         restoreViewport?.Invoke(publishedRows);
         conflictRows = publishedRows;
         visibleConflictParentCount = parentCount;
