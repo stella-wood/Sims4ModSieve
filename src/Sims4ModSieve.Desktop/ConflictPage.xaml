@@ -605,7 +605,7 @@
                                         <CheckBox Grid.Column="1" Content="资源覆盖冲突" IsChecked="{Binding IncludeConflictOverrides}" Margin="0,4,0,4" HorizontalAlignment="Left" />
                                         <CheckBox Grid.Column="2" Content="脚本冲突" IsChecked="{Binding IncludeConflictScriptConflicts}" Margin="0,4,0,4" HorizontalAlignment="Left" />
                                         <CheckBox Grid.Row="1" Content="合集包含" IsChecked="{Binding IncludeConflictCollections}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="1" Content="疑似同一 mod" IsChecked="{Binding IncludeConflictSuspected}" Margin="0,4,0,4" /><CheckBox Grid.Row="1" Grid.Column="2" Content="重复文件" IsChecked="{Binding IncludeConflictDuplicates}" Margin="0,4,0,4" />
-                                        <CheckBox Grid.Row="2" Grid.ColumnSpan="3" Content="重复文件（脚本）" IsChecked="{Binding IncludeConflictScriptDuplicates}" Margin="0,4,0,4" HorizontalAlignment="Left" />
+                                        <CheckBox Grid.Row="2" Grid.ColumnSpan="3" Content="重复模块（脚本）" IsChecked="{Binding IncludeConflictScriptDuplicates}" Margin="0,4,0,4" HorizontalAlignment="Left" />
                                     </Grid>
                                     <Border x:Name="ConflictIgnoredSeparator" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />
                                     <CheckBox Content="显示已忽略" IsChecked="{Binding ShowIgnoredConflicts}" Margin="0,4,0,4" />

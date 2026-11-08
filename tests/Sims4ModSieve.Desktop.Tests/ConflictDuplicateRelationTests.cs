@@ -65,6 +65,47 @@ public sealed class ConflictDuplicateRelationTests
     });
 
     [TestMethod]
+    [DataRow(1, 1)]
+    [DataRow(4, 1)]
+    [DataRow(4, 5)]
+    public Task CollectionExplanationUsesActualContentCountsWithoutFilePrefix(int copies, int unique) => WpfTestHost.RunAsync(async () =>
+    {
+        var same = Enumerable.Range(0, copies).Select(index => $@"C:\Mods\same{index}.package").ToArray();
+        var different = Enumerable.Range(0, copies).Select(index => $@"C:\Mods\different{index}.package").ToArray();
+        var bundles = Enumerable.Range(0, copies).Select(index => $@"C:\Mods\bundle{index}.package").ToArray();
+        var duplicates = Duplicates(same.Concat(different).ToArray()) with
+        {
+            Groups = copies == 1 ? [] : new[] { same, different, bundles }.Select((paths, index) =>
+                Duplicates(paths).Groups.Single() with { Sha256 = $"HASH-{index}" }).ToArray(),
+        };
+        var comparisons = Enumerable.Range(1, 6).Select(key => Resource((ulong)key,
+            (key <= 3 ? same : different).Select(path => (path, (string?)(key == 6 ? "different" : "same")))
+                .Concat(bundles.Select(path => (path, (string?)"same"))).ToArray())).ToArray();
+        var session = V2(comparisons, same.Concat(different).Select(path => (path, 3))
+            .Concat(bundles.Select(path => (path, 6 + unique))).ToArray(), duplicates);
+        var card = session.Cards.Single(item => item.Type == "collection");
+        session.ToggleExpanded(card.Key);
+        var expected = $"合集里包含 2 个另外单独放着的文件，1 个已被包含，1 个存在不同。还有 {unique} 样资源只在合集里有";
+        foreach (var showIgnored in new[] { false, true })
+        {
+            session.SetIgnoredFiles([same[0]]);
+            var rows = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: showIgnored);
+            Assert.AreEqual(expected, rows.Single(row => row.Key == card.Key + "/explanation").Title);
+            Assert.AreEqual($"{copies * 3} 文件 · 1 已忽略", rows.Single(row => row.Key == card.Key).FileCountText);
+        }
+        session.SetIgnoredFiles([]);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        await WpfTestHost.LayoutAsync(window);
+        var explanation = model.ConflictRows.Single(row => row.Key == card.Key + "/explanation");
+        Assert.AreEqual(expected, Descendants<TextBlock>(window).Single(text => text.Name == "Title" && ReferenceEquals(text.DataContext, explanation)).Text);
+        Save(window, $"collection-description-{copies}-{unique}.png");
+    });
+
+    [TestMethod]
     public void SeparateGroupLinksDoNotDuplicateSameRelationBadge()
     {
         var row = new ConflictRelationshipRow(new(A, Stamp), Sims4ModSieve.Core.Conflicts.ConflictPairPriority.CanOrganize,

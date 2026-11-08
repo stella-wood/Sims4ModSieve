@@ -65,7 +65,7 @@ public sealed partial class ConflictResultSession
     private readonly Dictionary<string, int> groupNumbers = new(StringComparer.Ordinal);
     public IReadOnlyList<ConflictCard> Cards { get; private set; } = [];
     public PackageConflictGroupingResult? Grouping { get; private set; }
-    public int DuplicateGroupCount => Cards.Count(card => card.Duplicate is not null);
+    public int DuplicateGroupCount => Cards.Count(card => card.Duplicate is { Files.Count: > 1 });
 
     private void ResetGroups()
     {
@@ -247,7 +247,7 @@ public sealed partial class ConflictResultSession
                 Files = files, Package = package, Duplicate = duplicate, Modules = modules, HasRemovedFiles = true,
                 Priority = modules is null ? card.Priority : ScriptPriority(modules),
                 Type = modules is null ? card.Type : ScriptPriority(modules) == ConflictPairPriority.CanOrganize ? "script-duplicate" : "script-conflict",
-                Title = modules is null ? card.Title : ScriptPriority(modules) == ConflictPairPriority.CanOrganize ? "重复文件（脚本）" : "脚本冲突",
+                Title = modules is null ? card.Title : ScriptPriority(modules) == ConflictPairPriority.CanOrganize ? "重复模块（脚本）" : "脚本冲突",
                 Explanation = $"已移除 {card.Files.Count - files.Length} 个文件，剩余 {files.Length} 个文件",
             };
         }).Where(card => card.Files.Count > 0).ToArray();
@@ -264,7 +264,7 @@ public sealed partial class ConflictResultSession
                 {
                     Modules = modules, Priority = priority, HasRemovedFiles = true,
                     Type = priority == ConflictPairPriority.CanOrganize ? "script-duplicate" : "script-conflict",
-                    Title = priority == ConflictPairPriority.CanOrganize ? "重复文件（脚本）" : "脚本冲突",
+                    Title = priority == ConflictPairPriority.CanOrganize ? "重复模块（脚本）" : "脚本冲突",
                     Explanation = group.First(card => card.HasRemovedFiles).Explanation,
                 };
             })).OrderBy(card => card.GroupIndex).ToArray();
@@ -332,9 +332,9 @@ public sealed partial class ConflictResultSession
             var explanation = type switch
             {
                 "override" => $"有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同；游戏对每个编号只会使用一份资源",
-                "collection" => $"合集里包含{group.Members.Where(member => !member.IsBundle).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个另外单独放着的文件，"
-                    + $"{group.Members.Where(member => member.ContainedContentIdentical == true).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个已被包含，"
-                    + $"{group.Members.Where(member => member.ContainedContentIdentical == false).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()}个存在不同。还有{group.BundleUniqueResourceCount}样资源只在合集里有。",
+                "collection" => $"合集里包含 {group.Members.Where(member => !member.IsBundle).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()} 个另外单独放着的文件，"
+                    + $"{group.Members.Where(member => member.ContainedContentIdentical == true).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()} 个已被包含，"
+                    + $"{group.Members.Where(member => member.ContainedContentIdentical == false).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()} 个存在不同。还有 {group.BundleUniqueResourceCount} 样资源只在合集里有",
                 _ => $"有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同，可能是同一 mod 的不同版本",
             };
             cards.Add(new(key, type, title, type == "override" ? ConflictPairPriority.NeedsReview : ConflictPairPriority.CanOrganize,
@@ -361,7 +361,7 @@ public sealed partial class ConflictResultSession
                 .Select(item => new ConflictFile(item.ArchivePath, item.ArchiveStamp)).ToArray();
             var priority = ScriptPriority(collisions);
             cards.Add(new("script/" + Identity(group.Key), priority == ConflictPairPriority.CanOrganize ? "script-duplicate" : "script-conflict",
-                priority == ConflictPairPriority.CanOrganize ? "重复文件（脚本）" : "脚本冲突", priority, files,
+                priority == ConflictPairPriority.CanOrganize ? "重复模块（脚本）" : "脚本冲突", priority, files,
                 ScriptExplanation(collisions), Modules: collisions));
         }
         foreach (var source in duplicateReport?.Groups ?? [])
@@ -420,8 +420,10 @@ public sealed partial class ConflictResultSession
                 var separator = card.Modules is not null || card.Duplicate is not null && !card.HasRemovedFiles
                     || !card.HasRemovedFiles && card.Package?.Kind is PackageConflictRelationKind.OverrideConflict or PackageConflictRelationKind.SuspectedSameMod ? counts.Count > 0 ? " " : "" : "；";
                 add(new(card.Key + "/explanation", ConflictRowKind.Explanation, 1,
-                    summary + separator + (card.Modules is not null ? ScriptExplanation(card.Modules) + (card.HasRemovedFiles ? "。" + card.Explanation : "")
-                        : card.Duplicate is null || card.HasRemovedFiles ? card.Explanation : "内容完全相同。"),
+                    (card.Type == "collection" ? card.Explanation
+                        : card.Duplicate is not null && !card.HasRemovedFiles ? $"共有 {DuplicateGroupCount} 组重复，"
+                        : summary + separator + (card.Modules is not null ? ScriptExplanation(card.Modules) + (card.HasRemovedFiles ? "。" + card.Explanation : "")
+                            : card.Explanation)).TrimEnd('。'),
                     OwnerKey: card.Key, IsIgnored: ignored, DuplicateLink: card.Duplicate is null || card.HasRemovedFiles ? null : Link(card)));
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var activeFiles = card.Files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);

@@ -174,7 +174,7 @@ public sealed partial class MainWindowViewModel
                     await UpdateConflictFilePathsAsync(session, result.CompletedPaths, restore: false, restoreViewport);
                 }
                 if (duplicateGeneration == resultGeneration) resultSession.SynchronizeDeletedPaths(result.CompletedPaths);
-                if (ReferenceEquals(session, conflictSession)) ConflictFileActionStatusText = $"已移入回收站 {result.CompletedPaths.Count} 个文件";
+                if (ReferenceEquals(session, conflictSession)) ConflictFileActionStatusText = $"本次删除 {result.CompletedPaths.Count} 个文件，已移入回收站";
             }
             if (result.Failures.Count > 0) fileActionDialogs.ShowProblems("部分文件未能删除", result.Failures);
         }

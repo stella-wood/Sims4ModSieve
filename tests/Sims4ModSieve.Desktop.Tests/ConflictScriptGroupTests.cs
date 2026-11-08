@@ -74,7 +74,7 @@ public sealed class ConflictScriptGroupTests
         session.ToggleExpanded(card.Key);
         Assert.AreEqual(2, Rows(session, "all").Count(row => row.OwnerKey == card.Key && row.File is not null));
         session.ApplyDeletedPaths(paths.Skip(4));
-        Assert.AreEqual("重复文件（脚本）", session.Cards.Single(item => item.Key == card.Key).Title);
+        Assert.AreEqual("重复模块（脚本）", session.Cards.Single(item => item.Key == card.Key).Title);
         var files = Rows(session, "all").Where(row => row.OwnerKey == card.Key && row.File is not null).ToArray();
         CollectionAssert.AreEquivalent(paths.Take(4).ToArray(), files.Select(row => row.File!.Path).ToArray());
         Assert.IsTrue(files.All(row => !row.HasCopies && row.DuplicateLink is null));
@@ -87,7 +87,7 @@ public sealed class ConflictScriptGroupTests
     }
 
     [TestMethod]
-    [DataRow(false, false, "重复文件（脚本）", ConflictPairPriority.CanOrganize)]
+    [DataRow(false, false, "重复模块（脚本）", ConflictPairPriority.CanOrganize)]
     [DataRow(true, false, "脚本冲突", ConflictPairPriority.NeedsReview)]
     [DataRow(false, true, "脚本冲突", ConflictPairPriority.Incomplete)]
     [DataRow(true, true, "脚本冲突", ConflictPairPriority.NeedsReview)]
@@ -163,7 +163,7 @@ public sealed class ConflictScriptGroupTests
         var current = session.Cards.Single();
         Assert.AreEqual(original.Key, current.Key);
         Assert.AreEqual(original.GroupIndex, current.GroupIndex);
-        Assert.AreEqual("重复文件（脚本）", current.Title);
+        Assert.AreEqual("重复模块（脚本）", current.Title);
         Assert.AreEqual(ConflictPairPriority.CanOrganize, current.Priority);
         Assert.IsTrue(session.TechnicalEntries(current).All(entry => entry.Conclusion == "内容相同"));
         Assert.AreEqual(0, session.BuildVisibleRows("all", "all", Closed, types: new HashSet<string> { "script-conflict" }).Count);
@@ -194,7 +194,7 @@ public sealed class ConflictScriptGroupTests
         popup.IsOpen = true;
         await WpfTestHost.LayoutAsync(window);
         var labels = Descendants<CheckBox>(popup.Child).Select(box => box.Content.ToString()).ToArray();
-        Assert.IsTrue(labels.Contains("脚本冲突") && labels.Contains("重复文件（脚本）") && labels.Contains("重复文件"));
+        Assert.IsTrue(labels.Contains("脚本冲突") && labels.Contains("重复模块（脚本）") && labels.Contains("重复文件"));
         Assert.IsFalse(labels.Contains("文件重复") || labels.Contains("脚本重复") || labels.Contains("同名脚本"));
         Save(window, "script-group-filters.png", popup.Child as System.Windows.FrameworkElement);
         popup.IsOpen = false;
@@ -202,7 +202,7 @@ public sealed class ConflictScriptGroupTests
         model.IncludeConflictScriptDuplicates = true;
         await model.ConflictRowsRefreshTask;
         Assert.AreEqual(1, model.VisibleConflictParentCount);
-        Assert.AreEqual("重复文件（脚本）", model.ConflictRows.Single().Title);
+        Assert.AreEqual("重复模块（脚本）", model.ConflictRows.Single().Title);
         model.IncludeAllConflictStates = false;
         model.IncludeConflictIncomplete = true;
         await model.ConflictRowsRefreshTask;

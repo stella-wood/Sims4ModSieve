@@ -339,6 +339,7 @@ public sealed class ConflictFileActionTests
         Assert.IsTrue(header.IsExpanded);
         Assert.AreEqual(files.B, model.ConflictRows.Single(row => row.File is not null).File!.Path);
         Assert.IsTrue(model.CanUndoConflictDelete);
+        Assert.AreEqual("本次删除 1 个文件，已移入回收站", model.ConflictFileActionStatusText);
         await model.DeleteConflictFileAsync(removedRow);
         Assert.AreEqual(1, adapter.Deleted.Count);
         var undo = Descendants<Button>(window).Single(button => button.Name == "UndoConflictDeleteButton");
@@ -473,6 +474,31 @@ public sealed class ConflictFileActionTests
             Assert.AreEqual(saved.Top, item.TranslatePoint(new Point(), presenter).Y, 1d,
                 $"删除或撤回后，存活行应留在视口中的原相对位置；操作前锚点={saved.Key}, Y={saved.Top:F3}；offset={viewer.VerticalOffset:F3}");
         }
+    });
+
+    [TestMethod]
+    public Task DeleteFooterDescribesLatestSuccessfulBatchAndUndoOnlyRestoresThatBatch() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var report = Duplicates(files.A, files.B, files.C);
+        var adapter = new TestRecycleBin();
+        var model = Model(files.Root, new RecordingDuplicateRun(report), adapter: adapter);
+        var session = V2([], [], report);
+        session.ToggleExpanded(session.Cards.Single().Key);
+        await SetSessionAsync(model, session, "all");
+        await model.DeleteConflictFileAsync(model.ConflictRows.Single(row => row.File?.Path == files.A));
+        Assert.AreEqual("本次删除 1 个文件，已移入回收站", model.ConflictFileActionStatusText);
+        adapter.DeleteFailure = files.B;
+        await model.DeleteConflictFileAsync(model.ConflictRows.Single(row => row.File?.Path == files.B));
+        Assert.AreEqual("本次删除 1 个文件，已移入回收站", model.ConflictFileActionStatusText);
+        Assert.IsTrue(session.Cards.Single().Files.Any(file => file.Path == files.B));
+        adapter.DeleteFailure = null;
+        await model.DeleteConflictFileAsync(model.ConflictRows.Single(row => row.File?.Path == files.B));
+        Assert.AreEqual("本次删除 1 个文件，已移入回收站", model.ConflictFileActionStatusText, "连续两次单文件删除仍描述最近一次");
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        CollectionAssert.AreEquivalent(new[] { files.B, files.C }, session.Cards.Single().Files.Select(file => file.Path).ToArray());
+        Assert.AreEqual("已撤回，恢复 1 个文件", model.ConflictFileActionStatusText);
+        Assert.IsFalse(model.CanUndoConflictDelete);
     });
 
     [TestMethod]

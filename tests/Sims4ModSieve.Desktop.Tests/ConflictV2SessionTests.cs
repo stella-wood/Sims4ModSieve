@@ -19,7 +19,7 @@ public sealed class ConflictV2SessionTests
     [TestMethod]
     [DataRow(2)]
     [DataRow(5)]
-    public Task DuplicateDescriptionsUseOnlyOwnFilesAndKeepNavigation(int fileCount) => WpfTestHost.RunAsync(async () =>
+    public Task DuplicateDescriptionsUseCurrentGroupCountAndKeepNavigation(int fileCount) => WpfTestHost.RunAsync(async () =>
     {
         var paths = Enumerable.Range(0, fileCount).Select(index => $@"C:\Mods\duplicate{index}.package").ToArray();
         var report = Duplicates(paths);
@@ -35,7 +35,7 @@ public sealed class ConflictV2SessionTests
             {
                 var rows = session.BuildVisibleRows("all", "all", session.GetExpandedKeysSnapshot(), showIgnored: showIgnored);
                 var description = rows.Single(row => row.Key == card.Key + "/explanation");
-                Assert.AreEqual($"这 {fileCount} 份文件" + (ignoredCount > 0 ? " (含 1 已忽略) " : "") + "内容完全相同。", description.Title);
+                Assert.AreEqual("共有 2 组重复，", description.Title);
                 Assert.IsTrue(description.IsDuplicateExplanation);
                 Assert.AreEqual(card.Key, description.DuplicateLink!.Key);
                 var files = rows.Where(row => row.OwnerKey == card.Key && row.File is not null).ToArray();
@@ -43,6 +43,12 @@ public sealed class ConflictV2SessionTests
                 Assert.IsTrue(files.All(row => !row.HasCopies && row.DuplicateLink is null));
             }
         }
+        session.ApplyDeletedPaths([@"C:\Mods\other-b.package"]);
+        Assert.AreEqual(1, session.DuplicateGroupCount);
+        Assert.AreEqual("共有 1 组重复，", Rows(session, "all").Single(row => row.Key == card.Key + "/explanation").Title);
+        session.ApplyRestoredPaths([@"C:\Mods\other-b.package"]);
+        Assert.AreEqual(2, session.DuplicateGroupCount);
+        Assert.AreEqual("共有 2 组重复，", Rows(session, "all").Single(row => row.Key == card.Key + "/explanation").Title);
         session.SetIgnoredFiles([]);
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);

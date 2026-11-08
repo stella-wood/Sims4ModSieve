@@ -269,7 +269,7 @@ public sealed class ConflictPageRenderTests
         await SetSessionAsync(model, session, "all");
         await WpfTestHost.LayoutAsync(window);
         var explanation = model.ConflictRows.Single(row => row.Kind == ConflictRowKind.Explanation);
-        Assert.AreEqual("这 3 份文件；合集里包含2个另外单独放着的文件，1个已被包含，1个存在不同。还有4样资源只在合集里有。", explanation.Title);
+        Assert.AreEqual("合集里包含 2 个另外单独放着的文件，1 个已被包含，1 个存在不同。还有 4 样资源只在合集里有", explanation.Title);
         var text = Descendants<TextBlock>(window).Single(text => ReferenceEquals(text.DataContext, explanation) && text.Name == "Title");
         var annotations = Descendants<Border>(window).Where(border => border.Name == "AnnotationSurface" && border.IsVisible).ToArray();
         Assert.AreEqual(3, annotations.Length);
