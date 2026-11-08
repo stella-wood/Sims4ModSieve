@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Conflicts;
@@ -137,6 +138,97 @@ public sealed class MainWindowViewModelTests
         Assert.AreEqual(string.Empty, model.StatusText);
         Assert.AreEqual(0, model.DiscoveredFileCount);
         Assert.AreEqual(1, model.ConflictSources.Count);
+    }
+
+    [TestMethod]
+    [DataRow("completed")]
+    [DataRow("issues")]
+    [DataRow("cancelled")]
+    [DataRow("failed")]
+    public async Task QueuedDuplicateProgressCannotOverwriteTerminalScanState(string outcome)
+    {
+        using var temporary = new TemporaryDirectory();
+        var source = temporary.CreateDirectory("Mods");
+        var context = new DeferredDuplicateProgressContext();
+        var run = new FakeDuplicateRunService((_, progress, _) =>
+        {
+            progress!.Report(new(DuplicateScanPhase.Hashing, "迟到的哈希进度", 99, 99, 99));
+            return outcome switch
+            {
+                "cancelled" => Task.FromCanceled<DuplicateReport>(new CancellationToken(canceled: true)),
+                "failed" => Task.FromException<DuplicateReport>(new IOException("fixture permission denied")),
+                _ => Task.FromResult(new DuplicateReport(DateTime.UnixEpoch, DateTime.UnixEpoch, [], 4, 4, [],
+                    outcome == "issues" ? [new("directory-read-failed", ScanIssueStage.Discovery, source, "fixture permission denied")] : [])),
+            };
+        });
+        var model = CreateViewModel(new FakeSettingsStore(new(source, [])), runService: run);
+        var previous = SynchronizationContext.Current;
+        Task scan;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            scan = model.StartScanCommand.ExecuteAsync();
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        await scan;
+        if (outcome is "issues" or "failed") StringAssert.Contains(model.StatusDetail, "fixture permission denied");
+        var final = (model.StatusText, model.StatusDetail, model.DiscoveredFileCount, model.IssueCount,
+            model.IsProgressIndeterminate, model.ProgressValue, model.ProgressMaximum);
+        Assert.AreEqual(1, context.DrainProgress());
+        Assert.AreEqual(final, (model.StatusText, model.StatusDetail, model.DiscoveredFileCount, model.IssueCount,
+            model.IsProgressIndeterminate, model.ProgressValue, model.ProgressMaximum));
+        Assert.IsFalse(model.IsBusy);
+    }
+
+    [TestMethod]
+    public async Task DuplicateProgressWorksDuringScanAndStopsBeforePreparingResults()
+    {
+        using var temporary = new TemporaryDirectory();
+        var source = temporary.CreateDirectory("Mods");
+        var context = new DeferredDuplicateProgressContext();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        IProgress<DuplicateScanProgress>? captured = null;
+        var run = new FakeDuplicateRunService(async (_, progress, _) =>
+        {
+            captured = progress;
+            progress!.Report(new(DuplicateScanPhase.Hashing, "正常哈希进度", 1, 2, 2));
+            started.TrySetResult();
+            await release.Task;
+            progress.Report(new(DuplicateScanPhase.Hashing, "过期的哈希进度", 99, 99, 99));
+            return new(DateTime.UnixEpoch, DateTime.UnixEpoch, [], 2, 2, [], []);
+        });
+        var model = CreateViewModel(new FakeSettingsStore(new(source, [])), runService: run);
+        var preparationPreserved = false;
+        model.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(model.StatusText) || model.StatusText != "正在整理结果…") return;
+            Assert.AreEqual(1, context.DrainProgress());
+            preparationPreserved = model.StatusText == "正在整理结果…";
+        };
+        var previous = SynchronizationContext.Current;
+        Task scan;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            scan = model.StartScanCommand.ExecuteAsync();
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            Assert.AreEqual(1, context.DrainProgress());
+            Assert.AreEqual("正常哈希进度", model.StatusText);
+            Assert.AreEqual(2, model.DiscoveredFileCount);
+            Assert.IsTrue(model.IsBusy);
+        }
+        finally { release.TrySetResult(); }
+        await scan;
+        Assert.IsTrue(preparationPreserved);
+        var final = (model.StatusText, model.StatusDetail, model.DiscoveredFileCount);
+        captured!.Report(new(DuplicateScanPhase.Discovering, "完成后迟到的发现进度", DiscoveredFileCount: 99));
+        Assert.AreEqual(1, context.DrainProgress());
+        Assert.AreEqual(final, (model.StatusText, model.StatusDetail, model.DiscoveredFileCount));
     }
 
     [TestMethod]
@@ -434,6 +526,22 @@ public sealed class MainWindowViewModelTests
 
     private static bool PathsEqual(string first, string second) =>
         StringComparer.OrdinalIgnoreCase.Equals(first, second);
+
+    private sealed class DeferredDuplicateProgressContext : SynchronizationContext
+    {
+        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> pending = new();
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            if (state is DuplicateScanProgress) pending.Enqueue((callback, state));
+            else base.Post(callback, state);
+        }
+        public int DrainProgress()
+        {
+            var count = 0;
+            while (pending.TryDequeue(out var item)) { item.Callback(item.State); count++; }
+            return count;
+        }
+    }
 
     private sealed class FakeSettingsStore(DuplicateSettings? settings) : IDuplicateSettingsStore
     {

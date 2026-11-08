@@ -439,16 +439,29 @@ public sealed partial class MainWindowViewModel : ObservableObject
         StatusText = "正在准备扫描…";
         StatusDetail = string.Empty;
 
+        var progressGate = new object();
+        var acceptProgress = true;
         var progress = new Progress<DuplicateScanProgress>(value =>
         {
-            if (generation == resultGeneration) UpdateProgress(value);
+            lock (progressGate)
+            {
+                if (acceptProgress && generation == resultGeneration) UpdateProgress(value);
+            }
         });
 
         try
         {
-            var report = await Task.Run(
-                () => duplicateRunService.RunAsync(input, progress, scanCancellation.Token),
-                scanCancellation.Token);
+            DuplicateReport report;
+            try
+            {
+                report = await Task.Run(
+                    () => duplicateRunService.RunAsync(input, progress, scanCancellation.Token),
+                    scanCancellation.Token);
+            }
+            finally
+            {
+                lock (progressGate) acceptProgress = false;
+            }
 
             if (generation != resultGeneration) return;
             StatusText = "正在整理结果…";
