@@ -153,7 +153,17 @@ public sealed class UpdateCheckTests
         await model.CheckForUpdatesAsync(new UpdateCheckService(client));
         await WpfTestHost.LayoutAsync(window);
         Assert.IsTrue(icon.IsVisible);
-        Assert.AreEqual("发现新版本 v99.0.0", icon.ToolTip);
+        var tooltip = (ToolTip)icon.ToolTip;
+        Assert.AreEqual(System.Windows.Input.Cursors.Hand, icon.Cursor);
+        tooltip.PlacementTarget = icon;
+        tooltip.IsOpen = true;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual("发现新版本 v99.0.0", ((TextBlock)tooltip.Content).Text);
+        var content = (FrameworkElement)window.Content;
+        var tooltipOffset = content.PointFromScreen(tooltip.PointToScreen(new Point()));
+        Assert.IsTrue(new Rect(content.RenderSize).Contains(new Rect(tooltipOffset, tooltip.RenderSize)));
+        Assert.IsTrue(tooltip.PointToScreen(new Point(0, tooltip.ActualHeight)).Y <= icon.PointToScreen(new Point()).Y);
+        tooltip.IsOpen = false;
         SaveScreenshot(window, popup, "home-update-icon.png");
         await WpfTestHost.ClickAsync(icon, new Point(2, 2));
         Assert.IsTrue(popup.IsOpen);
@@ -161,6 +171,8 @@ public sealed class UpdateCheckTests
         AssertPopupInsideWindow(window, popup);
         SaveScreenshot(window, popup, "home-update-popup.png");
         var download = (Button)window.FindName("UpdateDownloadButton");
+        await WpfTestHost.MoveMouseAsync(download);
+        SaveScreenshot(window, popup, "home-update-download-hover.png");
         await WpfTestHost.ClickAsync(download);
         Assert.AreEqual(Url, opened);
         keybd_event(0x1B, 0, 0, UIntPtr.Zero);

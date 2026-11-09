@@ -475,7 +475,7 @@
                             <TextBlock Text="{Binding ProductVersion, StringFormat=版本 {0}}" Style="{StaticResource SettingsDescription}" />
                         </StackPanel>
                     </StackPanel>
-                    <TextBlock Text="《模拟人生 4》Mod 整理工具；扫描、分析和报告均在本机完成，启动时向 GitHub 查询一次最新版本号，不上传 Mod、路径或报告" TextWrapping="Wrap" Style="{StaticResource SettingsDescription}" Margin="0,20,0,26" />
+                    <TextBlock Text="《模拟人生 4》Mod 整理工具" TextWrapping="Wrap" Style="{StaticResource SettingsDescription}" Margin="0,20,0,26" />
                     <Grid Margin="0,0,0,12">
                         <TextBlock Text="项目主页" Style="{StaticResource SettingsLabel}" VerticalAlignment="Center" />
                         <Button Content="前往 GitHub" Style="{StaticResource SettingsTextButton}" HorizontalAlignment="Right" Command="{Binding OpenProjectCommand}"

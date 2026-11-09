@@ -41,6 +41,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         UpdatePopup.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>
             [new CustomPopupPlacement(new Point(-popupSize.Width - 8, targetSize.Height - popupSize.Height), PopupPrimaryAxis.Vertical)];
+        UpdateToolTip.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>
+            [new CustomPopupPlacement(new Point(targetSize.Width - popupSize.Width, -popupSize.Height - 6), PopupPrimaryAxis.Horizontal)];
         DataContext = viewModel;
         Closing += (_, eventArgs) =>
         {
