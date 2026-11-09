@@ -37,6 +37,242 @@ public sealed class ScriptArchiveRegressionTests
             new([new ScanSource("mods", directory)], limits), cancellationToken: cancellationToken);
 
     [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    public async Task EntryDataCannotCrossTheDirectoryOrNextLocalRecord(bool overlapsNextEntry, bool pastEnd)
+    {
+        var bytes = overlapsNextEntry
+            ? Zip(("m.py", "x=1"u8.ToArray()), ("z.py", "y=1"u8.ToArray()))
+            : Zip(("m.py", "x=1"u8.ToArray()));
+        var central = Find(bytes, 0x02014b50);
+        var boundary = overlapsNextEntry ? Find(bytes, 0x04034b50, 4) : central;
+        var dataStart = 30 + "m.py".Length;
+        var length = (uint)(pastEnd ? bytes.Length - dataStart + 1
+            : boundary - dataStart + (overlapsNextEntry ? 30 + "z.py".Length + 1 : 1));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(18), length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(22), length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(central + 20), length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(central + 24), length);
+
+        var report = await AssertBrokenZipAsync(bytes, ScriptArchiveIssueCode.EntryCorrupt,
+            ScriptArchiveIssueStage.Entry, overlapsNextEntry ? 9 : 6);
+
+        if (overlapsNextEntry)
+            Assert.AreEqual(ScriptModuleVerdict.Identical, report.Collisions.Single(item => item.ModuleName == "z").Verdict);
+    }
+
+    [TestMethod]
+    public async Task ALocalRecordEmbeddedInAnotherEntryCannotShareItsData()
+    {
+        var inner = Zip(("z.py", "y=1"u8.ToArray()));
+        var innerCentral = Find(inner, 0x02014b50);
+        var bytes = Zip(("m.py", inner[..innerCentral]), ("z.py", "y=1"u8.ToArray()));
+        var central = Find(bytes, 0x02014b50);
+        var secondCentral = Find(bytes, 0x02014b50, central + 4);
+        // Both directory entries now claim the bytes of the embedded z.py record.
+        inner.AsSpan(innerCentral, 46 + "z.py".Length).CopyTo(bytes.AsSpan(secondCentral));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(secondCentral + 42), (uint)(30 + "m.py".Length));
+
+        var report = await AssertBrokenZipAsync(bytes, ScriptArchiveIssueCode.EntryCorrupt,
+            ScriptArchiveIssueStage.Entry, 9);
+
+        Assert.AreEqual(ScriptModuleVerdict.Identical, report.Collisions.Single(item => item.ModuleName == "z").Verdict);
+    }
+
+    [TestMethod]
+    [DataRow("directory")]
+    [DataRow("past-end")]
+    [DataRow("huge")]
+    public async Task LocalHeaderOffsetsOutsideTheDataAreaAreEntryCorrupt(string location)
+    {
+        var bytes = Zip(("m.py", "x=1"u8.ToArray()));
+        var central = Find(bytes, 0x02014b50);
+        var offset = location switch
+        {
+            "directory" => (uint)central,
+            "past-end" => (uint)bytes.Length + 1,
+            _ => uint.MaxValue - 1,
+        };
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(central + 42), offset);
+
+        await AssertBrokenZipAsync(bytes, ScriptArchiveIssueCode.EntryCorrupt, ScriptArchiveIssueStage.Entry);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(6)]
+    [DataRow(8)]
+    [DataRow(10)]
+    [DataRow(14)]
+    [DataRow(18)]
+    [DataRow(22)]
+    [DataRow(26)]
+    [DataRow(28)]
+    [DataRow(30)]
+    public async Task LocalAndCentralHeaderDisagreementsAreEntryCorrupt(int localFieldOffset)
+    {
+        var bytes = Zip(("m.py", "x=1"u8.ToArray()));
+        bytes[localFieldOffset] ^= 1;
+
+        await AssertBrokenZipAsync(bytes, ScriptArchiveIssueCode.EntryCorrupt, ScriptArchiveIssueStage.Entry);
+    }
+
+    [TestMethod]
+    [DataRow("past-end")]
+    [DataRow("huge-offset")]
+    [DataRow("huge-size")]
+    public async Task InvalidCentralDirectoryBoundsAreCorrupt(string field)
+    {
+        var bytes = Zip(("m.py", "x=1"u8.ToArray()));
+        var end = Find(bytes, 0x06054b50);
+        if (field == "huge-size")
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(end + 12), uint.MaxValue - 1);
+        else
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(end + 16),
+                field == "past-end" ? (uint)bytes.Length + 1 : uint.MaxValue - 1);
+
+        await AssertBrokenZipAsync(bytes, ScriptArchiveIssueCode.Corrupt, ScriptArchiveIssueStage.Structure);
+    }
+
+    [TestMethod]
+    [DataRow("end", ScriptArchiveIssueCode.NotZip, ScriptArchiveIssueStage.Structure)]
+    [DataRow("central-header", ScriptArchiveIssueCode.Corrupt, ScriptArchiveIssueStage.Structure)]
+    [DataRow("central-name", ScriptArchiveIssueCode.Corrupt, ScriptArchiveIssueStage.Structure)]
+    [DataRow("local-header", ScriptArchiveIssueCode.EntryCorrupt, ScriptArchiveIssueStage.Entry)]
+    [DataRow("local-name", ScriptArchiveIssueCode.EntryCorrupt, ScriptArchiveIssueStage.Entry)]
+    [DataRow("data", ScriptArchiveIssueCode.EntryCorrupt, ScriptArchiveIssueStage.Entry)]
+    public async Task TruncatedZipRecordsReturnStructuredIssues(string record, string code, ScriptArchiveIssueStage stage)
+    {
+        var bytes = Zip(("m.py", "x=1"u8.ToArray()));
+        var central = Find(bytes, 0x02014b50);
+        var end = Find(bytes, 0x06054b50);
+        var cut = record switch
+        {
+            "central-header" => central + 45,
+            "central-name" => central + 46 + "m.py".Length - 1,
+            "local-header" => 29,
+            "local-name" => 30 + "m.py".Length - 1,
+            "data" => central - 1,
+            _ => bytes.Length - 1,
+        };
+        if (record == "end") bytes = bytes[..cut];
+        else if (record.StartsWith("central", StringComparison.Ordinal))
+        {
+            bytes = [.. bytes[..cut], .. bytes[end..]];
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cut + 12), (uint)(cut - central));
+        }
+        else
+        {
+            bytes = [.. bytes[..cut], .. bytes[central..]];
+            var shiftedEnd = cut + end - central;
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(shiftedEnd + 16), (uint)cut);
+        }
+
+        await AssertBrokenZipAsync(bytes, code, stage);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(4)]
+    [DataRow(8)]
+    [DataRow(12)]
+    [DataRow(-1)]
+    public async Task InvalidOrTruncatedDataDescriptorsAreEntryCorrupt(int descriptorFieldOffset)
+    {
+        var bytes = ZipWithDescriptor();
+        var descriptor = Find(bytes, 0x08074b50);
+        if (descriptorFieldOffset < 0)
+        {
+            bytes = [.. bytes[..(descriptor + 15)], .. bytes[(descriptor + 16)..]];
+            var end = Find(bytes, 0x06054b50);
+            var central = Find(bytes, 0x02014b50);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(end + 16), (uint)central);
+        }
+        else bytes[descriptor + descriptorFieldOffset] ^= 1;
+
+        await AssertBrokenZipAsync(bytes, ScriptArchiveIssueCode.EntryCorrupt, ScriptArchiveIssueStage.Entry, 9);
+    }
+
+    [TestMethod]
+    public async Task CentralDirectoryOrderCanDifferFromLocalRecordOrder()
+    {
+        using var temp = new TempDirectory();
+        var bytes = Zip(("m.py", "x=1"u8.ToArray()), ("z.py", "y=1"u8.ToArray()));
+        var central = Find(bytes, 0x02014b50);
+        var secondCentral = Find(bytes, 0x02014b50, central + 4);
+        var end = Find(bytes, 0x06054b50);
+        bytes = [.. bytes[..central], .. bytes[secondCentral..end], .. bytes[central..secondCentral], .. bytes[end..]];
+        temp.WriteBytes("a.ts4script", bytes);
+        temp.WriteBytes("b.ts4script", Zip(("m.py", "x=1"u8.ToArray()), ("z.py", "y=1"u8.ToArray())));
+
+        var report = await Scan(temp.Path);
+
+        Assert.AreEqual(0, report.Issues.Count);
+        Assert.AreEqual(2, report.Collisions.Count);
+        Assert.IsTrue(report.Collisions.All(item => item.Verdict == ScriptModuleVerdict.Identical));
+        Assert.AreEqual(12L, report.ProcessedBytes);
+    }
+
+    [TestMethod]
+    public async Task LocalHeaderBytesInsideModuleDataAreNotARecordBoundary()
+    {
+        using var temp = new TempDirectory();
+        var inner = Zip(("z.py", "y=1"u8.ToArray()));
+        var data = inner[..Find(inner, 0x02014b50)];
+        var bytes = Zip(("m.py", data));
+        temp.WriteBytes("a.ts4script", bytes);
+        temp.WriteBytes("b.ts4script", bytes);
+
+        var report = await Scan(temp.Path);
+
+        Assert.AreEqual(0, report.Issues.Count);
+        Assert.AreEqual(ScriptModuleVerdict.Identical, report.Collisions.Single().Verdict);
+        Assert.AreEqual(2L * data.Length, report.ProcessedBytes);
+    }
+
+    private static async Task<ScriptModuleScanReport> AssertBrokenZipAsync(
+        byte[] bytes, string code, ScriptArchiveIssueStage stage, long expectedProcessedBytes = 6)
+    {
+        using var temp = new TempDirectory();
+        var path = temp.WriteBytes("a.ts4script", bytes);
+        temp.WriteBytes("b.ts4script", Zip(("m.py", "x=1"u8.ToArray()), ("z.py", "y=1"u8.ToArray())));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var reads = 0;
+        var fs = new TrackingFs(() =>
+        {
+            if (Interlocked.Increment(ref reads) > 128) throw new IOException("ZIP fixture exceeded its read limit.");
+        });
+
+        var report = await Scan(temp.Path, new ScriptModuleLimits(MaxArchiveBytes: 1024, MaxEntriesPerArchive: 8,
+            MaxModuleBytes: 128, MaxTotalProcessedBytes: 256, MaxDegreeOfParallelism: 1), fs, cancellation.Token);
+
+        var issue = report.Issues.Single();
+        Assert.AreEqual(code, issue.Code, issue.Detail);
+        Assert.AreEqual(stage, issue.Stage);
+        Assert.AreEqual(path, issue.Path);
+        Assert.AreEqual(expectedProcessedBytes, report.ProcessedBytes);
+        Assert.AreEqual(2, fs.OpenedCount);
+        Assert.AreEqual(fs.OpenedCount, fs.DisposedCount);
+        if (stage == ScriptArchiveIssueStage.Entry)
+        {
+            Assert.AreEqual("m.py", issue.EntryName);
+            Assert.AreEqual(2, report.AnalyzedArchiveCount);
+            var collision = report.Collisions.Single(item => item.ModuleName == "m");
+            Assert.AreEqual(ScriptModuleVerdict.Incomplete, collision.Verdict);
+            Assert.IsNull(collision.Uncompared.Single().Sha256);
+            Assert.AreEqual(1, collision.ContentGroups.Single().Occurrences.Count);
+        }
+        else
+        {
+            Assert.AreEqual(1, report.AnalyzedArchiveCount);
+            CollectionAssert.AreEqual(new[] { path }, report.IncompleteArchivePaths.ToArray());
+            Assert.AreEqual(0, report.Collisions.Count);
+        }
+        return report;
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task InvalidCrcOrDeclaredLengthProducesAnUncomparedOccurrence(bool wrongLength)
@@ -291,10 +527,8 @@ public sealed class ScriptArchiveRegressionTests
         Assert.IsTrue(collision.Occurrences.All(occurrence => occurrence.ContentLength == 0));
     }
 
-    [TestMethod]
-    public async Task AValidZipWrittenWithoutSeekingSupportsDataDescriptors()
+    private static byte[] ZipWithDescriptor()
     {
-        using var temp = new TempDirectory();
         using var memory = new MemoryStream();
         using (var output = new NonSeekableWriteStream(memory))
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
@@ -302,7 +536,24 @@ public sealed class ScriptArchiveRegressionTests
             using var entry = archive.CreateEntry("m.py", CompressionLevel.Optimal).Open();
             entry.Write("x=1"u8);
         }
-        var bytes = memory.ToArray();
+        return memory.ToArray();
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task AValidZipWrittenWithoutSeekingSupportsDataDescriptors(bool withSignature)
+    {
+        using var temp = new TempDirectory();
+        var bytes = ZipWithDescriptor();
+        if (!withSignature)
+        {
+            var descriptor = Find(bytes, 0x08074b50);
+            bytes = [.. bytes[..descriptor], .. bytes[(descriptor + 4)..]];
+            var end = Find(bytes, 0x06054b50);
+            var shiftedCentral = Find(bytes, 0x02014b50);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(end + 16), (uint)shiftedCentral);
+        }
         var central = Find(bytes, 0x02014b50);
         Assert.AreEqual(8, BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(6)) & 8);
         Assert.AreEqual(8, BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(central + 8)) & 8);
