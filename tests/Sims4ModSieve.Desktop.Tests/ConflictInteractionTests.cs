@@ -224,7 +224,7 @@ public sealed class ConflictInteractionTests
         var list = Descendants<ListBox>(window).Single(element => element.Name == "ConflictRowsList");
         var viewer = Descendants<ScrollViewer>(list).First();
         var toggle = Descendants<ToggleButton>(window).Single(element => element.Name == "ConflictFilterButton");
-        var popup = Descendants<Popup>(window).Single();
+        var popup = Descendants<Popup>(window).Single(element => element.Name == "ConflictFilterPopup");
         Assert.IsTrue(GetCursorPos(out var previous));
         try
         {

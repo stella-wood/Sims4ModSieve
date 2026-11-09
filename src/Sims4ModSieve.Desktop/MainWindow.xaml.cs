@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Input;
+using System.Windows.Controls.Primitives;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Desktop.ViewModels;
@@ -9,6 +11,23 @@ namespace Sims4ModSieve.Desktop;
 public partial class MainWindow : Window
 {
     private MainWindowViewModel? closingAfterWork;
+
+    private void ShowUpdatePopup(object sender, RoutedEventArgs eventArgs) => UpdatePopup.IsOpen = !UpdatePopup.IsOpen;
+
+    private void UpdatePopupOpened(object? sender, EventArgs eventArgs) => UpdateDownloadButton.Focus();
+
+    private void UpdatePopupKeyDown(object sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.Key != Key.Escape) return;
+        UpdatePopup.IsOpen = false;
+        UpdateButton.Focus();
+        eventArgs.Handled = true;
+    }
+
+    private void UpdateButtonVisibilityChanged(object sender, DependencyPropertyChangedEventArgs eventArgs)
+    {
+        if (!UpdateButton.IsVisible) UpdatePopup.IsOpen = false;
+    }
 
     public MainWindow() : this(new MainWindowViewModel(
         new DuplicateRunService(DuplicateScanner.CreateDefault()),
@@ -20,6 +39,8 @@ public partial class MainWindow : Window
     public MainWindow(MainWindowViewModel viewModel)
     {
         InitializeComponent();
+        UpdatePopup.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>
+            [new CustomPopupPlacement(new Point(-popupSize.Width - 8, targetSize.Height - popupSize.Height), PopupPrimaryAxis.Vertical)];
         DataContext = viewModel;
         Closing += (_, eventArgs) =>
         {

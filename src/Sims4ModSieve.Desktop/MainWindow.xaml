@@ -171,6 +171,32 @@
                     </StackPanel>
                 </Grid>
             </ScrollViewer>
+            <Button x:Name="UpdateButton" Width="28" Height="28" Margin="0,0,24,20"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Style="{StaticResource BareIconButtonStyle}" Background="Transparent"
+                    ToolTip="{Binding AvailableUpdateText}" AutomationProperties.Name="{Binding AvailableUpdateText}"
+                    Visibility="{Binding HasAvailableUpdate, Converter={StaticResource BooleanToVisibilityConverter}}"
+                    Click="ShowUpdatePopup" IsVisibleChanged="UpdateButtonVisibilityChanged">
+                <Path Width="18" Height="18" Stretch="Uniform" IsHitTestVisible="False"
+                      Data="M9,1 L9,12 M4.5,7.5 L9,12 L13.5,7.5 M2,12 L2,17 L16,17 L16,12"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+            </Button>
+            <Popup x:Name="UpdatePopup" PlacementTarget="{Binding ElementName=UpdateButton}"
+                   Placement="Custom" StaysOpen="False" AllowsTransparency="True"
+                   Opened="UpdatePopupOpened">
+                <Border Background="{StaticResource SurfaceBrush}" Margin="6"
+                        CornerRadius="4" Padding="18,14" PreviewKeyDown="UpdatePopupKeyDown">
+                    <StackPanel>
+                        <TextBlock Text="{Binding AvailableUpdateText}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding CurrentVersionText}" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,16" />
+                        <Button x:Name="UpdateDownloadButton" Content="前往下载" HorizontalAlignment="Left"
+                                Style="{StaticResource BareIconButtonStyle}" Background="Transparent"
+                                Foreground="{StaticResource HoverTextBrush}" Cursor="Hand"
+                                Command="{Binding OpenUpdateReleaseCommand}" />
+                    </StackPanel>
+                </Border>
+            </Popup>
         </Grid>
 
         <Grid Grid.Row="2"

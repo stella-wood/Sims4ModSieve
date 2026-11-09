@@ -125,6 +125,11 @@ public sealed partial class SettingsSupportService
 
     public void OpenProjectPage(bool feedback = false) => openTarget(feedback ? ProjectUrl + "/issues" : ProjectUrl);
 
+    public void OpenReleasePage(string url)
+    {
+        if (UpdateCheckService.IsReleaseUrl(url)) openTarget(url);
+    }
+
     public void CopyDiagnosticText(IReadOnlyList<DiagnosticLog> logs) => copyText(BuildDiagnosticText(logs));
 
     public string OpenLicenseDocument(string document)

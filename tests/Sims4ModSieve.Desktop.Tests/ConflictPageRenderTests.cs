@@ -457,7 +457,7 @@ public sealed class ConflictPageRenderTests
             filter.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, filterSource, 0, Key.Space) { RoutedEvent = Keyboard.KeyDownEvent });
             filter.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, filterSource, 0, Key.Space) { RoutedEvent = Keyboard.KeyUpEvent });
             await WpfTestHost.LayoutAsync(window);
-            var popup = Descendants<System.Windows.Controls.Primitives.Popup>(window).Single();
+            var popup = Descendants<System.Windows.Controls.Primitives.Popup>(window).Single(element => element.Name == "ConflictFilterPopup");
             Assert.IsTrue(popup.IsOpen);
             foreach (var choice in Descendants<CheckBox>(popup.Child))
                 foreach (var fraction in new[] { 0.1, 0.5, 0.9 })

@@ -1,4 +1,7 @@
 using System.IO;
+using System.Net.Http;
+using Sims4ModSieve.Desktop.Services;
+using Sims4ModSieve.Desktop.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -7,6 +10,8 @@ namespace Sims4ModSieve.Desktop;
 public partial class App : Application
 {
     private SingleInstanceLock? instanceLock;
+    private readonly CancellationTokenSource updateCancellation = new();
+    private readonly HttpClient updateClient = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     static App() => ToolTipService.InitialShowDelayProperty.OverrideMetadata(
         typeof(FrameworkElement), new FrameworkPropertyMetadata(650));
@@ -29,6 +34,8 @@ public partial class App : Application
             var window = new MainWindow();
             MainWindow = window;
             window.Show();
+            _ = ((MainWindowViewModel)window.DataContext).CheckForUpdatesAsync(
+                new UpdateCheckService(updateClient), updateCancellation.Token);
         }
         catch (Exception exception)
         {
@@ -44,6 +51,9 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs eventArgs)
     {
+        updateCancellation.Cancel();
+        updateClient.Dispose();
+        updateCancellation.Dispose();
         instanceLock?.Dispose();
         base.OnExit(eventArgs);
     }

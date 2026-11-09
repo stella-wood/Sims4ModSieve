@@ -112,6 +112,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         LoadSettings();
         InitializeConflict();
         InitializeSettings();
+        OpenUpdateReleaseCommand = new RelayCommand(_ => OpenUpdateRelease());
         InitializeFileManagement();
     }
 
