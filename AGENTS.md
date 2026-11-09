@@ -2,7 +2,7 @@
 
 正式产品名称为 `Sims 4 Mod Sieve`；工程目录、命名空间、程序集和可执行文件使用 `Sims4ModSieve`。
 
-Windows 本地离线的《模拟人生 4》Mod 整理工具，.NET 8 + WPF。
+Windows 本地的《模拟人生 4》Mod 整理工具，.NET 10 + WPF。SDK 版本以 [global.json](global.json) 为准。
 
 ## 1. 以什么为准
 
@@ -11,9 +11,12 @@ Windows 本地离线的《模拟人生 4》Mod 整理工具，.NET 8 + WPF。
 1. 用户当前的要求和纠正
 2. 仓库里的代码与测试
 3. 本文件
-4. `docs/product/产品需求文档.md`
-5. `docs/architecture/架构方案-v3.md`、`docs/design/UI设计风格规范-v1.md`
-6. `docs/archive/`、`docs/research/`
+4. [冲突评级与拆分标准](docs/product/冲突评级与拆分标准.md)
+5. `docs/product/产品需求文档.md`
+6. `docs/architecture/架构方案-v3.md`、`docs/design/UI设计风格规范-v1.md`
+7. `docs/archive/`、`docs/research/`
+
+冲突评级与页面归属的产品规则以《冲突评级与拆分标准》为准；代码与测试用于核实现状，尚未对齐的实现不改变该标准。CLI 字段约定暂待对齐。
 
 ## 2. 工作方式
 
@@ -22,6 +25,7 @@ Windows 本地离线的《模拟人生 4》Mod 整理工具，.NET 8 + WPF。
 - 用户给了文件或路径，就直接打开，不全仓库搜索。不为「了解项目」通读仓库。
 - 开始前看工作树，保留用户和其他 Agent 未提交的修改。
 - 用户只说了一处，就只改那一处，不自行推广成全局规则。
+- 修复问题时优先查明是否存在同类问题并汇报；任务范围内统一处理，超出范围时先确认再改。
 - 汇报写：改了哪些文件、跑了哪些测试、结果、哪些没验证。
 
 ## 3. 写代码
@@ -45,12 +49,13 @@ Windows 本地离线的《模拟人生 4》Mod 整理工具，.NET 8 + WPF。
 
 - 程序启动时后台检查一次更新，仅有新版本时显示首页右下角图标，点击后可前往 GitHub 发布页。
 - 重复文件检测：界面完整（扫描、选择、回收站删除、撤回、CLI 报告）。
-- 冲突检测：四入口总览和基础排查已接入 WPF；资源与脚本按资源／模块卡片展示，漏斗支持状态与类型复选筛选；独立未完成项合并展示，展开明细保持虚拟化。
+- 冲突检测：四入口总览和基础排查已接入 WPF；package 按 v2 文件关系展示资源覆盖冲突、疑似同一 mod、合集包含及整文件重复卡，脚本按模块卡片展示；支持状态与类型复选筛选、文件关系弹层及虚拟化技术明细。分组与展示规则见 [分组方案 v2](docs/design/冲突检测分组方案-v2.md)。
   - `Packages`：只读 DBPF 索引与结构预检
-  - `Core/Conflicts`：TGI 候选冲突、资源内容比较、文件对汇总及完整资源清单支持的 package 包含证明（未压缩、zlib；RefPack 返回结构化失败）
+  - `Core/Conflicts`：TGI 候选冲突、资源内容比较、文件对汇总、package 包含证明与 v2 文件关系分组（未压缩、zlib；RefPack 返回结构化失败）
   - `Core/Scripts`：`.ts4script` 模块同名碰撞，损坏条目不影响同归档的正常模块
 - 设置页：常规、删除与忽略、诊断与反馈、关于已接入；保存共用默认 Mods 与独立 Tray，管理已禁用文件、长期回收站历史和文件忽略，查看和复制脱敏的工具错误诊断。已禁用替代原隔离区，规则见 [设置页面方案](docs/design/设置页面方案-v1.md#已禁用)。
-- 未做：报错日志分析、完整健康性检查、二分排查、一键体检、打包发布。package 包含信息尚未接入重复检测。
+- 便携包与 CI 打包、包检查及产物上传已实现，流程见 [便携版发布流程](docs/release/便携版发布流程.md)；正式发布状态以 GitHub Releases 为准。
+- 未做：报错日志分析、完整健康性检查、二分排查、一键体检。package 包含信息尚未接入独立重复检测。
 
 冲突页的状态、技术详情与会话规则见 [冲突检测页面方案](docs/design/冲突检测页面方案-v1.md)。两种检测的来源列表、勾选状态和当前结果各自独立，同次运行期间切换页面保留；重启恢复默认范围，不持久化来源选择或扫描历史。「当前 Mods 文件夹」位置仍共用并保存。
 
@@ -62,7 +67,7 @@ Windows 本地离线的《模拟人生 4》Mod 整理工具，.NET 8 + WPF。
 src/
 ├─ Sims4ModSieve.Core/        业务逻辑，不依赖 WPF；第三方只用 SharpZipLib
 │  ├─ Duplicates/              重复扫描、建议保留、来源发现与路径规则
-│  ├─ Conflicts/               TGI 候选冲突、资源内容比较、处理预算
+│  ├─ Conflicts/               TGI 候选冲突、资源内容比较、文件关系分组、处理预算
 │  ├─ Scripts/                 .ts4script 模块碰撞
 │  ├─ Packages/                DBPF 预检与读取接口
 │  └─ Reporting/               JSON / HTML 报告
@@ -92,10 +97,10 @@ tests/
 ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperation
 ```
 
-- UI 事件里不直接调用删除 API；只删用户当前勾选的真实文件。
-- 执行前再核对长度和修改时间；不支持回收站时不退化为永久删除。
+- UI 事件里不直接调用删除 API；只删用户明确指定的单个文件或当前勾选的真实文件。
+- 执行前按 [文件快照核对规则](docs/release/file-operation-safety.md) 复核；不支持回收站时不退化为永久删除。
 - 部分成功和部分失败分别报告。
-- 撤回只针对最近一次批量删除；原路径已有同名文件时绝不覆盖。
+- 检测页撤回只针对最近一次删除批次（含单文件删除）；原路径已有同名文件时绝不覆盖。设置页长期删除历史的恢复与保留规则见 [删除与忽略](docs/design/设置页面方案-v1.md#删除与忽略)。
 - 删除后重建当前重复组，建议仍由 `DuplicateSelectionService` 给出。
 
 确认窗：标题栏无文字，正文只有 `确定删除所选文件？`，按钮只有 `否`、`是`。不要把数量、大小、路径、回收站或撤回说明加回去；预检在后台做，失败了再说明。
@@ -104,7 +109,7 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 
 | 事件 | 结果 |
 |---|---|
-| 当前检测页来源列表清空 | 只清空该页结果、选择、扫描状态、删除提示、撤回记录 |
+| 当前检测页来源列表清空 | 只清空该页结果、选择、扫描状态、删除提示、会话撤回记录 |
 | 开始新扫描 | 新建会话替换旧会话 |
 | 新增、移除部分、启停来源 | 保留现有结果 |
 | 扫描进行中 | 锁定来源复选框 |
@@ -132,15 +137,15 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 
 ## 10. 测试范围：
 - 改动过程中只跑相关的测试项目，用 --filter 缩到相关的测试类，例如：
-  .\eng\dotnet.cmd test .\tests\Sims4ModSieve.Core.Tests -c Release --no-restore --nologo -m:1 --filter "FullyQualifiedName~DuplicateGroup"
-- 只改 Core 就只跑 Core.Tests；改 Packages 跑 Packages.Tests；改界面跑 Desktop.Tests 里对应的类。
+  .\eng\dotnet.cmd test .\tests\Sims4ModSieve.Core.Tests -c Release --no-restore --nologo -m:1 --filter "FullyQualifiedName~DuplicateSelectionServiceTests"
+- 优先跑修改项目的相关测试类：Core 对应 Core.Tests，Packages 对应 Packages.Tests，界面对应 Desktop.Tests；公共契约或跨项目行为变化时，补跑直接受影响的调用方测试类。
 - 只改了文档、注释、文案或纯外观数值，不跑测试，回复里说明「未跑测试，原因：……」。
-- 整套测试只在准备提交或开 PR 前跑一次。
+- 整套测试只在准备发布新版本或合并 PR 前跑一次。
 
 ## 11. 完成标准
 
 - 改在正确的控件和代码路径上，没有扩大范围。
-- 编译 0 警告 0 错误，相关测试通过。
+- 代码或行为修改需编译 0 警告 0 错误；是否运行测试按 [测试范围](#10-测试范围) 执行，需运行的相关测试通过。纯文档、注释修改无需构建。
 - 自动测试覆盖逻辑和界面行为：判定规则、组号、筛选、忽略、跳转、展开与收起、按钮是否可点击及点击区域命中。
 - 不编写断言具体尺寸、间距、颜色、字号、字重等外观数值的测试（例如「宽度必须等于 248」），也不做截图像素比对。外观由用户手动查看；可以保存截图供用户查看。
 - 测试可以设置窗口尺寸、读取控件实际尺寸来构造场景或验证命中，但不把这些尺寸本身作为验收断言。
