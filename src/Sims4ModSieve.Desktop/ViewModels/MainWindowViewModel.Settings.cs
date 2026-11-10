@@ -49,6 +49,9 @@ public sealed partial class MainWindowViewModel
     public bool IsFoldersSettings { get => settingsSection == "folders"; set { if (value && !IsBusy) SelectSettingsSection("folders"); } }
     public bool IsDiagnosticsSettings { get => settingsSection == "diagnostics"; set { if (value && !IsBusy) SelectSettingsSection("diagnostics"); } }
     public bool IsAboutSettings { get => settingsSection == "about"; set { if (value && !IsBusy) SelectSettingsSection("about"); } }
+    public bool IsCreditsSettings { get => settingsSection == "credits"; set { if (value && !IsBusy) SelectSettingsSection("credits"); } }
+    public IReadOnlyList<string> SupporterNames { get; private set; } = [];
+    public bool HasSupporters => SupporterNames.Count > 0;
     public string? TrayRoot
     {
         get => trayRoot;
@@ -107,6 +110,7 @@ public sealed partial class MainWindowViewModel
 
     private void InitializeSettings()
     {
+        SupporterNames = settingsSupport.ReadSupporters();
         OpenSettingsCommand = new(section =>
         {
             if (IsBusy) return;
@@ -181,12 +185,13 @@ public sealed partial class MainWindowViewModel
 
     private void SelectSettingsSection(string? section)
     {
-        if (section is not ("folders" or "files" or "diagnostics" or "about") || section == settingsSection) return;
+        if (section is not ("folders" or "files" or "diagnostics" or "about" or "credits") || section == settingsSection) return;
         settingsSection = section;
         OnPropertyChanged(nameof(SettingsSection));
         OnPropertyChanged(nameof(IsFoldersSettings));
         OnPropertyChanged(nameof(IsDiagnosticsSettings));
         OnPropertyChanged(nameof(IsAboutSettings));
+        OnPropertyChanged(nameof(IsCreditsSettings));
         OnPropertyChanged(nameof(IsFileManagementSettings));
         if (IsDiagnosticsSettings) RefreshDiagnosticsCommand.Execute(null);
         if (IsFileManagementSettings) StartFileManagementRefresh();

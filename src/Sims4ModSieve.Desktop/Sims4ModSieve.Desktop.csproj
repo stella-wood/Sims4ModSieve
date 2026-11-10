@@ -10,6 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets\supporters.json" LogicalName="Sims4ModSieve.Desktop.Assets.supporters.json" />
+    <InternalsVisibleTo Include="Sims4ModSieve.Desktop.Tests" />
     <Resource Include="Assets\Fonts\SourceHanSansCN-Light.otf" />
     <Content Include="Assets\Fonts\source-han-sans-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

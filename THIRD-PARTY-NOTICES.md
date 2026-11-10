@@ -50,6 +50,18 @@ Copyright © 2014–2025 Adobe, with Reserved Font Name “Source”. The font i
 its license is included at `Assets/Fonts/source-han-sans-LICENSE.txt` and copied to build/publish output.
 Source: https://github.com/adobe-fonts/source-han-sans (the prototype's existing CN Light font asset).
 
+## 感谢名单彩蛋图标
+
+四份作者提供的 SVG 已转换为 `Assets/CreditsIcons.xaml` 内的 WPF 矢量几何，不另行分发 SVG 文件。
+
+| 图标 | 来源 | 协议 |
+|---|---|---|
+| ChatGPT / OpenAI | [Simple Icons 13.21.0](https://github.com/simple-icons/simple-icons/tree/13.21.0)，`icons/openai.svg` | CC0-1.0，完整文本见 `licenses/simple-icons-CC0.txt` |
+| DeepSeek | [Lobe Icons v1.45.0](https://github.com/lobehub/lobe-icons/tree/v1.45.0)，`@lobehub/icons-static-svg` 的 `icons/deepseek-color.svg` | MIT，Copyright (c) 2023 LobeHub，完整文本见 `licenses/lobe-icons-MIT.txt` |
+| Clawd、星星 | 本项目绘制，作者提供 | 随项目 MIT 许可 |
+
+图标许可仅覆盖图标文件；OpenAI、DeepSeek 标志仍为各自公司的商标。
+
 ## Test-only dependencies
 
 - `MSTest` 4.3.3 — MIT — https://github.com/microsoft/testfx

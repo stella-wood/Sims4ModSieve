@@ -353,6 +353,8 @@ public sealed class SettingsPageTests
                 Assert.AreEqual(radio.CommandParameter, model.SettingsSection);
                 await WpfTestHost.LayoutAsync(window);
             }
+            PressSpace((RadioButton)page.FindName("AboutSectionButton"));
+            await WpfTestHost.LayoutAsync(window);
             Assert.IsTrue(model.IsAboutSettings);
             PressSpace((Button)page.FindName("LicenseButton"));
             Assert.IsTrue(model.HasLicenseText);

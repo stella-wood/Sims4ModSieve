@@ -21,15 +21,19 @@ public sealed partial class SettingsSupportService
     private readonly string applicationDirectory;
     private readonly Action<string> openTarget;
     private readonly Action<string> copyText;
+    private readonly Func<Stream?> openSupporters;
 
     public SettingsSupportService(string? localApplicationData = null, string? documentsDirectory = null,
-        string? applicationDirectory = null, Action<string>? openTarget = null, Action<string>? copyText = null)
+        string? applicationDirectory = null, Action<string>? openTarget = null, Action<string>? copyText = null,
+        Func<Stream?>? openSupporters = null)
     {
         LogDirectory = Path.Combine(localApplicationData ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve");
         this.documentsDirectory = documentsDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         this.applicationDirectory = applicationDirectory ?? AppContext.BaseDirectory;
         this.openTarget = openTarget ?? (target => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }));
         this.copyText = copyText ?? Clipboard.SetText;
+        this.openSupporters = openSupporters ?? (() => typeof(SettingsSupportService).Assembly
+            .GetManifestResourceStream("Sims4ModSieve.Desktop.Assets.supporters.json"));
     }
 
     public void OpenRecycleBin() => openTarget("shell:RecycleBinFolder");
