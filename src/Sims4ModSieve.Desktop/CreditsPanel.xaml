@@ -43,7 +43,9 @@
                 <Button.Template>
                     <ControlTemplate TargetType="Button">
                         <Grid Background="Transparent">
-                            <Border x:Name="FloatingFace" Background="White" BorderBrush="#EAE3EF" BorderThickness="0.7" CornerRadius="24" Margin="2">
+                            <Border x:Name="FloatingFace" Background="White" BorderBrush="#EAE3EF" BorderThickness="0.7" CornerRadius="24" Margin="2"
+                                    IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+                                <Border.RenderTransform><ScaleTransform /></Border.RenderTransform>
                                 <Border.Effect><DropShadowEffect Color="#473552" BlurRadius="12" ShadowDepth="2" Opacity="0.18" /></Border.Effect>
                                 <Grid x:Name="PartyIcon" Width="24" Height="24" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
                                     <Path Fill="#E4D9EC" Stroke="#8F789E" StrokeThickness="1.2" StrokeLineJoin="Round"
@@ -55,6 +57,28 @@
                             </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard><Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FloatingFace" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="0.86" Duration="0:0:0.06" />
+                                        <DoubleAnimation Storyboard.TargetName="FloatingFace" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="0.86" Duration="0:0:0.06" />
+                                    </Storyboard></BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard><Storyboard>
+                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="FloatingFace" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" FillBehavior="Stop">
+                                            <DiscreteDoubleKeyFrame KeyTime="0" Value="0.86" />
+                                            <EasingDoubleKeyFrame KeyTime="0:0:0.12" Value="1.12"><EasingDoubleKeyFrame.EasingFunction><CubicEase EasingMode="EaseOut" /></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                                            <EasingDoubleKeyFrame KeyTime="0:0:0.38" Value="1"><EasingDoubleKeyFrame.EasingFunction><ElasticEase EasingMode="EaseOut" Oscillations="1" Springiness="6" /></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                                        </DoubleAnimationUsingKeyFrames>
+                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="FloatingFace" Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" FillBehavior="Stop">
+                                            <DiscreteDoubleKeyFrame KeyTime="0" Value="0.86" />
+                                            <EasingDoubleKeyFrame KeyTime="0:0:0.12" Value="1.12"><EasingDoubleKeyFrame.EasingFunction><CubicEase EasingMode="EaseOut" /></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                                            <EasingDoubleKeyFrame KeyTime="0:0:0.38" Value="1"><EasingDoubleKeyFrame.EasingFunction><ElasticEase EasingMode="EaseOut" Oscillations="1" Springiness="6" /></EasingDoubleKeyFrame.EasingFunction></EasingDoubleKeyFrame>
+                                        </DoubleAnimationUsingKeyFrames>
+                                    </Storyboard></BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False"><Setter TargetName="FloatingFace" Property="Opacity" Value="0.5" /></Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="FloatingFace" Property="Background" Value="#FBF8FC" />

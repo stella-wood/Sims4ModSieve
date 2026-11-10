@@ -19,6 +19,138 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class CreditsTests
 {
     [TestMethod]
+    public Task ConsecutiveBurstsIncreaseLaunchSpeedUpToThirdAndResetAfterRest() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var button = (Button)panel.FindName("ConfettiButton");
+        var layer = (CreditsEffectsLayer)panel.FindName("EffectsOverlay");
+        double Launch()
+        {
+            var previous = layer.Particles.Count;
+            button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            return layer.Particles.Skip(previous).Where(particle => particle.IsPaper).Max(particle => -particle.VelocityY);
+        }
+        var first = Launch();
+        var firstParticle = layer.Particles.First();
+        var second = Launch();
+        var third = Launch();
+        var fourth = Launch();
+        Assert.IsGreaterThan(first, second);
+        Assert.IsGreaterThan(second, third);
+        Assert.AreEqual(third, fourth, 0.000001, "第三档之后不能继续增强。");
+        Assert.IsTrue(layer.Particles.Contains(firstParticle));
+        await Task.Delay(2100);
+        Assert.AreEqual(first, Launch(), 0.000001, "停顿后应从第一档重新开始。");
+        Assert.IsTrue(layer.Particles.Any(particle => particle.Tag == "Clawd"), "力度重置不能清零彩蛋累计次数。");
+        if (Environment.GetEnvironmentVariable("SIMS4_CREDITS_ANIMATION_REVIEW") == "1")
+        {
+            model.SelectSettingsSectionCommand.Execute("about");
+            await WpfTestHost.LayoutAsync(window);
+            model.SelectSettingsSectionCommand.Execute("credits");
+            await WpfTestHost.LayoutAsync(window);
+            for (var frame = 0; frame < 68; frame++)
+            {
+                if (frame is 0 or 3 or 6) PressSpace(button);
+                SaveReview(window, $"boosted-{frame:D2}.png");
+                await Task.Delay(100);
+            }
+        }
+    });
+
+    [TestMethod]
+    public Task PetalsStayUprightWhileRibbonsKeepFlipping() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var button = (Button)panel.FindName("ConfettiButton");
+        var layer = (CreditsEffectsLayer)panel.FindName("EffectsOverlay");
+        PressSpace(button);
+        var petals = layer.Particles.Where(particle => particle.Tag == "Petal").ToArray();
+        var ribbon = layer.Particles.First(particle => particle.IsRibbon);
+        var sawFront = false;
+        var sawBack = false;
+        for (var frame = 0; frame < 40; frame++)
+        {
+            await Task.Delay(50);
+            foreach (var petal in petals)
+            {
+                Assert.IsGreaterThan(0, petal.ScaleX, "花瓣不能翻面。");
+                var angle = Math.Atan2(petal.Transform.Matrix.M12, petal.Transform.Matrix.M11) * 180 / Math.PI;
+                Assert.IsLessThan(90, Math.Abs(angle - petal.InitialAngle), "花瓣只应轻摆，不能连续旋转。");
+            }
+            sawFront |= ribbon.ScaleX > 0;
+            sawBack |= ribbon.ScaleX < 0;
+        }
+        Assert.IsTrue(sawFront && sawBack, "纸条仍然需要翻面。");
+    });
+
+    [TestMethod]
+    public Task ConfettiButtonCompressesReboundsAndSettlesWithoutChangingHitArea() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var button = (Button)panel.FindName("ConfettiButton");
+        var face = (FrameworkElement)button.Template.FindName("FloatingFace", button);
+        var scale = (ScaleTransform)face.RenderTransform;
+        var initial = scale.ScaleX;
+        var recording = Environment.GetEnvironmentVariable("SIMS4_CREDITS_ANIMATION_REVIEW") == "1";
+        if (recording)
+        {
+            var bounds = button.TransformToAncestor((FrameworkElement)window.Content).TransformBounds(new Rect(button.RenderSize));
+            var directory = Environment.GetEnvironmentVariable("SIMS4_SETTINGS_REVIEW_DIR")!;
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "button-bounds.json"), JsonSerializer.Serialize(new { bounds.X, bounds.Y, bounds.Width, bounds.Height }));
+        }
+        button.Focus();
+        var source = PresentationSource.FromVisual(button)!;
+        void Key(RoutedEvent routed) => button.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, System.Windows.Input.Key.Space) { RoutedEvent = routed });
+        Key(Keyboard.KeyDownEvent);
+        if (recording)
+            for (var frame = 0; frame < 4; frame++)
+            {
+                SaveReview(window, $"button-{frame:D2}.png");
+                await Task.Delay(20);
+            }
+        else await Task.Delay(80);
+        Assert.IsLessThan(initial, scale.ScaleX, "按下时先缩小。");
+        AssertHitRectangle(button);
+        Key(Keyboard.KeyUpEvent);
+        var expanded = false;
+        for (var frame = 0; frame < 25; frame++)
+        {
+            await Task.Delay(20);
+            expanded |= scale.ScaleX > initial;
+            AssertHitRectangle(button);
+            if (recording) SaveReview(window, $"button-{frame + 4:D2}.png");
+        }
+        Assert.IsTrue(expanded, "松开后应放大回弹。");
+        Assert.AreEqual(initial, scale.ScaleX, 0.000001, "回弹结束应回到原始大小。");
+        PressSpace(button);
+        model.SelectSettingsSectionCommand.Execute("about");
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(initial, ((ScaleTransform)face.RenderTransform).ScaleX, 0.000001);
+    });
+
+    [TestMethod]
     public Task BurstUpdatesRenderTransformsWithoutRelayout() => WpfTestHost.RunAsync(async () =>
     {
         using var files = new Scenario();
@@ -77,6 +209,7 @@ public sealed class CreditsTests
         Assert.IsFalse(state.TryClickConfetti(1.999, out _));
         Assert.IsTrue(state.TryClickConfetti(2, out var resumed));
         Assert.AreEqual(CreditsSurprise.None, resumed);
+        Assert.AreEqual(new CreditsInteractionState().BurstStrength, state.BurstStrength, "暂停恢复后应从第一档重新开始。");
         state.Reset();
         Assert.IsTrue(state.CanClick(0));
     }
@@ -353,7 +486,7 @@ public sealed class CreditsTests
                 var positions = pieces.Select(piece => ParticleCenter(piece, overlay)).ToArray();
                 var spread = positions.Max(point => point.X) - positions.Min(point => point.X);
                 Assert.IsGreaterThan(overlay.ActualWidth * 0.8, spread, "爆发后应铺开到板块两侧。");
-                Assert.IsLessThan(overlay.ActualHeight * 0.1, positions.Min(point => point.Y), "最高的一批应接近页面顶部。");
+                Assert.IsLessThan(overlay.ActualHeight * 0.4, positions.Min(point => point.Y), "第一档也应喷到页面上半部。");
                 Assert.IsTrue(positions.Any(point => point.Y > overlay.ActualHeight * 0.35 && point.Y < overlay.ActualHeight * 0.6),
                     "同一时刻也要有中景粒子，不能都挤在一条弧线上。");
                 Assert.IsTrue(sawFront && sawBack, "彩带应边转边翻面。");

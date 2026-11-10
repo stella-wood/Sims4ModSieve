@@ -10,6 +10,7 @@ internal sealed class CreditsInteractionState
     private double resumeAt;
 
     public bool CanClick(double now) => now >= resumeAt;
+    public double BurstStrength => 0.84 + Math.Clamp(consecutiveClicks - 1, 0, 2) * 0.08;
 
     public bool TryClickConfetti(double now, out CreditsSurprise surprise)
     {

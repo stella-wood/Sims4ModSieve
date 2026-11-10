@@ -106,6 +106,7 @@ public partial class CreditsPanel : UserControl
         var now = clock.Elapsed.TotalSeconds;
         if (!interaction.TryClickConfetti(now, out var surprise)) return;
         ConfettiButton.IsEnabled = interaction.CanClick(now);
+        var strength = interaction.BurstStrength;
         var origin = ConfettiButton.TranslatePoint(new Point(ConfettiButton.ActualWidth / 2, ConfettiButton.ActualHeight / 2), EffectsOverlay);
         var height = Math.Max(40, origin.Y - 18);
         if (surprise == CreditsSurprise.Message)
@@ -133,7 +134,8 @@ public partial class CreditsPanel : UserControl
             var vx = (EffectsOverlay.ActualWidth / 2 - 12) * spread * 0.65 / (1 - Math.Exp(-0.65 * peakTime));
             AddParticle(petal ? PetalDrawing : PaperDrawings[Random.Shared.Next(PaperDrawings.Length)], petal ? "Petal" : "Ribbon",
                 petal ? new Size(Random.Shared.Next(14, 21), Random.Shared.Next(14, 21)) : new Size(Random.Shared.Next(5, 8), Random.Shared.Next(12, 19)),
-                origin, 5.4, vx, -upward, gravity, (Random.Shared.NextDouble() - 0.5) * 8 * 180 / Math.PI);
+                origin, 5.4, vx * strength, -upward * strength, gravity,
+                petal ? 0 : (Random.Shared.NextDouble() - 0.5) * 8 * 180 / Math.PI);
         }
         StartRendering();
     }
@@ -173,7 +175,8 @@ public partial class CreditsPanel : UserControl
             Drawing = drawing, Tag = tag, Size = size, Origin = origin, Position = origin, Birth = now, LastUpdate = now,
             Lifetime = lifetime, VelocityX = vx, VelocityY = vy, Gravity = gravity, Spin = spin,
             Phase = Random.Shared.NextDouble() * Math.Tau, Flutter = 3 + Random.Shared.NextDouble() * 5,
-            InitialAngle = tag is "Heart" or "Clawd" or "Star" or "ChatGpt" or "DeepSeek" ? 0 : Random.Shared.Next(360),
+            InitialAngle = tag == "Petal" ? Random.Shared.Next(-18, 19)
+                : tag is "Heart" or "Clawd" or "Star" or "ChatGpt" or "DeepSeek" ? 0 : Random.Shared.Next(360),
             TerminalVelocity = terminalVelocity, Drag = drag
         };
         UpdateTransform(particle, particle.InitialAngle);
@@ -220,7 +223,7 @@ public partial class CreditsPanel : UserControl
                 var flip = particle.Phase + particle.Flutter * age;
                 particle.Position = new Point(particle.Position.X + (particle.VelocityX + Math.Sin(flip) * 28) * dt,
                     particle.Position.Y + particle.VelocityY * dt);
-                particle.ScaleX = Math.Cos(flip);
+                particle.ScaleX = particle.IsRibbon ? Math.Cos(flip) : 1;
             }
             else
             {
@@ -240,7 +243,9 @@ public partial class CreditsPanel : UserControl
             particle.Opacity = Math.Min(1, (particle.Lifetime - age) / (particle.IsHeart ? 1.5 : particle.IsPaper ? 1 : 0.7));
             if (particle.HeartFadeStart is { } retiring) particle.Opacity *= Math.Max(0, 1 - (now - retiring) / 0.2);
             particle.VisualDrawing.Opacity = particle.Opacity;
-            UpdateTransform(particle, particle.InitialAngle + particle.Spin * age);
+            var angle = particle.InitialAngle + particle.Spin * age;
+            if (particle.Tag == "Petal") angle += Math.Sin(particle.Phase + age * 1.8) * 10;
+            UpdateTransform(particle, angle);
         }
         if (messageBirth is { } birth)
         {
@@ -265,6 +270,8 @@ public partial class CreditsPanel : UserControl
         messageBirth = null;
         interaction.Reset();
         ConfettiButton.IsEnabled = true;
+        if (ConfettiButton.Template.FindName("FloatingFace", ConfettiButton) is FrameworkElement face)
+            face.RenderTransform = new ScaleTransform();
     }
 
     private void Panel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
