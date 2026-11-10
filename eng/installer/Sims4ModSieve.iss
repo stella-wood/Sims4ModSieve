@@ -76,6 +76,7 @@ const
   InvalidHandle = -1;
 var
   DataLock: THandle;
+  UpdatingProcess: THandle;
   HelperReady: Boolean;
   RemoveUserData: Boolean;
 
@@ -86,6 +87,10 @@ function CloseHandle(Handle: THandle): Boolean;
   external 'CloseHandle@kernel32.dll stdcall';
 function GetFileAttributesW(FileName: String): Cardinal;
   external 'GetFileAttributesW@kernel32.dll stdcall';
+function OpenProcess(Access: Cardinal; Inherit: Boolean; ProcessId: Cardinal): THandle;
+  external 'OpenProcess@kernel32.dll stdcall';
+function WaitForSingleObject(Handle: THandle; Milliseconds: Cardinal): Cardinal;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
 
 function DataDirectory: String;
 begin
@@ -183,11 +188,20 @@ var
   Handoff: String;
   Acceptance: AnsiString;
   Attempt: Integer;
+  ProcessId: Integer;
 begin
   Result := CheckSelectedPath;
   if Result <> '' then exit;
   Handoff := ExpandConstant('{param:SIEVEHANDOFF|}');
   if Handoff <> '' then begin
+    ProcessId := StrToIntDef(ExpandConstant('{param:SIEVEWAITPID|}'), 0);
+    if UpdatingProcess = 0 then begin
+      if ProcessId > 0 then UpdatingProcess := OpenProcess($100000, False, ProcessId);
+      if UpdatingProcess = 0 then begin
+        Result := '无法确认待更新的程序进程，请重试。';
+        exit;
+      end;
+    end;
     if not SaveStringToFile(Handoff, '{#AppVersion}', False) then begin
       Result := '无法交接更新，请重新下载后重试。';
       exit;
@@ -206,6 +220,11 @@ begin
       exit;
     end;
     DeleteFile(Handoff + '.accepted');
+    // OnExit 释放运行锁后，进程仍可能持有 EXE 的映射。
+    if WaitForSingleObject(UpdatingProcess, 60000) <> 0 then begin
+      Result := '工具尚未完全退出，安装已停止。请正常关闭工具后重试。';
+      exit;
+    end;
   end;
   if not AcquireDataLock then begin
     Result := '无法取得程序运行锁，请正常关闭工具后重试。';
@@ -218,6 +237,7 @@ end;
 procedure DeinitializeSetup;
 begin
   ReleaseDataLock;
+  if UpdatingProcess <> 0 then CloseHandle(UpdatingProcess);
 end;
 
 function InitializeUninstall: Boolean;

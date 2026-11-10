@@ -116,7 +116,8 @@ public sealed partial class UpdateCheckService
             throw new InvalidDataException("更新包已发生变化，请重新下载");
         var handoff = Path.Combine(Path.GetDirectoryName(download.Path)!, "handoff-" + Guid.NewGuid().ToString("N"));
         var start = new ProcessStartInfo(download.Path) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(download.Path)! };
-        foreach (var argument in new[] { "/SILENT", "/SP-", "/NORESTART", "/SIEVEHANDOFF=" + handoff, "/DIR=" + applicationDirectory })
+        foreach (var argument in new[] { "/SILENT", "/SP-", "/NORESTART", "/SIEVEHANDOFF=" + handoff,
+            "/SIEVEWAITPID=" + Environment.ProcessId, "/DIR=" + applicationDirectory })
             start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new IOException("无法启动更新安装包");
         var watch = Stopwatch.StartNew();

@@ -85,13 +85,32 @@ try {
     Run-Setup 'CoverInstall'
     if ((Get-FileHash -LiteralPath (Join-Path $app 'README.md')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $source 'README.md')).Hash) { throw 'Upgrade did not replace program content.' }
     if ((Get-Content -LiteralPath (Join-Path $data 'duplicate-settings.json') -Raw) -ne $settingsBefore) { throw 'Upgrade changed settings.' }
-    $lock = [IO.File]::Open((Join-Path $data 'application.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+    $lockPath = (Join-Path $data 'application.lock').Replace("'", "''")
+    $childCommand = @"
+`$stream = [IO.File]::Open('$lockPath', 'OpenOrCreate', 'ReadWrite', 'None')
+[Console]::Out.WriteLine('READY')
+[Console]::In.ReadLine() | Out-Null
+`$stream.Dispose()
+[Console]::Out.WriteLine('RELEASED')
+[Console]::In.ReadLine() | Out-Null
+"@
+    $childStart = [Diagnostics.ProcessStartInfo]::new('powershell.exe')
+    $childStart.Arguments = '-NoProfile -NonInteractive -EncodedCommand ' + [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childCommand))
+    $childStart.UseShellExecute = $false
+    $childStart.CreateNoWindow = $true
+    $childStart.WindowStyle = 'Hidden'
+    $childStart.RedirectStandardInput = $true
+    $childStart.RedirectStandardOutput = $true
+    $child = [Diagnostics.Process]::Start($childStart)
     try {
+        if ($child.StandardOutput.ReadLineAsync().WaitAsync([TimeSpan]::FromSeconds(10)).GetAwaiter().GetResult() -ne 'READY') { throw 'Test child did not acquire running lock.' }
         Run-Setup 'RunningAppBlocksManualInstall' $app $false
         Run-Uninstall 'RunningAppBlocksUninstall' $false
+        Set-Content -LiteralPath (Join-Path $app 'README.md') -Value 'wait for complete process exit'
         $handoff = Join-Path $case 'handoff'
         $update = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
-            ('/DIR="' + $app + '"'), ('/SIEVEHANDOFF="' + $handoff + '"'), ('/LOG="' + (Join-Path $case 'handoff.log') + '"')) -WindowStyle Hidden -PassThru
+            ('/DIR="' + $app + '"'), ('/SIEVEHANDOFF="' + $handoff + '"'), ('/SIEVEWAITPID=' + $child.Id),
+            ('/LOG="' + (Join-Path $case 'handoff.log') + '"')) -WindowStyle Hidden -PassThru
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         while (-not (Test-Path -LiteralPath $handoff)) {
             if ($update.HasExited -or [DateTime]::UtcNow -gt $deadline) { throw 'Installer did not acknowledge handoff.' }
@@ -99,7 +118,16 @@ try {
         }
         if ($update.HasExited) { throw 'Installer did not wait for running app.' }
         [IO.File]::WriteAllText($handoff + '.accepted', $version, [Text.UTF8Encoding]::new($false))
-    } finally { $lock.Dispose() }
+        $child.StandardInput.WriteLine()
+        if ($child.StandardOutput.ReadLineAsync().WaitAsync([TimeSpan]::FromSeconds(10)).GetAwaiter().GetResult() -ne 'RELEASED') { throw 'Test child did not release running lock.' }
+        Start-Sleep -Milliseconds 300
+        if ((Get-Content -LiteralPath (Join-Path $app 'README.md')).Trim() -ne 'wait for complete process exit') { throw 'Update replaced files before the original process exited.' }
+        $child.StandardInput.WriteLine()
+        if (-not $child.WaitForExit(10000)) { throw 'Test child did not exit.' }
+    } finally {
+        if (-not $child.HasExited) { $child.Kill(); $child.WaitForExit() }
+        $child.Dispose()
+    }
     if (-not $update.WaitForExit(30000) -or $update.ExitCode -ne 0) { throw 'Handoff installation failed.' }
     Write-Host 'PASS UpdateHandoffWaitsForNormalExit'
     $ledger = Join-Path $data 'disabled-mods.json'
