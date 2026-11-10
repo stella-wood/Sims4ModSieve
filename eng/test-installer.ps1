@@ -77,6 +77,7 @@ try {
     }
     $entry = Get-ItemProperty -LiteralPath $registration
     if ($entry.DisplayVersion -ne $version -or $entry.InstallLocation.TrimEnd('\') -ne $app) { throw 'Uninstall registration differs.' }
+    if ($entry.UninstallString -ne ('"' + (Join-Path $app 'unins000.exe') + '" /SILENT /SIEVEINTERACTIVE=1') -or $entry.QuietUninstallString -like '*SIEVEINTERACTIVE*') { throw 'Interactive and silent uninstall registration differ.' }
     foreach ($folder in @('Start','Desktop')) {
         $target = [InstallerShortcutTarget]::Read((Join-Path $shell "$folder/Sims 4 Mod Sieve.lnk"))
         if ($target -ne (Join-Path $app 'Sims4ModSieve.exe')) { throw "Invalid $folder shortcut target: $target" }

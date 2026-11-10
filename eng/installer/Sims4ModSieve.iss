@@ -51,6 +51,9 @@ LicenseFile={#SourceDirectory}\LICENSE
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
+[Messages]
+ConfirmUninstall=确定要卸载 Sims 4 Mod Sieve 吗？你的 Mods、存档和游戏文件都不会被删除。
+
 [Tasks]
 Name: "startmenu"; Description: "创建开始菜单快捷方式"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; Flags: unchecked
@@ -83,6 +86,11 @@ var
   UpdatingProcess: THandle;
   HelperReady: Boolean;
   RemoveUserData: Boolean;
+  PreserveDisabledRecords: Boolean;
+  DisabledFolders: TStringList;
+  DisabledFolderList: TNewListBox;
+  DisabledCancelButton: TNewButton;
+  DisabledWarningForm: TSetupForm;
 
 function CreateFileW(FileName: String; Access, Share: Cardinal; Security: NativeUInt;
   Creation, Flags: Cardinal; Template: THandle): THandle;
@@ -244,29 +252,205 @@ begin
   if UpdatingProcess <> 0 then CloseHandle(UpdatingProcess);
 end;
 
-function InitializeUninstall: Boolean;
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Key: String;
+begin
+  if CurStep = ssPostInstall then begin
+    Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + ExpandConstant('{#emit SetupSetting("AppId")}_is1');
+    // /SILENT 跳过 Inno 自带确认，自定义交互仍由专用标记启用。
+    if not RegWriteStringValue(HKCU, Key, 'UninstallString',
+      AddQuotes(ExpandConstant('{uninstallexe}')) + ' /SILENT /SIEVEINTERACTIVE=1') then
+      RaiseException('无法登记卸载入口。');
+  end;
+end;
+
+function ConfirmUninstallOptions: Boolean;
+var
+  Form: TSetupForm;
+  Heading, Description: TNewStaticText;
+  ClearData: TNewCheckBox;
+  UninstallButton, CancelButton: TNewButton;
+begin
+  Form := CreateCustomForm(520, 205, False, True);
+  try
+    Form.Caption := '卸载 Sims 4 Mod Sieve';
+    Form.ClientWidth := ScaleX(520);
+    Form.ClientHeight := ScaleY(205);
+    Form.BorderStyle := bsDialog;
+    Form.Position := poScreenCenter;
+    Form.Color := $F2F5F6;
+    Form.Font.Name := 'Microsoft YaHei UI';
+    Form.Font.Size := 10;
+    Heading := TNewStaticText.Create(Form);
+    Heading.Parent := Form;
+    Heading.SetBounds(ScaleX(22), ScaleY(20), ScaleX(476), ScaleY(26));
+    Heading.Caption := '确定要卸载 Sims 4 Mod Sieve 吗？';
+    Heading.Font.Style := [fsBold];
+    Description := TNewStaticText.Create(Form);
+    Description.Parent := Form;
+    Description.AutoSize := False;
+    Description.WordWrap := True;
+    Description.SetBounds(ScaleX(22), ScaleY(56), ScaleX(476), ScaleY(42));
+    Description.Caption := '卸载会删除程序文件。你的 Mods、存档和游戏文件不会被删除。';
+    ClearData := TNewCheckBox.Create(Form);
+    ClearData.Parent := Form;
+    ClearData.SetBounds(ScaleX(22), ScaleY(109), ScaleX(476), ScaleY(28));
+    ClearData.Caption := '同时删除本工具的设置、忽略名单、删除记录和日志';
+    ClearData.Checked := False;
+    CancelButton := TNewButton.Create(Form);
+    CancelButton.Parent := Form;
+    CancelButton.SetBounds(ScaleX(282), ScaleY(158), ScaleX(100), ScaleY(30));
+    CancelButton.Caption := '取消';
+    CancelButton.ModalResult := mrCancel;
+    CancelButton.Cancel := True;
+    CancelButton.Default := True;
+    UninstallButton := TNewButton.Create(Form);
+    UninstallButton.Parent := Form;
+    UninstallButton.SetBounds(ScaleX(394), ScaleY(158), ScaleX(104), ScaleY(30));
+    UninstallButton.Caption := '卸载';
+    UninstallButton.ModalResult := mrOK;
+    Form.ActiveControl := CancelButton;
+    Result := Form.ShowModal = mrOK;
+    if Result then RemoveUserData := ClearData.Checked;
+  finally
+    Form.Free;
+  end;
+end;
+
+procedure OpenDisabledFolder(Sender: TObject);
 var
   Code: Integer;
-  Reason: String;
+  Folder: String;
+begin
+  if DisabledFolderList.ItemIndex < 0 then exit;
+  Folder := DisabledFolders[DisabledFolderList.ItemIndex];
+  if not ShellExec('open', Folder, '', '', SW_SHOWNORMAL, ewNoWait, Code) then
+    MsgBox('无法打开这个文件夹，请检查路径是否仍然存在。', mbError, MB_OK)
+  else Log('Opened disabled Mod folder: ' + Folder);
+  DisabledWarningForm.ActiveControl := DisabledCancelButton;
+end;
+
+procedure SelectDisabledFolder(Sender: TObject);
+begin
+  if DisabledFolderList.ItemIndex >= 0 then
+    DisabledFolderList.Hint := DisabledFolders[DisabledFolderList.ItemIndex];
+end;
+
+function ConfirmDisabledMods(Count: Integer): Boolean;
+var
+  Form: TSetupForm;
+  Description, DangerLabel: TNewStaticText;
+  OpenButton, CancelButton, ContinueButton: TNewButton;
+begin
+  Form := CreateCustomForm(620, 328, False, True);
+  DisabledWarningForm := Form;
+  try
+    Form.Caption := '仍有禁用的 Mod';
+    Form.ClientWidth := ScaleX(620);
+    Form.ClientHeight := ScaleY(328);
+    Form.BorderStyle := bsDialog;
+    Form.Position := poScreenCenter;
+    Form.Color := $F2F5F6;
+    Form.Font.Name := 'Microsoft YaHei UI';
+    Form.Font.Size := 10;
+    Description := TNewStaticText.Create(Form);
+    Description.Parent := Form;
+    Description.AutoSize := False;
+    Description.WordWrap := True;
+    Description.SetBounds(ScaleX(22), ScaleY(20), ScaleX(576), ScaleY(70));
+    Description.Font.Color := $3333B2;
+    Description.Font.Style := [fsBold];
+    Description.Caption := Format('还有 %d 个 Mod 处于禁用状态。卸载后工具就不能帮你恢复它们，需要自己手动去掉 .off 后缀恢复。', [Count]);
+    DisabledFolderList := TNewListBox.Create(Form);
+    DisabledFolderList.Parent := Form;
+    DisabledFolderList.SetBounds(ScaleX(22), ScaleY(104), ScaleX(576), ScaleY(115));
+    DisabledFolderList.Items.Assign(DisabledFolders);
+    DisabledFolderList.ItemIndex := 0;
+    DisabledFolderList.ShowHint := True;
+    DisabledFolderList.OnClick := @SelectDisabledFolder;
+    SelectDisabledFolder(DisabledFolderList);
+    OpenButton := TNewButton.Create(Form);
+    OpenButton.Parent := Form;
+    OpenButton.SetBounds(ScaleX(22), ScaleY(230), ScaleX(118), ScaleY(30));
+    OpenButton.Caption := '打开文件夹';
+    OpenButton.OnClick := @OpenDisabledFolder;
+    CancelButton := TNewButton.Create(Form);
+    CancelButton.Parent := Form;
+    CancelButton.SetBounds(ScaleX(338), ScaleY(278), ScaleX(120), ScaleY(30));
+    CancelButton.Caption := '取消卸载';
+    CancelButton.ModalResult := mrCancel;
+    CancelButton.Default := True;
+    CancelButton.Cancel := True;
+    DisabledCancelButton := CancelButton;
+    DangerLabel := TNewStaticText.Create(Form);
+    DangerLabel.Parent := Form;
+    DangerLabel.AutoSize := False;
+    DangerLabel.SetBounds(ScaleX(470), ScaleY(258), ScaleX(128), ScaleY(18));
+    DangerLabel.Alignment := taCenter;
+    DangerLabel.Font.Color := $3333B2;
+    DangerLabel.Caption := '危险操作';
+    ContinueButton := TNewButton.Create(Form);
+    ContinueButton.Parent := Form;
+    ContinueButton.SetBounds(ScaleX(470), ScaleY(278), ScaleX(128), ScaleY(30));
+    ContinueButton.Caption := '仍然卸载';
+    ContinueButton.Font.Style := [fsBold];
+    ContinueButton.ModalResult := mrOK;
+    Form.ActiveControl := CancelButton;
+    Result := Form.ShowModal = mrOK;
+  finally
+    Form.Free;
+  end;
+end;
+
+function InitializeUninstall: Boolean;
+var
+  Code, Count, FolderCount, Index: Integer;
+  Reason, ReportPath, Folder: String;
+  Interactive: Boolean;
 begin
   Result := False;
-  if not AcquireDataLock(UninstallSilent) then exit;
+  if not UninstallSilent then begin
+    MsgBox('请从 Windows「设置 → 应用」卸载 Sims 4 Mod Sieve，以选择是否删除本机数据。', mbInformation, MB_OK);
+    exit;
+  end;
+  Interactive := ExpandConstant('{param:SIEVEINTERACTIVE|0}') = '1';
+  if not AcquireDataLock(not Interactive) then exit;
+  ReportPath := ExpandConstant('{tmp}\sieve-uninstall.ini');
   Reason := '无法读取禁用记录，请先打开 Sims 4 Mod Sieve 检查后再卸载。';
-  if Exec(ExpandConstant('{app}\Sims4ModSieve.exe'), '--installer-check-uninstall ' + AddQuotes(DataDirectory),
-    ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) then begin
-    if Code = 0 then Result := True
-    else if Code = 20 then Reason := '还有未处理的禁用 Mod，请先在「设置 → 删除与忽略 → 已禁用」中处理，再卸载。';
+  if Exec(ExpandConstant('{app}\Sims4ModSieve.exe'), '--installer-check-uninstall ' + AddQuotes(DataDirectory) + ' ' + AddQuotes(ReportPath),
+    ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) and ((Code = 0) or (Code = 20)) then begin
+    Count := StrToIntDef(GetIniString('Uninstall', 'DisabledCount', '-1', ReportPath), -1);
+    FolderCount := StrToIntDef(GetIniString('Uninstall', 'FolderCount', '-1', ReportPath), -1);
+    Result := (Count >= 0) and (FolderCount >= 0) and (FolderCount <= Count)
+      and (((Code = 0) and (Count = 0)) or ((Code = 20) and (Count > 0) and (FolderCount > 0)));
+    if Result then begin
+      DisabledFolders := TStringList.Create;
+      for Index := 0 to FolderCount - 1 do begin
+        Folder := GetIniString('Uninstall', 'Folder' + IntToStr(Index), '', ReportPath);
+        if Folder = '' then Result := False else DisabledFolders.Add(Folder);
+      end;
+    end;
   end;
   if not Result then begin
     Log(Reason);
-    if not UninstallSilent then MsgBox(Reason, mbError, MB_OK);
+    if Interactive then MsgBox(Reason, mbError, MB_OK);
     ReleaseDataLock;
     exit;
   end;
   RemoveUserData := False;
-  if not UninstallSilent then
-    RemoveUserData := MsgBox('是否同时删除本机数据？设置、忽略名单、工具删除记录和日志会一并删除。',
-      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+  PreserveDisabledRecords := False;
+  if Interactive then Result := ConfirmUninstallOptions;
+  if Result and (Count > 0) then begin
+    if Interactive then begin
+      Result := ConfirmDisabledMods(Count);
+      PreserveDisabledRecords := Result;
+    end else begin
+      Log('Unresolved disabled Mods prevent silent uninstall.');
+      Result := False;
+    end;
+  end;
+  if not Result then ReleaseDataLock;
 end;
 
 function ClearDataDirectory(Directory: String): Boolean;
@@ -279,7 +463,8 @@ begin
   if FindFirst(AddBackslash(Directory) + '*', Entry) then begin
     try
       repeat
-        if (Entry.Name <> '.') and (Entry.Name <> '..') and (Entry.Name <> 'application.lock') then begin
+        if (Entry.Name <> '.') and (Entry.Name <> '..') and (Entry.Name <> 'application.lock')
+          and not (PreserveDisabledRecords and (Directory = DataDirectory) and (CompareText(Entry.Name, 'disabled-mods.json') = 0)) then begin
           Path := AddBackslash(Directory) + Entry.Name;
           // 不跟随目录链接，避免清理跳出本机数据目录。
           if (Entry.Attributes and $400) <> 0 then Result := False
@@ -303,7 +488,7 @@ begin
     Cleared := ClearDataDirectory(DataDirectory);
     ReleaseDataLock;
     if not DeleteFile(AddBackslash(DataDirectory) + 'application.lock') then Cleared := False;
-    if not RemoveDir(DataDirectory) then Cleared := False;
+    if not PreserveDisabledRecords and not RemoveDir(DataDirectory) then Cleared := False;
     if not Cleared then MsgBox('部分本机数据未能删除，请检查目录权限或目录链接。', mbInformation, MB_OK);
   end;
 end;
@@ -311,4 +496,5 @@ end;
 procedure DeinitializeUninstall;
 begin
   ReleaseDataLock;
+  if DisabledFolders <> nil then DisabledFolders.Free;
 end;

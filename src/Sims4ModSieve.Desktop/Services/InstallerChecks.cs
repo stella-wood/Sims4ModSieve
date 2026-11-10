@@ -19,6 +19,8 @@ public static class InstallerChecks
             exitCode = CheckPath(target, data, documents);
         else if (args is ["--installer-check-uninstall", var directory])
             exitCode = CheckUninstall(directory);
+        else if (args is ["--installer-check-uninstall", var dataDirectory, var reportPath])
+            exitCode = CheckUninstall(dataDirectory, reportPath);
         return true;
     }
 
@@ -56,20 +58,31 @@ public static class InstallerChecks
             or ArgumentException or NotSupportedException) { return CannotCheck; }
     }
 
-    public static int CheckUninstall(string dataDirectory)
+    public static int CheckUninstall(string dataDirectory, string? reportPath = null)
     {
         try
         {
             var path = Path.Combine(dataDirectory, "disabled-mods.json");
             string json;
             try { json = File.ReadAllText(path); }
-            catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException) { return 0; }
+            catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException) { json = "[]"; }
             var records = JsonSerializer.Deserialize<DisabledModRecord[]>(json) ?? throw new InvalidDataException();
             if (records.Any(record => record is null || !ModDisableService.IsValidRecord(record))
                 || records.Select(record => record.Id).Distinct(StringComparer.Ordinal).Count() != records.Length)
                 return CannotCheck;
             // 不调用 Load：它会对中断的操作重新记账，卸载检查必须只读。
-            return records.Any(record => !record.Recycled || record.RecyclePending || record.RestorePending) ? DisabledMods : 0;
+            var pending = records.Where(record => !record.Recycled || record.RecyclePending || record.RestorePending).ToArray();
+            if (reportPath is not null)
+            {
+                var folders = pending.Select(record => Path.GetDirectoryName(record.DisabledPath)!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+                if (folders.Any(folder => folder.IndexOfAny(['\r', '\n', '\0']) >= 0)) throw new InvalidDataException();
+                var report = new StringBuilder("[Uninstall]\r\n")
+                    .AppendLine($"DisabledCount={pending.Length}").AppendLine($"FolderCount={folders.Length}");
+                for (var i = 0; i < folders.Length; i++) report.AppendLine($"Folder{i}={folders[i]}");
+                File.WriteAllText(reportPath, report.ToString(), Encoding.Unicode);
+            }
+            return pending.Length > 0 ? DisabledMods : 0;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or JsonException
             or ArgumentException or NotSupportedException) { return CannotCheck; }
