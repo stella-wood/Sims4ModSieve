@@ -56,7 +56,7 @@ jobs:
         run: |
           ./eng/package-installer.ps1
           ./eng/test-portable-bundle.ps1 -SkipArchive
-          ./eng/test-installer.ps1
+          ./eng/test-installer.ps1 -ReviewUi
 
       - name: Upload installer and hash
         uses: actions/upload-artifact@v7

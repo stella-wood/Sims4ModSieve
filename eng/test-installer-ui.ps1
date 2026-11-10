@@ -36,12 +36,27 @@ public static class InstallerReviewWindows {
     public static int[] ProcessIds = Array.Empty<int>();
     public static IntPtr[] Windows() {
         var result = new List<IntPtr>();
-        EnumWindows((window, _) => { GetWindowThreadProcessId(window, out var process); if (IsWindowVisible(window) && ProcessIds.Contains((int)process)) result.Add(window); return true; }, IntPtr.Zero);
+        EnumWindows((window, _) => { GetWindowThreadProcessId(window, out var process); if (IsWindowVisible(window) && IsWindowEnabled(window) && ProcessIds.Contains((int)process)) result.Add(window); return true; }, IntPtr.Zero);
         return result.ToArray();
+    }
+    public static string WindowText(IntPtr window) {
+        var result = new StringBuilder(Text(window));
+        EnumChildWindows(window, (child, _) => { if (IsWindowVisible(child)) result.AppendLine(Text(child)); return true; }, IntPtr.Zero);
+        return result.ToString();
     }
     public static IntPtr Button(IntPtr window, string label) {
         var result = IntPtr.Zero;
-        EnumChildWindows(window, (child, _) => { var type = new StringBuilder(256); GetClassName(child,type,type.Capacity); if (type.ToString().EndsWith("Button",StringComparison.OrdinalIgnoreCase) && IsWindowVisible(child) && IsWindowEnabled(child) && Text(child).StartsWith(label)) { result = child; return false; } return true; }, IntPtr.Zero);
+        var labels = label switch {
+            "重试" => new[] { "重试", "Retry" }, "取消" => new[] { "取消", "Cancel" },
+            "是" => new[] { "是", "Yes" }, "否" => new[] { "否", "No" }, "确定" => new[] { "确定", "OK" }, _ => new[] { label }
+        };
+        EnumChildWindows(window, (child, _) => {
+            var type = new StringBuilder(256); GetClassName(child,type,type.Capacity);
+            var caption = Text(child).Replace("&", "");
+            if (type.ToString().EndsWith("Button",StringComparison.OrdinalIgnoreCase) && IsWindowVisible(child) && IsWindowEnabled(child)
+                && labels.Any(value => caption.StartsWith(value,StringComparison.OrdinalIgnoreCase))) { result = child; return false; }
+            return true;
+        }, IntPtr.Zero);
         return result;
     }
 }
@@ -63,11 +78,19 @@ function Wait-ReviewExit {
     }
 }
 
+function Assert-NoRuntimeError {
+    foreach ($window in [InstallerReviewWindows]::Windows()) {
+        $text = [InstallerReviewWindows]::WindowText($window)
+        if ($text -match 'Runtime error|Cannot call .* function|Internal error|内部错误') { throw "Installer runtime error: $text" }
+    }
+}
+
 function Find-Button([string]$Label, [int]$Seconds = 20, [switch]$AllowExit) {
     $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         $running = Update-ReviewProcesses
         if ($AllowExit -and -not $running) { return $null }
+        Assert-NoRuntimeError
         foreach ($window in [InstallerReviewWindows]::Windows()) {
             $button = [InstallerReviewWindows]::Button($window, $Label)
             if ($button -ne [IntPtr]::Zero) { return @{ Window = $window; Button = $button } }
@@ -111,6 +134,60 @@ function Install-TestFixture {
     if ($install.ExitCode -ne 0) { throw "Cannot reinstall isolated fixture: $($install.ExitCode). See $case/native-ui-install.log" }
 }
 
+function Find-RunningAppPrompt([switch]$AdvanceWizard) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(40)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (-not (Update-ReviewProcesses)) { throw 'Installer exited before showing the running-app prompt.' }
+        Assert-NoRuntimeError
+        foreach ($window in [InstallerReviewWindows]::Windows()) {
+            $retry = [InstallerReviewWindows]::Button($window, '重试')
+            if ($retry -ne [IntPtr]::Zero) {
+                if ([InstallerReviewWindows]::WindowText($window) -notlike '*请先正常关闭*') { throw 'Unexpected retry prompt.' }
+                return @{ Window = $window; Button = $retry }
+            }
+        }
+        if ($AdvanceWizard) {
+            foreach ($window in [InstallerReviewWindows]::Windows()) {
+                foreach ($label in @('下一步', '安装', '我同意此协议')) {
+                    $button = [InstallerReviewWindows]::Button($window, $label)
+                    if ($button -ne [IntPtr]::Zero) { Click-Button @{Button=$button}; break }
+                }
+            }
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    throw 'Running-app prompt was not shown.'
+}
+
+Install-TestFixture
+$lock = [IO.File]::Open((Join-Path $data 'application.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+try {
+    $manual = Start-Process -FilePath $setup[0].FullName -ArgumentList @('/SP-', ('/DIR="' + $app + '"'),
+        ('/LOG="' + (Join-Path $case 'manual-running-install.log') + '"')) -PassThru
+    $script:reviewProcess = $manual
+    $retry = Find-RunningAppPrompt -AdvanceWizard
+    Save-Window $retry.Window 'installer-running-app-prompt.png'
+    $lock.Dispose()
+    Click-Button $retry
+    Click-Button (Find-Button '完成')
+    Wait-ReviewExit
+    if ($manual.ExitCode -ne 0) { throw 'Manual installation did not resume after lock release.' }
+} finally { $lock.Dispose() }
+Write-Host 'PASS ManualRunningInstallPromptsAndRetries'
+
+$lock = [IO.File]::Open((Join-Path $data 'application.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+try {
+    $manualUninstall = Start-Process -FilePath (Join-Path $app 'unins000.exe') -ArgumentList @('/NORESTART',
+        ('/LOG="' + (Join-Path $case 'manual-running-uninstall.log') + '"')) -PassThru
+    $script:reviewProcess = $manualUninstall
+    $retry = Find-RunningAppPrompt
+    Save-Window $retry.Window 'uninstaller-running-app-prompt.png'
+    Click-Button (Find-Button '取消')
+    Wait-ReviewExit
+    if ($manualUninstall.ExitCode -eq 0 -or -not (Test-Path -LiteralPath (Join-Path $app 'Sims4ModSieve.exe'))) { throw 'Cancelled uninstall removed program files.' }
+} finally { $lock.Dispose() }
+Write-Host 'PASS ManualRunningUninstallPromptsAndCancels'
+
 function Uninstall-WithDataCleanup([string]$Screenshot) {
     $uninstall = Start-Process -FilePath (Join-Path $app 'unins000.exe') -ArgumentList '/NORESTART' -PassThru
     $script:reviewProcess = $uninstall
@@ -120,6 +197,7 @@ function Uninstall-WithDataCleanup([string]$Screenshot) {
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     while (Update-ReviewProcesses) {
         if ([DateTime]::UtcNow -gt $deadline) { throw 'Interactive uninstall timed out.' }
+        Assert-NoRuntimeError
         foreach ($window in [InstallerReviewWindows]::Windows()) {
             foreach ($label in @('是', '确定')) {
                 $button = [InstallerReviewWindows]::Button($window, $label)

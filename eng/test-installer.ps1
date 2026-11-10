@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$ReviewUi)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -45,15 +45,19 @@ public static class InstallerShortcutTarget {
 '@
 
 function Run-Setup([string]$Name, [string]$Target = $app, [bool]$Success = $true) {
+    $log = Join-Path $case "$Name.log"
     $process = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
-        '/MERGETASKS=desktopicon', ('/DIR="' + $Target + '"'), ('/LOG="' + (Join-Path $case "$Name.log") + '"')) -WindowStyle Hidden -PassThru -Wait
+        '/MERGETASKS=desktopicon', ('/DIR="' + $Target + '"'), ('/LOG="' + $log + '"')) -WindowStyle Hidden -PassThru -Wait
+    if (Select-String -LiteralPath $log -Pattern 'Runtime error|Cannot call .* function|Internal error|内部错误' -Quiet) { throw "$Name hit an installer runtime error. See $log" }
     if (($process.ExitCode -eq 0) -ne $Success) { throw "$Name returned $($process.ExitCode). See $case" }
     Write-Host "PASS $Name"
 }
 
 function Run-Uninstall([string]$Name, [bool]$Success = $true) {
+    $log = Join-Path $case "$Name.log"
     $process = Start-Process -FilePath (Join-Path $app 'unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
-        ('/LOG="' + (Join-Path $case "$Name.log") + '"')) -WindowStyle Hidden -PassThru -Wait
+        ('/LOG="' + $log + '"')) -WindowStyle Hidden -PassThru -Wait
+    if (Select-String -LiteralPath $log -Pattern 'Runtime error|Cannot call .* function|Internal error|内部错误' -Quiet) { throw "$Name hit an uninstaller runtime error. See $log" }
     if (($process.ExitCode -eq 0) -ne $Success) { throw "$Name returned $($process.ExitCode). See $case" }
     Write-Host "PASS $Name"
 }
@@ -146,11 +150,18 @@ try {
     if (Test-Path -LiteralPath $registration) { throw 'Uninstall registration remains.' }
     if (Test-Path -LiteralPath (Join-Path $app 'Sims4ModSieve.exe')) { throw 'Program remains after uninstall.' }
     if ((Test-Path -LiteralPath $shell) -and (Get-ChildItem -LiteralPath $shell -Filter '*.lnk' -Recurse)) { throw 'Shortcuts remain after uninstall.' }
+    if ($ReviewUi) { & "$PSScriptRoot/test-installer-ui.ps1" -TestDirectory $case }
     Write-Host "Installer test evidence: $case"
 } finally {
     $diagnostics = Join-Path $root 'artifacts/ci/installer'
     New-Item -ItemType Directory -Path $diagnostics -Force | Out-Null
     Get-ChildItem -LiteralPath $case -Filter '*.log' -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $diagnostics -Force }
+    $screenshots = Join-Path $root 'artifacts/installer-review'
+    if ($ReviewUi -and (Test-Path -LiteralPath $screenshots)) {
+        $imageDiagnostics = Join-Path $diagnostics 'screenshots'
+        New-Item -ItemType Directory -Path $imageDiagnostics -Force | Out-Null
+        Get-ChildItem -LiteralPath $screenshots -Filter '*.png' -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $imageDiagnostics -Force }
+    }
     # 仅清理这个隔离 AppId；失败时保留文件与日志供排查。
     if ((Test-Path -LiteralPath $registration) -and (Test-Path -LiteralPath (Join-Path $app 'unins000.exe'))) {
         Set-Content -LiteralPath (Join-Path $data 'disabled-mods.json') -Value '[]'

@@ -40,7 +40,11 @@ SolidCompression=yes
 WizardStyle=modern
 CloseApplications=no
 RestartApplications=no
+#ifdef TestDataDirectory
+SetupMutex=Sims4ModSieve.Setup.InstallerTests
+#else
 SetupMutex=Sims4ModSieve.Setup
+#endif
 Uninstallable=yes
 LicenseFile={#SourceDirectory}\LICENSE
 
@@ -121,7 +125,7 @@ begin
   DataLock := 0;
 end;
 
-function AcquireDataLock: Boolean;
+function AcquireDataLock(Silent: Boolean): Boolean;
 var
   Attempt: Integer;
 begin
@@ -139,7 +143,7 @@ begin
       Sleep(100);
       Attempt := Attempt + 1;
     end else begin
-      if WizardSilent or UninstallSilent then exit;
+      if Silent then exit;
       if MsgBox('请先正常关闭 Sims 4 Mod Sieve，再继续。正在进行的操作需要完成后才能关闭。',
         mbInformation, MB_RETRYCANCEL) <> IDRETRY then exit;
     end;
@@ -226,7 +230,7 @@ begin
       exit;
     end;
   end;
-  if not AcquireDataLock then begin
+  if not AcquireDataLock(WizardSilent) then begin
     Result := '无法取得程序运行锁，请正常关闭工具后重试。';
     exit;
   end;
@@ -246,7 +250,7 @@ var
   Reason: String;
 begin
   Result := False;
-  if not AcquireDataLock then exit;
+  if not AcquireDataLock(UninstallSilent) then exit;
   Reason := '无法读取禁用记录，请先打开 Sims 4 Mod Sieve 检查后再卸载。';
   if Exec(ExpandConstant('{app}\Sims4ModSieve.exe'), '--installer-check-uninstall ' + AddQuotes(DataDirectory),
     ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) then begin
