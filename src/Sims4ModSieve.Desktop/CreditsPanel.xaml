@@ -13,7 +13,7 @@
           PreviewMouseDown="Surface_PreviewMouseDown">
         <StackPanel>
             <TextBlock Text="感谢名单" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,38" />
-            <Border Background="#F8F7F5" Padding="28,30">
+            <Border x:Name="SupporterFrame" Background="Transparent" BorderBrush="#E5E1E6" BorderThickness="0.5" Padding="28,30">
                 <StackPanel>
                     <ItemsControl x:Name="SupporterList" ItemsSource="{Binding SupporterNames}"
                                   Visibility="{Binding HasSupporters, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,22">
@@ -53,7 +53,7 @@
         </StackPanel>
         <Canvas x:Name="EffectsOverlay" IsHitTestVisible="False" ClipToBounds="True" />
         <Border x:Name="SecretMessage" IsHitTestVisible="False" Visibility="Collapsed" Opacity="0"
-                VerticalAlignment="Bottom" Margin="16,0,16,28" Background="#F8F7F5" Padding="20,18">
+                VerticalAlignment="Bottom" Margin="16,0,16,28" Background="Transparent" Padding="20,18">
             <TextBlock Text="感谢每一位提过建议、反馈过问题的人，&#10;请我吃过薯片的朋友们，以及亲爱的 agent 们。&#10;&#10;谢谢你还在使用它"
                        TextWrapping="Wrap" TextAlignment="Center" FontSize="13" Foreground="{StaticResource AccentBrush}" />
         </Border>

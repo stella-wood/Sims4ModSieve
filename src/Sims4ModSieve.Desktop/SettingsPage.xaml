@@ -313,19 +313,19 @@
                         <TextBlock Text="诊断与反馈" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </RadioButton>
-                <RadioButton x:Name="AboutSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="关于"
-                             IsChecked="{Binding IsAboutSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="about">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Style="{StaticResource SettingsNavIcon}" Data="M 11,2 A 9,9 0 1 1 10.99,2 M 11,6 L 11,7 M 11,10 L 11,16" />
-                        <TextBlock Text="关于" Margin="10,0,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
-                </RadioButton>
                 <RadioButton x:Name="CreditsSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="感谢名单"
                              IsChecked="{Binding IsCreditsSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="credits">
                     <StackPanel Orientation="Horizontal">
                         <Path Style="{StaticResource SettingsNavIcon}" Fill="{x:Null}"
                               Data="M 12,21 C 10,19 2,13 2,7.5 C 2,1.5 9,0.5 12,6 C 15,0.5 22,1.5 22,7.5 C 22,13 14,19 12,21 Z" />
                         <TextBlock Text="感谢名单" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="AboutSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="关于"
+                             IsChecked="{Binding IsAboutSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="about">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource SettingsNavIcon}" Data="M 11,2 A 9,9 0 1 1 10.99,2 M 11,6 L 11,7 M 11,10 L 11,16" />
+                        <TextBlock Text="关于" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </RadioButton>
             </StackPanel>

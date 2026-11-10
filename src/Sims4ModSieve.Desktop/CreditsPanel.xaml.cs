@@ -14,7 +14,13 @@ public partial class CreditsPanel : UserControl
     internal const int MaximumHearts = 30;
     internal const int MaximumParticles = 80;
     private const double PetalRatio = 0.25;
-    private static readonly Brush[] ConfettiBrushes = [Brush("#B59CC5"), Brush("#D8AE8C"), Brush("#DDB6C1"), Brush("#A8BDA7"), Brush("#D6BF7A")];
+    private static readonly Brush[] ConfettiBrushes = [Brush("#AA8DBC"), Brush("#C9A563"), Brush("#D493AD"), Brush("#98B7A3")];
+    private static readonly Geometry[] RibbonCurves =
+    [
+        Geometry.Parse("M 4,1 C 12,5 -2,9 4,14 C 11,19 -2,23 5,28"),
+        Geometry.Parse("M 3,1 C -3,6 10,8 5,14 C -1,20 10,23 4,28"),
+        Geometry.Parse("M 2,1 C 11,6 -3,13 5,18 C 10,22 2,25 4,28")
+    ];
     private readonly CreditsInteractionState interaction = new();
     private readonly List<Particle> particles = [];
     private readonly Stopwatch clock = Stopwatch.StartNew();
@@ -40,6 +46,9 @@ public partial class CreditsPanel : UserControl
         public double Gravity { get; init; }
         public double Spin { get; init; }
         public double Drift { get; init; }
+        public double Phase { get; init; }
+        public double InitialAngle { get; init; }
+        public double Drag { get; init; }
         public bool IsHeart { get; init; }
         public bool IsRibbon { get; init; }
     }
@@ -87,17 +96,45 @@ public partial class CreditsPanel : UserControl
         for (var index = 0; index < 9 && particles.Count(particle => !particle.IsHeart) < MaximumParticles; index++)
         {
             var petal = Random.Shared.NextDouble() < PetalRatio;
-            Shape shape = petal
-                ? new Path { Data = Geometry.Parse("M 0,5 C 1,-2 9,-2 9,3 C 9,8 3,10 0,5 Z"), Stretch = Stretch.Fill }
-                : new Rectangle();
-            shape.Fill = ConfettiBrushes[Random.Shared.Next(ConfettiBrushes.Length)];
-            shape.Width = petal ? 9 : 5;
-            shape.Height = petal ? 11 : 13;
+            FrameworkElement shape = petal ? CreatePetal() : new Path
+            {
+                Data = RibbonCurves[Random.Shared.Next(RibbonCurves.Length)],
+                Stroke = ConfettiBrushes[Random.Shared.Next(ConfettiBrushes.Length)],
+                StrokeThickness = 1.6 + Random.Shared.NextDouble() * 0.6,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+                Stretch = Stretch.Fill, Width = Random.Shared.Next(7, 11), Height = Random.Shared.Next(20, 30)
+            };
             shape.Tag = petal ? "Petal" : "Ribbon";
-            AddParticle(shape, origin, false, !petal, petal ? 3.8 : 2.5,
-                Random.Shared.Next(-95, 96), -Random.Shared.Next(petal ? 150 : 180, petal ? 220 : 290),
-                petal ? 115 : 230, petal ? 60 : 240, petal ? 18 : 3);
+            var angle = (-62 + index * 15.5 + Random.Shared.Next(-5, 6)) * Math.PI / 180;
+            var speed = petal ? Random.Shared.Next(210, 270) : Random.Shared.Next(280, 360);
+            AddParticle(shape, origin, false, !petal, petal ? 3.8 : 3.2,
+                Math.Sin(angle) * speed, -Math.Cos(angle) * speed,
+                petal ? 100 : 175, Random.Shared.Next(petal ? -35 : -140, petal ? 36 : 141),
+                petal ? 18 : 7, Random.Shared.Next(360), petal ? 0.55 : 0.35, index * 0.009);
         }
+    }
+
+    private static FrameworkElement CreatePetal()
+    {
+        var petal = new Grid { Width = Random.Shared.Next(9, 14), Height = Random.Shared.Next(13, 19) };
+        var drawing = new Canvas { Width = 20, Height = 24 };
+        drawing.Children.Add(new Path
+        {
+            Data = Geometry.Parse("M 10,23 C 7,18 1,13 2,6 C 2,1 6,0 9,3 L 10,6 L 12,2 C 17,-1 20,3 18,9 C 17,15 12,19 10,23 Z"),
+            Fill = new LinearGradientBrush
+            {
+                StartPoint = new Point(0.1, 0), EndPoint = new Point(0.85, 1),
+                GradientStops = { new GradientStop(Color.FromRgb(251, 232, 238), 0),
+                    new GradientStop(Color.FromRgb(236, 186, 206), 0.55), new GradientStop(Color.FromRgb(210, 143, 171), 1) }
+            }
+        });
+        drawing.Children.Add(new Path
+        {
+            Data = Geometry.Parse("M 10,21 C 9,16 12,11 11,8"),
+            Stroke = Brush("#CB8EAB"), StrokeThickness = 0.6, Opacity = 0.45
+        });
+        petal.Children.Add(new Viewbox { Child = drawing });
+        return petal;
     }
 
     private FrameworkElement CreateSurprise(CreditsSurprise surprise)
@@ -117,7 +154,8 @@ public partial class CreditsPanel : UserControl
     }
 
     private void AddParticle(FrameworkElement element, Point origin, bool heart, bool ribbon,
-        double lifetime, double vx, double vy, double gravity, double spin, double drift)
+        double lifetime, double vx, double vy, double gravity, double spin, double drift,
+        double initialAngle = 0, double drag = 0, double delay = 0)
     {
         var scale = new ScaleTransform();
         var rotation = new RotateTransform();
@@ -127,9 +165,11 @@ public partial class CreditsPanel : UserControl
         var particle = new Particle
         {
             Element = element, Scale = scale, Rotation = rotation, Origin = origin,
-            Birth = clock.Elapsed.TotalSeconds, Lifetime = lifetime, VelocityX = vx, VelocityY = vy,
-            Gravity = gravity, Spin = spin, Drift = drift, IsHeart = heart, IsRibbon = ribbon
+            Birth = clock.Elapsed.TotalSeconds + delay, Lifetime = lifetime, VelocityX = vx, VelocityY = vy,
+            Gravity = gravity, Spin = spin, Drift = drift, IsHeart = heart, IsRibbon = ribbon,
+            Phase = Random.Shared.NextDouble() * Math.Tau, InitialAngle = initialAngle, Drag = drag
         };
+        element.Opacity = delay > 0 ? 0 : 1;
         Canvas.SetLeft(element, origin.X - element.Width / 2);
         Canvas.SetTop(element, origin.Y - element.Height / 2);
         particles.Add(particle);
@@ -149,17 +189,20 @@ public partial class CreditsPanel : UserControl
         {
             var particle = particles[index];
             var age = now - particle.Birth;
-            var y = particle.Origin.Y + particle.VelocityY * age + particle.Gravity * age * age / 2;
+            if (age < 0) continue;
+            var travel = age / (1 + particle.Drag * age);
+            var y = particle.Origin.Y + particle.VelocityY * travel + particle.Gravity * age * age / 2;
             if (age >= particle.Lifetime || y > EffectsOverlay.ActualHeight + particle.Element.Height)
             {
                 EffectsOverlay.Children.Remove(particle.Element);
                 particles.RemoveAt(index);
                 continue;
             }
-            Canvas.SetLeft(particle.Element, particle.Origin.X + particle.VelocityX * age + Math.Sin(age * 5) * particle.Drift - particle.Element.Width / 2);
+            var sway = Math.Sin(age * 3 + particle.Phase) * particle.Drift * Math.Min(1, age * 2);
+            Canvas.SetLeft(particle.Element, particle.Origin.X + particle.VelocityX * travel + sway - particle.Element.Width / 2);
             Canvas.SetTop(particle.Element, y - particle.Element.Height / 2);
-            particle.Rotation.Angle = particle.Spin * age;
-            if (particle.IsRibbon) particle.Scale.ScaleX = Math.Cos(age * 11);
+            particle.Rotation.Angle = particle.InitialAngle + particle.Spin * age + sway;
+            if (particle.IsRibbon) particle.Scale.ScaleX = 0.7 + Math.Cos(age * 7 + particle.Phase) * 0.3;
             particle.Element.Opacity = Math.Min(1, (particle.Lifetime - age) / 0.7);
         }
         if (messageBirth is { } birth)

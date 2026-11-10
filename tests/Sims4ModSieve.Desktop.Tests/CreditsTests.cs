@@ -139,6 +139,9 @@ public sealed class CreditsTests
         await WpfTestHost.LayoutAsync(window);
         var page = Descendants<SettingsPage>(window).Single();
         var nav = (RadioButton)page.FindName("CreditsSectionButton");
+        var navigation = ((Panel)nav.Parent).Children.OfType<RadioButton>().ToList();
+        Assert.AreEqual(navigation.IndexOf(nav) + 1, navigation.IndexOf((RadioButton)page.FindName("AboutSectionButton")),
+            "感谢名单应紧邻并位于关于之前。");
         AssertHitRectangle(nav);
         if (nativeInput) await WpfTestHost.ClickAsync(nav, new Point(4, nav.ActualHeight / 2));
         else PressSpace(nav);
@@ -164,7 +167,15 @@ public sealed class CreditsTests
         await Task.Delay(120);
         Assert.IsGreaterThan(initialX, Canvas.GetLeft(heart));
         Assert.IsLessThan(initialY, Canvas.GetTop(heart));
-        await Task.Delay(4000);
+        if (Environment.GetEnvironmentVariable("SIMS4_CREDITS_ANIMATION_REVIEW") == "1")
+        {
+            for (var frame = 0; frame < 32; frame++)
+            {
+                SaveReview(window, $"burst-{frame:D2}.png");
+                await Task.Delay(125);
+            }
+        }
+        else await Task.Delay(4000);
         Assert.AreEqual(0, overlay.Children.Count, "动画结束必须移除元素。");
         for (var click = 2; click <= 8; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         foreach (var tag in new[] { "Clawd", "Star", "ChatGpt", "DeepSeek" })
