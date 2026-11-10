@@ -1,5 +1,6 @@
 param(
-    [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot)
+    [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
+    [switch]$Installer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,7 +10,8 @@ Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName WindowsBase
 
 $appXamlPath = Join-Path $ProjectRoot 'src\Sims4ModSieve.Desktop\App.xaml'
-$outputPath = Join-Path $ProjectRoot 'src\Sims4ModSieve.Desktop\Assets\Sims4ModSieve.ico'
+$outputName = if ($Installer) { 'Sims4ModSieve.Setup.ico' } else { 'Sims4ModSieve.ico' }
+$outputPath = Join-Path $ProjectRoot ('src\Sims4ModSieve.Desktop\Assets\' + $outputName)
 
 [xml]$appXaml = Get-Content -LiteralPath $appXamlPath -Raw
 $namespaces = [System.Xml.XmlNamespaceManager]::new($appXaml.NameTable)
@@ -45,22 +47,24 @@ foreach ($size in $sizes) {
     $context = $visual.RenderOpen()
     try {
         $scale = $size / 32.0
-        $backgroundBrush = [System.Windows.Media.SolidColorBrush]::new(
-            [System.Windows.Media.Color]::FromRgb(0xF0, 0xEC, 0xF4))
-        $borderBrush = [System.Windows.Media.SolidColorBrush]::new(
-            [System.Windows.Media.Color]::FromRgb(0xDD, 0xD6, 0xE6))
-        $borderPen = [System.Windows.Media.Pen]::new($borderBrush, [Math]::Max(0.5, 0.7 * $scale))
-        $backgroundRect = [System.Windows.Rect]::new(
-            1 * $scale,
-            1 * $scale,
-            $size - (2 * $scale),
-            $size - (2 * $scale))
-        $context.DrawRoundedRectangle(
-            $backgroundBrush,
-            $borderPen,
-            $backgroundRect,
-            6 * $scale,
-            6 * $scale)
+        if ($Installer) {
+            $backgroundBrush = [System.Windows.Media.SolidColorBrush]::new(
+                [System.Windows.Media.Color]::FromRgb(0xF0, 0xEC, 0xF4))
+            $borderBrush = [System.Windows.Media.SolidColorBrush]::new(
+                [System.Windows.Media.Color]::FromRgb(0xDD, 0xD6, 0xE6))
+            $borderPen = [System.Windows.Media.Pen]::new($borderBrush, [Math]::Max(0.5, 0.7 * $scale))
+            $backgroundRect = [System.Windows.Rect]::new(
+                1 * $scale,
+                1 * $scale,
+                $size - (2 * $scale),
+                $size - (2 * $scale))
+            $context.DrawRoundedRectangle(
+                $backgroundBrush,
+                $borderPen,
+                $backgroundRect,
+                6 * $scale,
+                6 * $scale)
+        }
 
         $brush = [System.Windows.Media.DrawingBrush]::new($drawingImage.Drawing)
         $brush.Stretch = [System.Windows.Media.Stretch]::Uniform
@@ -75,6 +79,19 @@ foreach ($size in $sizes) {
                 $iconInset,
                 $size - (2 * $iconInset),
                 $size - (2 * $iconInset)))
+        if ($Installer) {
+            $badgeBrush = [System.Windows.Media.SolidColorBrush]::new(
+                [System.Windows.Media.Color]::FromRgb(0x37, 0xAE, 0x50))
+            $badgeBorder = [System.Windows.Media.Pen]::new([System.Windows.Media.Brushes]::White, 1.3 * $scale)
+            $context.DrawEllipse($badgeBrush, $badgeBorder, [System.Windows.Point]::new(24.0 * $scale, 24.0 * $scale), 7.0 * $scale, 7.0 * $scale)
+            $arrowPen = [System.Windows.Media.Pen]::new([System.Windows.Media.Brushes]::White, 1.7)
+            $arrowPen.StartLineCap = 'Round'
+            $arrowPen.EndLineCap = 'Round'
+            $arrowPen.LineJoin = 'Round'
+            $context.PushTransform([System.Windows.Media.ScaleTransform]::new($scale, $scale))
+            $context.DrawGeometry($null, $arrowPen, [System.Windows.Media.Geometry]::Parse('M24,19.5 L24,25.5 M21.2,23.1 L24,25.9 L26.8,23.1 M20.8,28.2 L27.2,28.2'))
+            $context.Pop()
+        }
     }
     finally {
         $context.Close()
