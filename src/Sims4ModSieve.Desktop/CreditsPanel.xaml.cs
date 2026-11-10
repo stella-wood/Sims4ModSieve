@@ -149,8 +149,8 @@ public partial class CreditsPanel : UserControl
             StartPoint = new Point(0.1, 0), EndPoint = new Point(0.85, 1),
             GradientStops = { new GradientStop(Color.FromRgb(251, 232, 238), 0),
                 new GradientStop(Color.FromRgb(236, 186, 206), 0.55), new GradientStop(Color.FromRgb(210, 143, 171), 1) }
-        }, null, Geometry.Parse("M 10,23 C 7,18 1,13 2,6 C 2,1 6,0 9,3 L 10,6 L 12,2 C 17,-1 20,3 18,9 C 17,15 12,19 10,23 Z")));
-        drawing.Children.Add(new GeometryDrawing(null, new Pen(Brush("#73CB8EAB"), 0.6), Geometry.Parse("M 10,21 C 9,16 12,11 11,8")));
+        }, null, Geometry.Parse("M 3,20 C -1,12 2,3 9,2 C 12,1 14,4 14,6 L 18,5 C 22,11 18,20 3,20 Z")));
+        drawing.Children.Add(new GeometryDrawing(null, new Pen(Brush("#73CB8EAB"), 0.6), Geometry.Parse("M 4.4,18.6 C 7.4,17.2 12,12.8 13.8,7.2")));
         return NormalizeDrawing(drawing, 20, 24);
     }
 
@@ -176,7 +176,7 @@ public partial class CreditsPanel : UserControl
             Drawing = drawing, Tag = tag, Size = size, Origin = origin, Position = origin, Birth = now, LastUpdate = now,
             Lifetime = lifetime, VelocityX = vx, VelocityY = vy, Gravity = gravity, Spin = spin,
             Phase = Random.Shared.NextDouble() * Math.Tau, Flutter = 3 + Random.Shared.NextDouble() * 5,
-            InitialAngle = tag == "Petal" ? Random.Shared.Next(-18, 19)
+            InitialAngle = tag == "Petal" ? Random.Shared.Next(-38, -21)
                 : tag is "Heart" or "Clawd" or "Star" or "ChatGpt" or "DeepSeek" ? 0 : Random.Shared.Next(360),
             TerminalVelocity = terminalVelocity, Drag = drag
         };
@@ -245,7 +245,7 @@ public partial class CreditsPanel : UserControl
             if (particle.HeartFadeStart is { } retiring) particle.Opacity *= Math.Max(0, 1 - (now - retiring) / 0.2);
             particle.VisualDrawing.Opacity = particle.Opacity;
             var angle = particle.InitialAngle + particle.Spin * age;
-            if (particle.Tag == "Petal") angle += Math.Sin(particle.Phase + age * 1.8) * 10;
+            if (particle.Tag == "Petal") angle += Math.Sin(particle.Phase + age * 1.8) * 4;
             UpdateTransform(particle, angle);
         }
         if (messageBirth is { } birth)
