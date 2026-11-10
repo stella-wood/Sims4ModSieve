@@ -23,6 +23,27 @@ if ($LASTEXITCODE -ne 0) { throw 'Test installer compilation failed.' }
 $setup = Join-Path $case "Sims4ModSieve-$version-setup.exe"
 $registration = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{C897868A-0997-463F-B377-A68A616F831E}-InstallerTests_is1'
 
+# 使用 Unicode Shell Link 接口核对中文目标路径，避免依赖系统 ANSI 代码页。
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+using System.Text;
+public static class InstallerShortcutTarget {
+    [ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IShellLinkW { void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int length, IntPtr data, uint flags); }
+    public static string Read(string path) {
+        var link = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("00021401-0000-0000-C000-000000000046"), true));
+        try {
+            ((IPersistFile)link).Load(path, 0);
+            var target = new StringBuilder(32768);
+            ((IShellLinkW)link).GetPath(target, target.Capacity, IntPtr.Zero, 4);
+            return target.ToString();
+        } finally { Marshal.FinalReleaseComObject(link); }
+    }
+}
+'@
+
 function Run-Setup([string]$Name, [string]$Target = $app, [bool]$Success = $true) {
     $process = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
         '/MERGETASKS=desktopicon', ('/DIR="' + $Target + '"'), ('/LOG="' + (Join-Path $case "$Name.log") + '"')) -WindowStyle Hidden -PassThru -Wait
@@ -52,10 +73,9 @@ try {
     }
     $entry = Get-ItemProperty -LiteralPath $registration
     if ($entry.DisplayVersion -ne $version -or $entry.InstallLocation.TrimEnd('\') -ne $app) { throw 'Uninstall registration differs.' }
-    $shortcutService = New-Object -ComObject WScript.Shell
     foreach ($folder in @('Start','Desktop')) {
-        $shortcut = $shortcutService.CreateShortcut((Join-Path $shell "$folder/Sims 4 Mod Sieve.lnk"))
-        if ($shortcut.TargetPath -ne (Join-Path $app 'Sims4ModSieve.exe')) { throw "Invalid $folder shortcut." }
+        $target = [InstallerShortcutTarget]::Read((Join-Path $shell "$folder/Sims 4 Mod Sieve.lnk"))
+        if ($target -ne (Join-Path $app 'Sims4ModSieve.exe')) { throw "Invalid $folder shortcut target: $target" }
     }
     Write-Host 'PASS PayloadRegistrationAndShortcuts'
     $unknown = Join-Path $app 'user-note.txt'
