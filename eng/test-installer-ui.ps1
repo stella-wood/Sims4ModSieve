@@ -33,6 +33,7 @@ public static class InstallerReviewWindows {
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr window, int command);
     [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out Bounds bounds);
+    [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr window, out Bounds bounds);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", EntryPoint="SendMessageW", CharSet=CharSet.Unicode)] static extern IntPtr ReadText(IntPtr window, uint message, IntPtr index, StringBuilder text);
@@ -45,7 +46,16 @@ public static class InstallerReviewWindows {
             keybd_event(0x12,0,2,IntPtr.Zero);
         }
     }
-    public static bool Click(IntPtr button) { Activate(GetAncestor(button,2)); return PostMessage(button,0x00F5,IntPtr.Zero,IntPtr.Zero); }
+    public static bool Click(IntPtr button) {
+        Activate(GetAncestor(button,2));
+        var type = new StringBuilder(256); GetClassName(button,type,type.Capacity);
+        if (type.ToString().EndsWith("BitmapButton")) {
+            if (!GetClientRect(button,out var bounds)) return false;
+            var point = (IntPtr)((bounds.Right/2) | ((bounds.Bottom/2)<<16));
+            return PostMessage(button,0x0201,(IntPtr)1,point) && PostMessage(button,0x0202,IntPtr.Zero,point);
+        }
+        return PostMessage(button,0x00F5,IntPtr.Zero,IntPtr.Zero);
+    }
     public static string Text(IntPtr window) { var text = new StringBuilder(1024); GetWindowText(window,text,text.Capacity); return text.ToString(); }
     public static int[] ProcessIds = Array.Empty<int>();
     public static IntPtr[] Windows() {
@@ -235,7 +245,7 @@ function Start-CustomUninstall([bool]$ClearData = $false) {
     if ($command -notmatch '^"([^"]+)" (.+)$' -or $Matches[1] -ne (Join-Path $app 'unins000.exe')) { throw 'Unexpected registered uninstall command.' }
     $process = Start-Process -FilePath $Matches[1] -ArgumentList @($Matches[2], '/NORESTART') -PassThru
     $script:reviewProcess = $process
-    $question = Find-Button '卸载'
+    $question = Find-Button '是'
     $text = [InstallerReviewWindows]::WindowText($question.Window)
     if ($text -notlike '*你的 Mods、存档和游戏文件不会被删除*') { throw 'Game file reassurance is missing.' }
     $checkbox = [InstallerReviewWindows]::DataCheckbox($question.Window)
@@ -250,7 +260,7 @@ function Finish-Uninstall($Process, [switch]$AllowPartialCleanup) {
         if ([DateTime]::UtcNow -gt $deadline) { throw 'Interactive uninstall timed out.' }
         Assert-NoRuntimeError
         foreach ($window in [InstallerReviewWindows]::Windows()) {
-            if ([InstallerReviewWindows]::Button($window, '是') -ne [IntPtr]::Zero) { throw 'A second Yes/No confirmation appeared.' }
+            if ([InstallerReviewWindows]::Button($window, '是') -ne [IntPtr]::Zero -and [InstallerReviewWindows]::DataCheckbox($window) -eq [IntPtr]::Zero) { throw 'A second Yes/No confirmation appeared.' }
             $button = [InstallerReviewWindows]::Button($window, '确定')
             if ($button -ne [IntPtr]::Zero) {
                 if (-not $AllowPartialCleanup -or [InstallerReviewWindows]::WindowText($window) -notlike '*部分本机数据未能删除*') { throw 'Unexpected uninstall message.' }
@@ -265,24 +275,24 @@ function Finish-Uninstall($Process, [switch]$AllowPartialCleanup) {
 Install-TestFixture
 Set-Content -LiteralPath (Join-Path $data 'test-user-data.txt') -Value 'temporary data'
 $uninstall = Start-CustomUninstall
-$question = Find-Button '卸载'
+$question = Find-Button '是'
 Save-Window $question.Window 'uninstall-confirm.png'
 Select-DataCleanup $question.Window $true
 Save-Window $question.Window 'uninstall-options.png'
-Click-Button (Find-Button '取消')
+Click-Button (Find-Button '否')
 Wait-ReviewExit
 if (-not (Test-Path -LiteralPath (Join-Path $app 'Sims4ModSieve.exe')) -or -not (Test-Path -LiteralPath (Join-Path $data 'test-user-data.txt'))) { throw 'Cancelled options deleted files.' }
 Write-Host 'PASS SingleUninstallConfirmationDefaultsToKeepDataAndCanCancel'
 
 $uninstall = Start-CustomUninstall
-Click-Button (Find-Button '卸载')
+Click-Button (Find-Button '是')
 Finish-Uninstall $uninstall
 if (-not (Test-Path -LiteralPath (Join-Path $data 'test-user-data.txt'))) { throw 'Default uninstall deleted user data.' }
 Write-Host 'PASS DefaultUninstallPreservesData'
 
 Install-TestFixture
 $uninstall = Start-CustomUninstall $true
-Click-Button (Find-Button '卸载')
+Click-Button (Find-Button '是')
 Finish-Uninstall $uninstall
 if (Test-Path -LiteralPath $data) { throw 'Confirmed data cleanup did not remove temporary user data.' }
 Write-Host 'PASS ExplicitDataCleanup'
@@ -295,7 +305,7 @@ Set-Content -LiteralPath $sentinel -Value 'do not follow junction'
 $link = Join-Path $data 'linked-data'
 New-Item -ItemType Junction -Path $link -Target $outside | Out-Null
 $uninstall = Start-CustomUninstall $true
-Click-Button (Find-Button '卸载')
+Click-Button (Find-Button '是')
 Finish-Uninstall $uninstall -AllowPartialCleanup
 if ((Get-Content -LiteralPath $sentinel).Trim() -ne 'do not follow junction') { throw 'Data cleanup followed directory link.' }
 if (-not (Test-Path -LiteralPath $link)) { throw 'Directory link should remain for manual cleanup.' }
@@ -318,7 +328,7 @@ Set-Content -LiteralPath $ledger -Value $ledgerJson
 Set-Content -LiteralPath (Join-Path $data 'test-user-data.txt') -Value 'temporary data'
 $ledgerBefore = Get-Content -LiteralPath $ledger -Raw
 $uninstall = Start-CustomUninstall $true
-Click-Button (Find-Button '卸载')
+Click-Button (Find-Button '是')
 $danger = Find-Button '仍然卸载'
 $warningText = [InstallerReviewWindows]::WindowText($danger.Window)
 if ($warningText -notlike '*还有 3 个 Mod*' -or $warningText -notlike '*手动去掉 .off 后缀恢复*') { throw 'Disabled Mod warning text or count is wrong.' }
@@ -339,14 +349,14 @@ while (-not $folderOpened -and [DateTime]::UtcNow -lt $deadline) {
 if (-not $folderOpened) { throw 'Open folder did not show the selected disabled folder.' }
 [InstallerReviewWindows]::Activate($danger.Window)
 Start-Sleep -Milliseconds 200
-[InstallerReviewWindows]::keybd_event(0x0D, 0, 0, [IntPtr]::Zero)
-[InstallerReviewWindows]::keybd_event(0x0D, 0, 2, [IntPtr]::Zero)
+[InstallerReviewWindows]::PostMessage($danger.Window, 0x0100, [IntPtr]0x0D, [IntPtr]::Zero) | Out-Null
+[InstallerReviewWindows]::PostMessage($danger.Window, 0x0101, [IntPtr]0x0D, [IntPtr]::Zero) | Out-Null
 Wait-ReviewExit
 if (-not (Test-Path -LiteralPath (Join-Path $app 'Sims4ModSieve.exe')) -or (Get-Content -LiteralPath $ledger -Raw) -ne $ledgerBefore) { throw 'Default warning action did not cancel uninstall.' }
 Write-Host 'PASS DisabledWarningListsFoldersOpensFolderAndDefaultsToCancel'
 
 $uninstall = Start-CustomUninstall $true
-Click-Button (Find-Button '卸载')
+Click-Button (Find-Button '是')
 Click-Button (Find-Button '仍然卸载')
 Finish-Uninstall $uninstall
 if ((Get-Content -LiteralPath $ledger -Raw) -ne $ledgerBefore) { throw 'Continuing uninstall changed the disabled ledger.' }
@@ -358,7 +368,7 @@ Install-TestFixture
 if ((Get-Content -LiteralPath $ledger -Raw) -ne $ledgerBefore) { throw 'Reinstall lost disabled records.' }
 Set-Content -LiteralPath (Join-Path $data 'test-user-data.txt') -Value 'keep by default'
 $uninstall = Start-CustomUninstall
-Click-Button (Find-Button '卸载')
+Click-Button (Find-Button '是')
 Click-Button (Find-Button '仍然卸载')
 Finish-Uninstall $uninstall
 if (-not (Test-Path -LiteralPath (Join-Path $data 'test-user-data.txt'))) { throw 'Continuing uninstall without cleanup deleted data.' }
