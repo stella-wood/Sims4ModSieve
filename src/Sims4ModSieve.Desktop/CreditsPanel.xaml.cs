@@ -120,7 +120,8 @@ public partial class CreditsPanel : UserControl
             var terminal = height / 3.4;
             var speed = height * 2.6;
             for (var iteration = 0; iteration < 5; iteration++) speed = height * 2.6 + terminal * Math.Log(1 + speed / terminal);
-            AddParticle(GetSurpriseDrawing(surprise), surprise.ToString(), new Size(26, 26), origin, 3.4,
+            var iconSize = surprise == CreditsSurprise.Clawd ? 32 : 26;
+            AddParticle(GetSurpriseDrawing(surprise), surprise.ToString(), new Size(iconSize, iconSize), origin, 3.4,
                 lane * EffectsOverlay.ActualWidth * 2.6 * 0.38, -speed * 0.8, 0, 45, terminal * 0.8, 2.6);
         }
         for (var index = 0; index < BurstSize; index++)
