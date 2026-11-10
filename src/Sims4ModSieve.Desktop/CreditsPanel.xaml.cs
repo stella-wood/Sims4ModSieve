@@ -134,7 +134,7 @@ public partial class CreditsPanel : UserControl
             var peakTime = upward / gravity;
             var vx = (EffectsOverlay.ActualWidth / 2 - 12) * spread * 0.65 / (1 - Math.Exp(-0.65 * peakTime));
             AddParticle(petal ? PetalDrawing : PaperDrawings[Random.Shared.Next(PaperDrawings.Length)], petal ? "Petal" : "Ribbon",
-                petal ? new Size(Random.Shared.Next(14, 21), Random.Shared.Next(14, 21)) : new Size(Random.Shared.Next(5, 8), Random.Shared.Next(12, 19)),
+                petal ? new Size(Random.Shared.Next(14, 21), Random.Shared.Next(18, 26)) : new Size(Random.Shared.Next(5, 8), Random.Shared.Next(12, 19)),
                 origin, 5.4, vx * strength, -upward * strength, gravity,
                 petal ? 0 : (Random.Shared.NextDouble() - 0.5) * 8 * 180 / Math.PI);
         }
@@ -157,9 +157,10 @@ public partial class CreditsPanel : UserControl
     private Drawing GetSurpriseDrawing(CreditsSurprise surprise)
     {
         if (surpriseDrawings.TryGetValue(surprise, out var drawing)) return drawing;
-        var color = surprise switch { CreditsSurprise.Clawd => "#D97757", CreditsSurprise.Star => "#F2C230", CreditsSurprise.ChatGpt => "#171717", _ => "#4D6BFE" };
+        var color = surprise switch { CreditsSurprise.Clawd => "#D97757", CreditsSurprise.Star => "#F2C230", CreditsSurprise.ChatGpt => "#000000", _ => "#4D6BFE" };
         var group = new DrawingGroup();
-        group.Children.Add(new GeometryDrawing(Brush(color), null, (Geometry)FindResource($"Credits{surprise}Geometry")));
+        var pen = surprise == CreditsSurprise.ChatGpt ? new Pen(Brush(color), 0.12) { LineJoin = PenLineJoin.Round } : null;
+        group.Children.Add(new GeometryDrawing(Brush(color), pen, (Geometry)FindResource($"Credits{surprise}Geometry")));
         if (surprise == CreditsSurprise.Clawd)
             group.Children.Add(new GeometryDrawing(Brushes.Black, null, (Geometry)FindResource("CreditsClawdEyesGeometry")));
         drawing = NormalizeDrawing(group, 24, 24);
