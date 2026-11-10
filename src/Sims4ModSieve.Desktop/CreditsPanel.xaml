@@ -1,6 +1,7 @@
 <UserControl x:Class="Sims4ModSieve.Desktop.CreditsPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Sims4ModSieve.Desktop"
              IsVisibleChanged="Panel_IsVisibleChanged" Unloaded="Panel_Unloaded">
     <UserControl.Resources>
         <ResourceDictionary>
@@ -54,6 +55,7 @@
                             </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="FloatingFace" Property="Opacity" Value="0.5" /></Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="FloatingFace" Property="Background" Value="#FBF8FC" />
                                 <Setter TargetName="PartyIcon" Property="RenderTransform"><Setter.Value><RotateTransform Angle="-8" /></Setter.Value></Setter>
@@ -62,12 +64,8 @@
                     </ControlTemplate>
                 </Button.Template>
             </Button>
-            <TextBlock x:Name="ConfettiClickCount" Text="0" ToolTip="本次点击次数" AutomationProperties.Name="礼花点击次数"
-                       FontSize="11" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                <TextBlock.RenderTransform><TranslateTransform X="42" /></TextBlock.RenderTransform>
-            </TextBlock>
         </Grid>
-        <Canvas x:Name="EffectsOverlay" Grid.RowSpan="2" IsHitTestVisible="False" ClipToBounds="True" />
+        <local:CreditsEffectsLayer x:Name="EffectsOverlay" Grid.RowSpan="2" IsHitTestVisible="False" ClipToBounds="True" />
         <Border x:Name="SecretMessage" IsHitTestVisible="False" Visibility="Collapsed" Opacity="0"
                 Grid.RowSpan="2"
                 VerticalAlignment="Center" Margin="88,0,88,0" Background="Transparent" Padding="20,18">
