@@ -141,6 +141,7 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 - 优先跑修改项目的相关测试类：Core 对应 Core.Tests，Packages 对应 Packages.Tests，界面对应 Desktop.Tests；公共契约或跨项目行为变化时，补跑直接受影响的调用方测试类。
 - 只改了文档、注释、文案或纯外观数值，不跑测试，回复里说明「未跑测试，原因：……」。
 - 整套测试只在准备发布新版本或合并 PR 前跑一次。
+- 测试失败时先查明原因并修复，不通过放宽断言、加长超时、跳过或删除测试让 CI 通过。确认是测试本身写错时，修改前在汇报里说明原因，等用户同意再改。
 
 ## 11. 完成标准
 

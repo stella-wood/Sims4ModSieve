@@ -83,7 +83,7 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 
 ## 从源码构建
 
-需要 .NET SDK 10.0.403 或兼容的 .NET 10 SDK（版本由 `global.json` 固定）。`eng\dotnet.cmd` 会优先使用项目内的本地 SDK，找不到时使用系统的 `dotnet`。
+需要 .NET SDK 10.0.403 或兼容的 .NET 10 SDK（版本由 `global.json` 固定）。`eng\dotnet.cmd` 会优先使用项目内的本地 SDK，找不到时使用系统的 `dotnet`。两处都没有 SDK 时会报 `A compatible .NET SDK was not found`，先从 [.NET 下载页](https://dotnet.microsoft.com/download/dotnet/10.0) 安装 .NET 10 SDK（不是 Runtime）。
 
 ```powershell
 .\eng\dotnet.cmd restore .\Sims4ModSieve.sln --locked-mode
