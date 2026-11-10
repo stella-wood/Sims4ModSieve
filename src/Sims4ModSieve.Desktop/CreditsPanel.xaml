@@ -21,7 +21,7 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                     <TextBlock Text="感谢名单" FontSize="28" FontWeight="SemiBold" />
                     <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="24,0,0,0">
-                        <StackPanel.RenderTransform><TranslateTransform Y="8" /></StackPanel.RenderTransform>
+                        <StackPanel.RenderTransform><TranslateTransform Y="26" /></StackPanel.RenderTransform>
                         <TextBlock TextTrimming="CharacterEllipsis" Foreground="{StaticResource AccentBrush}" FontSize="13">
                             <Run Text="爱发电：" /><Hyperlink x:Name="AfdianLink" Command="{Binding OpenAfdianCommand}" Foreground="{StaticResource AccentBrush}"
                                 TextDecorations="Underline" ToolTip="{x:Static services:SettingsSupportService.AfdianUrl}">ifdian.net/a/stella063</Hyperlink>
