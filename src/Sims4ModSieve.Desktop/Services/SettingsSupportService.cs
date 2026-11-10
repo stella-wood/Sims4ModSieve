@@ -17,6 +17,7 @@ public sealed partial class SettingsSupportService
 {
     public const int MaximumLogCharacters = 65_536;
     public const string ProjectUrl = "https://github.com/stella-wood/Sims4ModSieve";
+    public const string AfdianUrl = "https://ifdian.net/a/stella063";
     private readonly string documentsDirectory;
     private readonly string applicationDirectory;
     private readonly Action<string> openTarget;
@@ -128,6 +129,7 @@ public sealed partial class SettingsSupportService
     }
 
     public void OpenProjectPage(bool feedback = false) => openTarget(feedback ? ProjectUrl + "/issues" : ProjectUrl);
+    public void OpenAfdianPage() => openTarget(AfdianUrl);
 
     public void OpenReleasePage(string url)
     {

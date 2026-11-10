@@ -60,9 +60,13 @@ public partial class CreditsPanel : UserControl
         public double? HeartFadeStart { get; set; }
         public Point? NextHeartOrigin { get; set; }
         public double ReplacementRequestedAt { get; set; }
+        public double? LandedAt { get; set; }
+        public double LandingAngle { get; set; }
+        public double? FadeStartedAt { get; set; }
         public bool IsHeart => Tag == "Heart";
         public bool IsRibbon => Tag == "Ribbon";
         public bool IsPaper => Tag is "Ribbon" or "Petal";
+        public bool IsSurprise => Tag is "Clawd" or "Star" or "ChatGpt" or "DeepSeek";
     }
 
     private static Brush Brush(string color)
@@ -105,6 +109,7 @@ public partial class CreditsPanel : UserControl
     {
         var now = clock.Elapsed.TotalSeconds;
         if (!interaction.TryClickConfetti(now, out var surprise)) return;
+        foreach (var particle in particles.Where(particle => particle.IsSurprise)) particle.FadeStartedAt = null;
         ConfettiButton.IsEnabled = interaction.CanClick(now);
         var strength = interaction.BurstStrength;
         var origin = ConfettiButton.TranslatePoint(new Point(ConfettiButton.ActualWidth / 2, ConfettiButton.ActualHeight / 2), EffectsOverlay);
@@ -121,7 +126,7 @@ public partial class CreditsPanel : UserControl
             var speed = height * 2.6;
             for (var iteration = 0; iteration < 5; iteration++) speed = height * 2.6 + terminal * Math.Log(1 + speed / terminal);
             var iconSize = surprise == CreditsSurprise.Clawd ? 32 : 26;
-            AddParticle(GetSurpriseDrawing(surprise), surprise.ToString(), new Size(iconSize, iconSize), origin, 3.4,
+            AddParticle(GetSurpriseDrawing(surprise), surprise.ToString(), new Size(iconSize, iconSize), origin, double.PositiveInfinity,
                 lane * EffectsOverlay.ActualWidth * 2.6 * 0.38, -speed * 0.8, 0, 45, terminal * 0.8, 2.6);
         }
         for (var index = 0; index < BurstSize; index++)
@@ -205,9 +210,10 @@ public partial class CreditsPanel : UserControl
         CompositionTarget.Rendering += RenderFrame;
     }
 
-    private void RenderFrame(object? sender, EventArgs e)
+    private void RenderFrame(object? sender, EventArgs e) => AdvanceAnimation(clock.Elapsed.TotalSeconds);
+
+    internal void AdvanceAnimation(double now)
     {
-        var now = clock.Elapsed.TotalSeconds;
         ConfettiButton.IsEnabled = interaction.CanClick(now);
         for (var index = particles.Count - 1; index >= 0; index--)
         {
@@ -227,14 +233,39 @@ public partial class CreditsPanel : UserControl
                     particle.Position.Y + particle.VelocityY * dt);
                 particle.ScaleX = particle.IsRibbon ? Math.Cos(flip) : 1;
             }
-            else
+            else if (particle.LandedAt is null)
             {
                 var travel = particle.TerminalVelocity > 0 ? (1 - Math.Exp(-particle.Drag * age)) / particle.Drag : age;
                 var sway = particle.IsHeart ? 0 : Math.Sin(age * 3 + particle.Phase) * 10 * Math.Min(1, age * 2);
                 particle.Position = new Point(particle.Origin.X + particle.VelocityX * travel + sway,
                     particle.Origin.Y + particle.VelocityY * travel + particle.TerminalVelocity * (age - travel));
             }
-            if (age >= particle.Lifetime || particle.Position.Y > EffectsOverlay.ActualHeight + particle.Size.Height
+            var angle = particle.InitialAngle + particle.Spin * age;
+            if (particle.Tag == "Petal") angle += Math.Sin(particle.Phase + age * 1.8) * 4;
+            if (particle.IsSurprise)
+            {
+                var radians = angle * Math.PI / 180;
+                var halfHeight = (Math.Abs(Math.Sin(radians)) * particle.Size.Width + Math.Abs(Math.Cos(radians)) * particle.Size.Height) / 2;
+                if (particle.LandedAt is not null || age > 0.5 && particle.Position.Y + halfHeight >= EffectsOverlay.FloorY)
+                {
+                    if (particle.LandedAt is null)
+                    {
+                        particle.LandedAt = now;
+                        particle.LandingAngle = Math.IEEERemainder(angle, 360);
+                    }
+                    var settling = Math.Clamp((now - particle.LandedAt.Value) / 0.35, 0, 1);
+                    angle = particle.LandingAngle * Math.Pow(1 - settling, 3);
+                    radians = angle * Math.PI / 180;
+                    halfHeight = (Math.Abs(Math.Sin(radians)) * particle.Size.Width + Math.Abs(Math.Cos(radians)) * particle.Size.Height) / 2;
+                    var halfSize = particle.Size.Width / 2;
+                    particle.Position = new Point(Math.Clamp(particle.Position.X, halfSize, Math.Max(halfSize, EffectsOverlay.ActualWidth - halfSize)), EffectsOverlay.FloorY - halfHeight);
+                    var idleSince = Math.Max(particle.LandedAt.Value, interaction.LastClickTime ?? particle.LandedAt.Value);
+                    if (messageBirth is null && now - idleSince >= 3) particle.FadeStartedAt ??= idleSince + 3;
+                }
+            }
+            if (age >= particle.Lifetime || particle.Position.Y > (particle.IsHeart ? EffectsOverlay.ActualHeight : EffectsOverlay.FloorY) + particle.Size.Height
+                || particle.IsSurprise && (particle.FadeStartedAt is { } started && now - started >= 1
+                    || messageBirth is { } messageStart && now - messageStart >= 6)
                 || particle.HeartFadeStart is { } fadeStart && now - fadeStart >= 0.2)
             {
                 particles.RemoveAt(index);
@@ -242,11 +273,12 @@ public partial class CreditsPanel : UserControl
                 if (particle.NextHeartOrigin is { } nextOrigin) AddHeart(nextOrigin);
                 continue;
             }
-            particle.Opacity = Math.Min(1, (particle.Lifetime - age) / (particle.IsHeart ? 1.5 : particle.IsPaper ? 1 : 0.7));
+            particle.Opacity = particle.IsSurprise
+                ? messageBirth is { } shownAt ? Math.Clamp((6 - (now - shownAt)) / 1.5, 0, 1)
+                    : particle.FadeStartedAt is { } fadingAt ? Math.Clamp(1 - (now - fadingAt), 0, 1) : 1
+                : Math.Min(1, (particle.Lifetime - age) / (particle.IsHeart ? 1.5 : 1));
             if (particle.HeartFadeStart is { } retiring) particle.Opacity *= Math.Max(0, 1 - (now - retiring) / 0.2);
             particle.VisualDrawing.Opacity = particle.Opacity;
-            var angle = particle.InitialAngle + particle.Spin * age;
-            if (particle.Tag == "Petal") angle += Math.Sin(particle.Phase + age * 1.8) * 4;
             UpdateTransform(particle, angle);
         }
         if (messageBirth is { } birth)
@@ -291,13 +323,28 @@ public sealed class CreditsEffectsLayer : FrameworkElement
     public CreditsEffectsLayer() => AddVisualChild(visual);
 
     internal IReadOnlyList<CreditsPanel.Particle> Particles { get; set; } = [];
+    internal double FloorY => Math.Max(0, ActualHeight - 24);
+    internal Geometry FloorClip { get; private set; } = Geometry.Empty;
     protected override int VisualChildrenCount => 1;
     protected override Visual GetVisualChild(int index) => visual;
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        var clip = new RectangleGeometry(new Rect(0, 0, ActualWidth, FloorY));
+        clip.Freeze();
+        FloorClip = clip;
+        DrawFrame();
+    }
 
     internal void DrawFrame()
     {
         using var drawingContext = visual.RenderOpen();
+        drawingContext.PushClip(FloorClip);
         foreach (var particle in Particles)
-            drawingContext.DrawDrawing(particle.VisualDrawing);
+            if (!particle.IsHeart) drawingContext.DrawDrawing(particle.VisualDrawing);
+        drawingContext.Pop();
+        foreach (var particle in Particles)
+            if (particle.IsHeart) drawingContext.DrawDrawing(particle.VisualDrawing);
     }
 }

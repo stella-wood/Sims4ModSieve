@@ -10,6 +10,7 @@ internal sealed class CreditsInteractionState
     private double resumeAt;
 
     public bool CanClick(double now) => now >= resumeAt;
+    public double? LastClickTime => lastClick;
     public double BurstStrength => 0.84 + Math.Clamp(consecutiveClicks - 1, 0, 2) * 0.08;
 
     public bool TryClickConfetti(double now, out CreditsSurprise surprise)
@@ -23,8 +24,8 @@ internal sealed class CreditsInteractionState
         {
             5 => CreditsSurprise.Clawd,
             6 => CreditsSurprise.Star,
-            7 => CreditsSurprise.ChatGpt,
-            8 => CreditsSurprise.DeepSeek,
+            8 => CreditsSurprise.ChatGpt,
+            12 => CreditsSurprise.DeepSeek,
             20 => CreditsSurprise.Message,
             _ => CreditsSurprise.None
         };

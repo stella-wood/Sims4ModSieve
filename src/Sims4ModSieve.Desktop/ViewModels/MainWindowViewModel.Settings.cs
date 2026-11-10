@@ -18,6 +18,7 @@ public sealed partial class MainWindowViewModel
     private string trayFolderFeedback = string.Empty;
     private string diagnosticsFeedback = string.Empty;
     private string aboutFeedback = string.Empty;
+    private string creditsFeedback = string.Empty;
     private string licenseText = string.Empty;
     private string? licenseDocument;
     private IReadOnlyList<DiagnosticLog> diagnosticLogs = [];
@@ -42,6 +43,7 @@ public sealed partial class MainWindowViewModel
     public RelayCommand OpenLogFolderCommand { get; private set; } = null!;
     public RelayCommand OpenFeedbackCommand { get; private set; } = null!;
     public RelayCommand OpenProjectCommand { get; private set; } = null!;
+    public RelayCommand OpenAfdianCommand { get; private set; } = null!;
     public RelayCommand OpenLicenseCommand { get; private set; } = null!;
 
     public bool IsSettingsVisible { get => isSettingsVisible; private set => SetProperty(ref isSettingsVisible, value); }
@@ -85,6 +87,7 @@ public sealed partial class MainWindowViewModel
     public string TrayFolderFeedback { get => trayFolderFeedback; private set => SetProperty(ref trayFolderFeedback, value); }
     public string DiagnosticsFeedback { get => diagnosticsFeedback; private set => SetProperty(ref diagnosticsFeedback, value); }
     public string AboutFeedback { get => aboutFeedback; private set => SetProperty(ref aboutFeedback, value); }
+    public string CreditsFeedback { get => creditsFeedback; private set => SetProperty(ref creditsFeedback, value); }
     public string LicenseText { get => licenseText; private set => SetProperty(ref licenseText, value); }
     public bool HasLicenseText => !string.IsNullOrEmpty(LicenseText);
     public string ProductVersion => settingsSupport.ProductVersion;
@@ -151,6 +154,8 @@ public sealed partial class MainWindowViewModel
             message => DiagnosticsFeedback = message, string.Empty, "无法打开反馈页面"));
         OpenProjectCommand = SettingsCommand(() => RunSettingsOperation(() => settingsSupport.OpenProjectPage(),
             message => AboutFeedback = message, string.Empty, "无法打开项目主页"));
+        OpenAfdianCommand = SettingsCommand(() => RunSettingsOperation(settingsSupport.OpenAfdianPage,
+            message => CreditsFeedback = message, string.Empty, "无法打开爱发电页面"));
         OpenLicenseCommand = new(document =>
         {
             if (IsBusy || document is not ("LICENSE" or "THIRD-PARTY-NOTICES.md")) return;
@@ -312,7 +317,7 @@ public sealed partial class MainWindowViewModel
         foreach (var command in new[] { OpenSettingsCommand, SelectSettingsSectionCommand, ChangeDefaultModsRootCommand,
             ChangeTrayRootCommand, ClearTrayRootCommand, FindDefaultFolderCommand, ApplyDefaultFolderCandidateCommand,
             CancelDefaultFolderCandidateCommand, OpenModsFolderCommand, OpenTrayFolderCommand, OpenLogFolderCommand,
-            OpenFeedbackCommand, OpenProjectCommand, OpenLicenseCommand }) command?.RaiseCanExecuteChanged();
+            OpenFeedbackCommand, OpenProjectCommand, OpenAfdianCommand, OpenLicenseCommand }) command?.RaiseCanExecuteChanged();
         RefreshDiagnosticsCommand?.RaiseCanExecuteChanged();
         CopyDiagnosticsCommand?.RaiseCanExecuteChanged();
         CopyScanTimingCommand?.RaiseCanExecuteChanged();

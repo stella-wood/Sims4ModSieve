@@ -4,6 +4,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -18,6 +19,152 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class CreditsTests
 {
+    [TestMethod]
+    public Task IconsLandStayStillAndFadeAfterThreeSecondsIdle() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var button = (Button)panel.FindName("ConfettiButton");
+        var layer = (CreditsEffectsLayer)panel.FindName("EffectsOverlay");
+        for (var click = 1; click <= 5; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        var icon = layer.Particles.Single(particle => particle.Tag == "Clawd");
+        var landedTime = icon.Birth + 7;
+        panel.AdvanceAnimation(landedTime);
+        Assert.IsNotNull(icon.LandedAt);
+        var impact = icon.Transform.Matrix;
+        panel.AdvanceAnimation(landedTime + 0.1);
+        Assert.AreNotEqual(impact, icon.Transform.Matrix, "触底后应缓动回正。");
+        Assert.AreNotEqual(0, icon.Transform.Matrix.M12, "不能触底就突然跳到正立姿态。");
+        panel.AdvanceAnimation(landedTime + 0.8);
+        Assert.AreEqual(0, icon.Transform.Matrix.M12, "图标落地后应回正。");
+        Assert.AreEqual(0, icon.Transform.Matrix.M21, "图标落地后应回正。");
+        Assert.IsGreaterThan(layer.ActualHeight / 2, icon.Position.Y);
+        var resting = icon.Transform.Matrix;
+        panel.AdvanceAnimation(landedTime + 2.9);
+        Assert.AreEqual(resting, icon.Transform.Matrix, "落地后不再位移或旋转。");
+        Assert.AreEqual(1, icon.Opacity);
+        panel.AdvanceAnimation(landedTime + 3.5);
+        Assert.IsTrue(icon.Opacity > 0 && icon.Opacity < 1, "停点满三秒后应渐隐。");
+        panel.AdvanceAnimation(landedTime + 4.1);
+        Assert.IsFalse(layer.Particles.Contains(icon));
+    });
+
+    [TestMethod]
+    public Task ContinuedClicksExtendLandedIconsAndMessageRemovesThemTogether() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var button = (Button)panel.FindName("ConfettiButton");
+        var layer = (CreditsEffectsLayer)panel.FindName("EffectsOverlay");
+        var message = (Border)panel.FindName("SecretMessage");
+        for (var click = 1; click <= 12; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        var icons = layer.Particles.Where(particle => particle.IsSurprise).ToArray();
+        Assert.AreEqual(4, icons.Length);
+        var timeout = System.Diagnostics.Stopwatch.StartNew();
+        while (icons.Any(icon => icon.LandedAt is null) && timeout.Elapsed.TotalSeconds < 8) await Task.Delay(100);
+        Assert.IsTrue(icons.All(icon => icon.LandedAt is not null));
+        await Task.Delay(2100);
+        Assert.IsTrue(icons.All(icon => icon.Transform.Matrix.M12 == 0 && icon.Transform.Matrix.M21 == 0), "四个图标都应正立停留。");
+        button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        await Task.Delay(1200);
+        Assert.IsTrue(icons.All(icon => layer.Particles.Contains(icon) && icon.Opacity == 1), "持续点击应延长落地图标的停留。");
+        await Task.Delay(2050);
+        Assert.IsTrue(icons.All(icon => icon.Opacity > 0 && icon.Opacity < 1));
+        for (var click = 14; click <= 20; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        var messageTime = layer.Particles.Last().Birth;
+        panel.AdvanceAnimation(messageTime + 0.6);
+        Assert.IsTrue(message.IsVisible);
+        Assert.IsTrue(icons.All(icon => icon.Opacity == 1 && icon.FadeStartedAt is null), "继续点击应恢复尚未消失的图标。");
+        panel.AdvanceAnimation(messageTime + 5.2);
+        Assert.IsTrue(message.Opacity > 0 && message.Opacity < 1);
+        foreach (var icon in icons) Assert.AreEqual(message.Opacity, icon.Opacity, 0.001);
+        panel.AdvanceAnimation(messageTime + 6.1);
+        Assert.IsFalse(message.IsVisible);
+        Assert.IsFalse(layer.Particles.Any(particle => particle.IsSurprise));
+        model.SelectSettingsSectionCommand.Execute("about");
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(0, layer.Particles.Count);
+    });
+
+    [TestMethod]
+    public Task EffectsClipAtSameFloorWhereIconsStandAfterResize() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var button = (Button)panel.FindName("ConfettiButton");
+        var layer = (CreditsEffectsLayer)panel.FindName("EffectsOverlay");
+        for (var click = 1; click <= 5; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        var icon = layer.Particles.Single(particle => particle.IsSurprise);
+        panel.AdvanceAnimation(icon.Birth + 7);
+        panel.AdvanceAnimation(icon.Birth + 8);
+        void AssertSharedFloor()
+        {
+            var iconBottom = icon.Transform.TransformBounds(new Rect(-0.5, -0.5, 1, 1)).Bottom;
+            Assert.AreEqual(iconBottom, layer.FloorClip.Bounds.Bottom, 0.001, "图标脚下和礼花裁剪应共用同一条底线。");
+            Assert.IsFalse(layer.FloorClip.FillContains(new Point(layer.ActualWidth / 2, iconBottom + 1)));
+        }
+        AssertSharedFloor();
+        panel.EmitHeart(new Point(layer.ActualWidth / 2, layer.ActualHeight - 1));
+        var heart = layer.Particles.Single(particle => particle.IsHeart);
+        panel.AdvanceAnimation(heart.Birth + 0.01);
+        Assert.IsTrue(layer.Particles.Contains(heart), "礼花底线不应阻止页面最下方点击产生的爱心。");
+        window.Height = 640;
+        await WpfTestHost.LayoutAsync(window);
+        panel.AdvanceAnimation(icon.Birth + 8.5);
+        AssertSharedFloor();
+    });
+
+    [TestMethod]
+    public Task AfdianLinkOpensProvidedAddressAndReportsLaunchFailure() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var opened = new List<string>();
+        var fail = false;
+        var support = new SettingsSupportService(files.Root, openTarget: target =>
+        {
+            if (fail) throw new IOException();
+            opened.Add(target);
+        });
+        var model = files.Model(support: support);
+        var window = new MainWindow(model) { Width = 920, Height = 640 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var link = (Hyperlink)panel.FindName("AfdianLink");
+        Assert.IsTrue(link.IsEnabled);
+        Assert.AreSame(model.OpenAfdianCommand, link.Command);
+        ((IInvokeProvider)new HyperlinkAutomationPeer(link).GetPattern(PatternInterface.Invoke)).Invoke();
+        await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        CollectionAssert.AreEqual(new[] { "https://ifdian.net/a/stella063" }, opened);
+        fail = true;
+        ((IInvokeProvider)new HyperlinkAutomationPeer(link).GetPattern(PatternInterface.Invoke)).Invoke();
+        await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        Assert.AreEqual("无法打开爱发电页面", model.CreditsFeedback);
+        var intro = (TextBlock)panel.FindName("SecretIntro");
+        Assert.AreEqual("感谢每一位开发者、\n贡献者、请我吃过薯片的朋友们\n以及亲爱的agent们", intro.Text);
+        Assert.AreEqual("谢谢你还在使用它", ((TextBlock)panel.FindName("SecretThanks")).Text);
+    });
+
     [TestMethod]
     public Task ConsecutiveBurstsIncreaseLaunchSpeedUpToThirdAndResetAfterRest() => WpfTestHost.RunAsync(async () =>
     {
@@ -330,7 +477,7 @@ public sealed class CreditsTests
         var expected = new Dictionary<int, CreditsSurprise>
         {
             [5] = CreditsSurprise.Clawd, [6] = CreditsSurprise.Star,
-            [7] = CreditsSurprise.ChatGpt, [8] = CreditsSurprise.DeepSeek, [20] = CreditsSurprise.Message
+            [8] = CreditsSurprise.ChatGpt, [12] = CreditsSurprise.DeepSeek, [20] = CreditsSurprise.Message
         };
         for (var click = 1; click <= 45; click++)
         {
@@ -618,8 +765,8 @@ public sealed class CreditsTests
         Assert.IsLessThan(initial.Y, ParticleCenter(heart, overlay).Y);
         await Task.Delay(6000);
         Assert.AreEqual(0, overlay.Particles.Count, "动画结束必须移除元素。");
-        var surprises = new Dictionary<int, string> { [5] = "Clawd", [6] = "Star", [7] = "ChatGpt", [8] = "DeepSeek" };
-        for (var click = 2; click <= 8; click++)
+        var surprises = new Dictionary<int, string> { [5] = "Clawd", [6] = "Star", [8] = "ChatGpt", [12] = "DeepSeek" };
+        for (var click = 2; click <= 12; click++)
         {
             button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             if (surprises.TryGetValue(click, out var tag))
@@ -639,7 +786,7 @@ public sealed class CreditsTests
                 SaveReview(window, $"easter-eggs-{frame:D2}.png");
                 await Task.Delay(100);
             }
-        for (var click = 9; click <= 20; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        for (var click = 13; click <= 20; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Assert.IsTrue(secret.IsVisible);
         await Task.Delay(650);
         Assert.IsTrue(secret.Opacity > 0);
