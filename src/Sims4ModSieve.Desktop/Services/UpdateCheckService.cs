@@ -5,7 +5,8 @@ using System.Text.RegularExpressions;
 
 namespace Sims4ModSieve.Desktop.Services;
 
-public sealed record AvailableUpdate(string Version, string ReleaseUrl);
+public sealed record UpdateInstaller(string DownloadUrl, string ChecksumUrl, long Size);
+public sealed record AvailableUpdate(string Version, string ReleaseUrl, UpdateInstaller? Installer = null);
 
 public sealed partial class UpdateCheckService(HttpClient client)
 {
@@ -32,7 +33,25 @@ public sealed partial class UpdateCheckService(HttpClient client)
             if (tag is null || url is null || !IsReleaseUrl(url)
                 || !TryCompareVersions(tag, currentVersion, out var comparison) || comparison <= 0) return null;
             timeout.Token.ThrowIfCancellationRequested();
-            return new AvailableUpdate(tag.TrimStart('v').Split('+')[0], url);
+            var version = tag.TrimStart('v');
+            var name = $"Sims4ModSieve-{version}-setup.exe";
+            UpdateInstaller? installer = null;
+            if (json.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            {
+                var matches = assets.EnumerateArray().Where(asset => asset.TryGetProperty("name", out var assetName)
+                    && assetName.ValueKind == JsonValueKind.String && assetName.GetString() == name).ToArray();
+                var hashes = assets.EnumerateArray().Where(asset => asset.TryGetProperty("name", out var assetName)
+                    && assetName.ValueKind == JsonValueKind.String && assetName.GetString() == name + ".sha256").ToArray();
+                if (matches.Length == 1 && hashes.Length == 1
+                    && matches[0].TryGetProperty("size", out var size) && size.TryGetInt64(out var bytes)
+                    && bytes is > 0 and <= MaximumInstallerBytes
+                    && matches[0].TryGetProperty("browser_download_url", out var download)
+                    && hashes[0].TryGetProperty("browser_download_url", out var checksum)
+                    && download.ValueKind == JsonValueKind.String && checksum.ValueKind == JsonValueKind.String
+                    && IsAssetUrl(download.GetString()!, tag, name) && IsAssetUrl(checksum.GetString()!, tag, name + ".sha256"))
+                    installer = new(download.GetString()!, checksum.GetString()!, bytes);
+            }
+            return new AvailableUpdate(version, url, installer);
         }
         catch (Exception)
         {

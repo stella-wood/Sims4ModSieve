@@ -193,11 +193,16 @@
                    Opened="UpdatePopupOpened">
                 <Border Background="{StaticResource SurfaceBrush}" Margin="6"
                         CornerRadius="4" Padding="18,14" PreviewKeyDown="UpdatePopupKeyDown">
-                    <StackPanel>
+                    <StackPanel MaxWidth="320">
                         <TextBlock Text="{Binding AvailableUpdateText}" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding CurrentVersionText}" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,16" />
+                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateDownloadProgress, Mode=OneWay}" Height="4" Margin="0,0,0,8"
+                                     Foreground="{StaticResource AccentBrush}"
+                                     Visibility="{Binding IsUpdateDownloading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBlock Text="{Binding UpdateStatusText}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8" />
                         <Button x:Name="UpdateDownloadButton" HorizontalAlignment="Left"
-                                Background="Transparent" Cursor="Hand" Command="{Binding OpenUpdateReleaseCommand}">
+                                Visibility="{Binding ShowUpdateDownload, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                Background="Transparent" Cursor="Hand" Command="{Binding DownloadUpdateCommand}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource BareIconButtonStyle}">
                                     <Setter Property="Foreground" Value="{StaticResource HoverTextBrush}" />
@@ -208,7 +213,7 @@
                                     </Style.Triggers>
                                 </Style>
                             </Button.Style>
-                            <TextBlock Text="前往下载">
+                            <TextBlock Text="下载更新">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
                                         <Style.Triggers>
@@ -220,6 +225,12 @@
                                 </TextBlock.Style>
                             </TextBlock>
                         </Button>
+                        <Button x:Name="UpdateRestartButton" Content="重启并更新" HorizontalAlignment="Left"
+                                Style="{StaticResource SecondaryButtonStyle}" Command="{Binding RestartUpdateCommand}"
+                                Visibility="{Binding ShowUpdateRestart, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Button x:Name="UpdateCancelButton" Content="取消下载" HorizontalAlignment="Left"
+                                Style="{StaticResource GhostButtonStyle}" Command="{Binding CancelUpdateDownloadCommand}"
+                                Visibility="{Binding IsUpdateDownloading, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </StackPanel>
                 </Border>
             </Popup>

@@ -29,9 +29,8 @@ internal static class WpfTestHost
         {
             try
             {
-                var application = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+                var application = new App(startUserInterface: false) { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                 application.InitializeComponent();
-                // App 的默认启动窗口先关闭，再交给测试各自创建窗口。
                 application.Dispatcher.BeginInvoke(() =>
                 {
                     foreach (Window window in application.Windows.Cast<Window>().ToArray()) window.Close();

@@ -1,3 +1,5 @@
+param([switch]$SkipArchive)
+
 $ErrorActionPreference = 'Stop'
 $workspace = Split-Path $PSScriptRoot -Parent
 $verify = Join-Path $workspace 'eng/verify-portable-bundle.ps1'
@@ -17,6 +19,7 @@ function Reject([string]$Name, [string]$Expected) {
 }
 . $verify -PackageDirectory $case
 Write-Host 'PASS ValidBundle'
+if (-not $SkipArchive) {
 $archive = [IO.Compression.ZipFile]::OpenRead($source + '.zip')
 try {
     $packageName = Split-Path $source -Leaf
@@ -29,6 +32,7 @@ try {
     }
 } finally { $archive.Dispose() }
 Write-Host 'PASS ZipRetainsPackageFolder'
+}
 $buildInfo = Get-Content -LiteralPath (Join-Path $source 'BUILD-INFO.txt')
 if ($buildInfo[0] -ne "Sims 4 Mod Sieve $Version") { throw 'BUILD-INFO version does not match the project.' }
 $productVersion = (Get-Item -LiteralPath (Join-Path $source 'Sims4ModSieve.exe')).VersionInfo.ProductVersion

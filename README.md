@@ -38,13 +38,15 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 
 ## 下载与使用
 
-1. 打开 [Releases](https://github.com/stella-wood/Sims4ModSieve/releases)，下载最新版本的 `Sims4ModSieve-版本号-win-x64.zip`
-2. 解压到一个单独的文件夹
-3. 进入解压出来的文件夹，双击 `Sims4ModSieve.exe`
+后续版本使用安装包，当前 `0.1.0-alpha.1` 便携包保留为历史版本。
 
-便携版自带运行环境，不需要另外安装 .NET。解压后请保留文件夹里的所有文件，不要只拷走 exe。
+1. 打开 [Releases](https://github.com/stella-wood/Sims4ModSieve/releases)，下载 `Sims4ModSieve-版本号-setup.exe`
+2. 运行中文安装向导，选择安装位置与快捷方式
+3. 安装完成后运行工具；以后从首页「下载更新 → 重启并更新」升级
 
-可以用同一页下载的 `.sha256` 文件核对压缩包有没有损坏。
+安装版自带运行环境，不需要另外安装 .NET，也不需要管理员权限。可以用同一页下载的 `.exe.sha256` 核对安装包。更新器无法工作时，可正常关闭工具后手动运行完整安装包。
+
+如果 Releases 目前只有便携版，请按 [便携版使用说明](docs/release/便携版使用说明.md) 解压运行；首次换用安装版需要下载安装一次，已有设置和管理记录继续使用。安装版详细操作见 [安装版使用说明](docs/release/安装版使用说明.md)。
 
 ### 第一次运行时 Windows 拦截了怎么办
 
@@ -58,7 +60,7 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 
 - 扫描、分析、生成报告全部在本机完成；程序启动时会向 GitHub 查询一次最新版本号，不上传 Mod、路径或报告
 - 不执行 `.ts4script` 里的代码，不修改 package 内部内容
-- 删除一律进入回收站，没有永久删除
+- 删除 Mod 一律进入回收站，没有永久删除
 - 删除和禁用前会再次核对文件，防止误操作扫描后被改动过的文件
 - 配置和日志保存在 `%LOCALAPPDATA%\Sims4ModSieve\`，不会写进 Mods 文件夹
 
@@ -66,7 +68,7 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 
 ### 卸载
 
-如果有禁用中的 Mod，请先在「设置 → 删除与忽略」里恢复，再删除程序文件夹。详细步骤见 [便携版使用说明 · 卸载](docs/release/便携版使用说明.md#卸载)。
+先在「设置 → 删除与忽略」中处理禁用的 Mod，再正常关闭工具，从 Windows「设置 → 应用」卸载。设置与记录默认保留，可明确选择删除；卸载不会替你恢复或删除 Mod。当前便携版的步骤见 [便携版使用说明 · 卸载](docs/release/便携版使用说明.md#卸载)。
 
 ## 常见问题
 
@@ -108,13 +110,13 @@ $env:SIMS4_MOD_SIEVE_RUN_RECYCLE_BIN_TEST='1'
 .\eng\dotnet.cmd run --project .\src\Sims4ModSieve.Desktop\Sims4ModSieve.Desktop.csproj -c Release
 ```
 
-打包便携版（需要 PowerShell 7）：
+打包安装版（需要 PowerShell 7）：
 
 ```powershell
-pwsh -NoProfile -File .\eng\package-portable.ps1
+pwsh -NoProfile -File .\eng\package-installer.ps1
 ```
 
-产物在 `artifacts/release/`。完整的发布流程见 [便携版发布流程](docs/release/便携版发布流程.md)。
+产物在 `artifacts/release/`。完整的发布流程见 [安装版发布流程](docs/release/安装版发布流程.md)。
 
 ### 命令行（CLI）
 
