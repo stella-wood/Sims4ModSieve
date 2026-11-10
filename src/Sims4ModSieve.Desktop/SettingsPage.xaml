@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:services="clr-namespace:Sims4ModSieve.Desktop.Services"
+             xmlns:local="clr-namespace:Sims4ModSieve.Desktop"
              Background="White" FontFamily="Microsoft YaHei UI" FontSize="13"
              Foreground="{StaticResource InkBrush}" UseLayoutRounding="True">
     <UserControl.Resources>
@@ -312,6 +313,14 @@
                         <TextBlock Text="诊断与反馈" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </RadioButton>
+                <RadioButton x:Name="CreditsSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="感谢名单"
+                             IsChecked="{Binding IsCreditsSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="credits">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource SettingsNavIcon}" Fill="{x:Null}"
+                              Data="M 12,21 C 10,19 2,13 2,7.5 C 2,1.5 9,0.5 12,6 C 15,0.5 22,1.5 22,7.5 C 22,13 14,19 12,21 Z" />
+                        <TextBlock Text="感谢名单" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </RadioButton>
                 <RadioButton x:Name="AboutSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="关于"
                              IsChecked="{Binding IsAboutSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="about">
                     <StackPanel Orientation="Horizontal">
@@ -321,7 +330,14 @@
                 </RadioButton>
             </StackPanel>
         </Border>
+        <local:CreditsPanel x:Name="CreditsContent" Grid.Column="1"
+            Visibility="{Binding IsCreditsSettings, Converter={StaticResource BooleanToVisibilityConverter}}" />
         <ScrollViewer x:Name="SettingsContentScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+            <ScrollViewer.Style>
+                <Style TargetType="ScrollViewer"><Style.Triggers>
+                    <DataTrigger Binding="{Binding IsCreditsSettings}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                </Style.Triggers></Style>
+            </ScrollViewer.Style>
             <ScrollViewer.Resources>
                 <Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" />
             </ScrollViewer.Resources>
