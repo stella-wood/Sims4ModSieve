@@ -5,8 +5,6 @@ internal enum CreditsSurprise { None, Clawd, Star, ChatGpt, DeepSeek, Message }
 internal sealed class CreditsInteractionState
 {
     private int confettiClicks;
-    private int heartBurst;
-    private DateTimeOffset? lastHeartClick;
 
     public CreditsSurprise ClickConfetti() => ++confettiClicks switch
     {
@@ -18,17 +16,5 @@ internal sealed class CreditsInteractionState
         _ => CreditsSurprise.None
     };
 
-    public int ClickHeart(DateTimeOffset now)
-    {
-        heartBurst = lastHeartClick is { } last && now - last <= TimeSpan.FromMilliseconds(450)
-            ? Math.Min(3, heartBurst + 1) : 1;
-        lastHeartClick = now;
-        return heartBurst;
-    }
-
-    public void Reset()
-    {
-        confettiClicks = heartBurst = 0;
-        lastHeartClick = null;
-    }
+    public void Reset() => confettiClicks = 0;
 }

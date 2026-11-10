@@ -9,50 +9,55 @@
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </UserControl.Resources>
-    <Grid x:Name="CelebrationSurface" Background="Transparent" ClipToBounds="True" MinHeight="450"
+    <Grid x:Name="CelebrationSurface" Background="Transparent" ClipToBounds="True"
           PreviewMouseDown="Surface_PreviewMouseDown">
-        <StackPanel>
-            <TextBlock Text="感谢名单" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,38" />
-            <Border x:Name="SupporterFrame" Background="Transparent" BorderBrush="#E5E1E6" BorderThickness="0.5" Padding="28,30">
-                <StackPanel>
-                    <ItemsControl x:Name="SupporterList" ItemsSource="{Binding SupporterNames}"
-                                  Visibility="{Binding HasSupporters, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,22">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" FontSize="14" Margin="0,0,28,16" TextWrapping="Wrap" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Button x:Name="AfdianButton" Content="前往爱发电" HorizontalAlignment="Left" IsEnabled="False"
-                            Style="{DynamicResource SettingsTextButton}" ToolTip="链接待补充" />
-                </StackPanel>
-            </Border>
-            <Button x:Name="ConfettiButton" HorizontalAlignment="Center" Margin="0,26,0,0" Width="40" Height="40"
-                    Background="Transparent" BorderThickness="0" Cursor="Hand" FocusVisualStyle="{x:Null}"
-                    ToolTip="撒一点礼花" AutomationProperties.Name="撒一点礼花" Click="ConfettiButton_Click">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="Transparent">
-                            <Grid x:Name="PartyIcon" Width="24" Height="24" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
-                                <Path Fill="#E4D9EC" Stroke="#8F789E" StrokeThickness="1.2" StrokeLineJoin="Round"
-                                      Data="M 3,21 L 7,8 L 16,17 Z" />
-                                <Path Stroke="#B392C4" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                      Data="M 10,5 C 10,2 14,5 14,1 M 16,10 C 19,10 17,6 21,6 M 17,15 L 21,13 M 6,13 L 12,19" />
-                                <Path Fill="#D4AA70" Data="M 17,2 L 19,3 L 18,5 L 16,4 Z M 21,9 L 23,10 L 22,12 L 20,11 Z" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="PartyIcon" Property="RenderTransform"><Setter.Value><RotateTransform Angle="-8" /></Setter.Value></Setter></Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Button.Template>
-            </Button>
-        </StackPanel>
-        <Canvas x:Name="EffectsOverlay" IsHitTestVisible="False" ClipToBounds="True" />
+        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <ScrollViewer x:Name="SupportersScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+            <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" /></ScrollViewer.Resources>
+            <StackPanel>
+                <TextBlock Text="感谢名单" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,38" />
+                <Border x:Name="SupporterFrame" Background="Transparent" BorderBrush="#E5E1E6" BorderThickness="0.5" Padding="28,30">
+                    <StackPanel>
+                        <ItemsControl x:Name="SupporterList" ItemsSource="{Binding SupporterNames}"
+                                      Visibility="{Binding HasSupporters, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,22">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="14" Margin="0,0,28,16" TextWrapping="Wrap" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button x:Name="AfdianButton" Content="前往爱发电" HorizontalAlignment="Left" IsEnabled="False"
+                                Style="{DynamicResource SettingsTextButton}" ToolTip="链接待补充" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+        <Button x:Name="ConfettiButton" Grid.Row="1" HorizontalAlignment="Center" Margin="0,26,0,0" Width="40" Height="40"
+                Background="Transparent" BorderThickness="0" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                ToolTip="撒一点礼花" AutomationProperties.Name="撒一点礼花" Click="ConfettiButton_Click">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="Transparent">
+                        <Grid x:Name="PartyIcon" Width="24" Height="24" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+                            <Path Fill="#E4D9EC" Stroke="#8F789E" StrokeThickness="1.2" StrokeLineJoin="Round"
+                                  Data="M 3,21 L 7,8 L 16,17 Z" />
+                            <Path Stroke="#B392C4" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="M 10,5 C 10,2 14,5 14,1 M 16,10 C 19,10 17,6 21,6 M 17,15 L 21,13 M 6,13 L 12,19" />
+                            <Path Fill="#D4AA70" Data="M 17,2 L 19,3 L 18,5 L 16,4 Z M 21,9 L 23,10 L 22,12 L 20,11 Z" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="PartyIcon" Property="RenderTransform"><Setter.Value><RotateTransform Angle="-8" /></Setter.Value></Setter></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+        <Canvas x:Name="EffectsOverlay" Grid.RowSpan="2" IsHitTestVisible="False" ClipToBounds="True" />
         <Border x:Name="SecretMessage" IsHitTestVisible="False" Visibility="Collapsed" Opacity="0"
+                Grid.RowSpan="2"
                 VerticalAlignment="Bottom" Margin="16,0,16,28" Background="Transparent" Padding="20,18">
             <TextBlock Text="感谢每一位提过建议、反馈过问题的人，&#10;请我吃过薯片的朋友们，以及亲爱的 agent 们。&#10;&#10;谢谢你还在使用它"
                        TextWrapping="Wrap" TextAlignment="Center" FontSize="13" Foreground="{StaticResource AccentBrush}" />

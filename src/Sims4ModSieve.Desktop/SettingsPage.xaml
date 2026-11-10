@@ -330,13 +330,18 @@
                 </RadioButton>
             </StackPanel>
         </Border>
+        <local:CreditsPanel x:Name="CreditsContent" Grid.Column="1" Margin="88,52,88,24"
+            Visibility="{Binding IsCreditsSettings, Converter={StaticResource BooleanToVisibilityConverter}}" />
         <ScrollViewer x:Name="SettingsContentScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+            <ScrollViewer.Style>
+                <Style TargetType="ScrollViewer"><Style.Triggers>
+                    <DataTrigger Binding="{Binding IsCreditsSettings}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                </Style.Triggers></Style>
+            </ScrollViewer.Style>
             <ScrollViewer.Resources>
                 <Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" />
             </ScrollViewer.Resources>
             <Grid Margin="88,52,88,50">
-                <local:CreditsPanel x:Name="CreditsContent" VerticalAlignment="Top"
-                    Visibility="{Binding IsCreditsSettings, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <StackPanel x:Name="FileManagementPanel" Visibility="{Binding IsFileManagementSettings, Converter={StaticResource BooleanToVisibilityConverter}}" IsEnabled="{Binding CanEditFileManagement}">
                     <StackPanel.Style><Style TargetType="StackPanel"><Style.Triggers>
                         <DataTrigger Binding="{Binding IsFileManagementRefreshing}" Value="True"><Setter Property="Opacity" Value="0.5" /></DataTrigger>
