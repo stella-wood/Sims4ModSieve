@@ -44,6 +44,7 @@ public partial class App : Application
                 return;
             }
 
+            _ = UpdateCheckService.CleanupDownloadsAsync(updateCancellation.Token);
             var window = new MainWindow();
             MainWindow = window;
             window.Show();

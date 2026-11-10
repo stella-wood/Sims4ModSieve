@@ -11,6 +11,7 @@ public sealed record DownloadedUpdate(string Version, string Path, string Sha256
 
 public sealed partial class UpdateCheckService
 {
+    private const string DownloadDirectoryPrefix = "Sims4ModSieve-update-";
     public const long MaximumInstallerBytes = 512L * 1024 * 1024;
     public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{C897868A-0997-463F-B377-A68A616F831E}_is1";
 
@@ -21,7 +22,7 @@ public sealed partial class UpdateCheckService
         CancellationToken cancellationToken = default, string? temporaryRoot = null)
     {
         var installer = update.Installer ?? throw new InvalidDataException("此版本缺少安装包或校验信息，请稍后重试");
-        var directory = Path.Combine(temporaryRoot ?? Path.GetTempPath(), "Sims4ModSieve-update-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(temporaryRoot ?? Path.GetTempPath(), DownloadDirectoryPrefix + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "setup.exe");
         try
@@ -136,9 +137,65 @@ public sealed partial class UpdateCheckService
     {
         try
         {
+            var directory = Path.GetDirectoryName(path)!;
+            if (!Path.GetFileName(path).Equals("setup.exe", StringComparison.OrdinalIgnoreCase)) return;
+            var files = GetDownloadCleanupFiles(directory);
+            if (files is null) return;
+            // 先删安装包；仍被安装器占用时，交接文件也必须保留。
             File.Delete(path);
-            Directory.Delete(Path.GetDirectoryName(path)!);
+            foreach (var file in files)
+                if (!Path.GetFileName(file).Equals("setup.exe", StringComparison.OrdinalIgnoreCase)) File.Delete(file);
+            Directory.Delete(directory);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
+
+    public static Task CleanupDownloadsAsync(CancellationToken cancellationToken = default, string? temporaryRoot = null)
+    {
+        string[] directories;
+        try
+        {
+            // 启动时先固定清理范围，后续新下载的目录不进入本次清理。
+            directories = Directory.GetDirectories(temporaryRoot ?? Path.GetTempPath(), DownloadDirectoryPrefix + "*")
+                .Where(directory => GetDownloadCleanupFiles(directory) is not null).ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return Task.CompletedTask; }
+        return Task.Run(async () =>
+        {
+            var pending = directories.ToList();
+            for (var attempt = 0; attempt < 60 && pending.Count > 0; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                pending.RemoveAll(directory =>
+                {
+                    DiscardDownload(Path.Combine(directory, "setup.exe"));
+                    return !Directory.Exists(directory);
+                });
+                if (pending.Count > 0) await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+            }
+        }, cancellationToken);
+    }
+
+    private static string[]? GetDownloadCleanupFiles(string directory)
+    {
+        var name = Path.GetFileName(directory);
+        if (!name.StartsWith(DownloadDirectoryPrefix, StringComparison.OrdinalIgnoreCase)
+            || !Guid.TryParseExact(name[DownloadDirectoryPrefix.Length..], "N", out _)) return null;
+        try
+        {
+            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) return null;
+            var files = Directory.GetFileSystemEntries(directory);
+            return files.All(path =>
+            {
+                if ((File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0) return false;
+                var file = Path.GetFileName(path);
+                if (file.Equals("setup.exe", StringComparison.OrdinalIgnoreCase)) return true;
+                if (!file.StartsWith("handoff-", StringComparison.OrdinalIgnoreCase)) return false;
+                var id = file["handoff-".Length..];
+                if (id.EndsWith(".accepted", StringComparison.OrdinalIgnoreCase)) id = id[..^".accepted".Length];
+                return Guid.TryParseExact(id, "N", out _);
+            }) ? files : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return null; }
     }
 }

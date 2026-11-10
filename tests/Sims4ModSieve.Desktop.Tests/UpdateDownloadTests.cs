@@ -1,4 +1,5 @@
 using System.Net;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -97,6 +98,82 @@ public sealed class UpdateDownloadTests
         cancellation.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await download);
         Assert.IsFalse(Directory.EnumerateFileSystemEntries(files.Root).Any());
+    }
+
+    [TestMethod]
+    public async Task StartupCleanupRemovesInstallerAndInterruptedHandoffFiles()
+    {
+        using var files = new Scenario();
+        var cache = CreateDownloadCache(files.Root);
+        var handoff = Path.Combine(cache, "handoff-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(handoff, Version);
+        File.WriteAllText(handoff + ".accepted", Version);
+        var empty = files.Folder("Sims4ModSieve-update-" + Guid.NewGuid().ToString("N"));
+        await UpdateCheckService.CleanupDownloadsAsync(temporaryRoot: files.Root);
+        Assert.IsFalse(Directory.Exists(cache));
+        Assert.IsFalse(Directory.Exists(empty));
+    }
+
+    [TestMethod]
+    public async Task StartupCleanupWaitsForInstallerReleaseAndLeavesNewDownloadsAlone()
+    {
+        using var files = new Scenario();
+        var cache = CreateDownloadCache(files.Root);
+        Task cleanup;
+        string next;
+        using (var installer = new FileStream(Path.Combine(cache, "setup.exe"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            cleanup = UpdateCheckService.CleanupDownloadsAsync(temporaryRoot: files.Root);
+            next = CreateDownloadCache(files.Root);
+            await Task.Delay(100);
+            Assert.IsFalse(cleanup.IsCompleted);
+            Assert.IsTrue(File.Exists(Path.Combine(cache, "setup.exe")));
+        }
+        await cleanup.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.IsFalse(Directory.Exists(cache));
+        CollectionAssert.AreEqual(Payload, File.ReadAllBytes(Path.Combine(next, "setup.exe")));
+    }
+
+    [TestMethod]
+    public async Task StartupCleanupSkipsUnrecognizedFilesAndDirectoryLinks()
+    {
+        using var files = new Scenario();
+        var unexpected = CreateDownloadCache(files.Root);
+        var note = Path.Combine(unexpected, "keep.txt");
+        File.WriteAllText(note, "user data");
+        var outside = files.Folder("Outside");
+        File.WriteAllBytes(Path.Combine(outside, "setup.exe"), Payload);
+        var invalidName = files.Folder("Sims4ModSieve-update-not-a-guid");
+        File.WriteAllBytes(Path.Combine(invalidName, "setup.exe"), Payload);
+        var link = Path.Combine(files.Root, "Sims4ModSieve-update-" + Guid.NewGuid().ToString("N"));
+        var start = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var argument in new[] { "/c", "mklink", "/J", link, outside }) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start)!;
+        await process.WaitForExitAsync();
+        Assert.AreEqual(0, process.ExitCode);
+        try
+        {
+            await UpdateCheckService.CleanupDownloadsAsync(temporaryRoot: files.Root);
+            Assert.AreEqual("user data", File.ReadAllText(note));
+            Assert.IsTrue(File.Exists(Path.Combine(unexpected, "setup.exe")));
+            Assert.IsTrue(File.Exists(Path.Combine(invalidName, "setup.exe")));
+            CollectionAssert.AreEqual(Payload, File.ReadAllBytes(Path.Combine(outside, "setup.exe")));
+            Assert.IsTrue(Directory.Exists(link));
+        }
+        finally { Directory.Delete(link); }
+    }
+
+    [TestMethod]
+    public async Task CancelledStartupCleanupLeavesRunningInstallerIntact()
+    {
+        using var files = new Scenario();
+        var cache = CreateDownloadCache(files.Root);
+        using var installer = new FileStream(Path.Combine(cache, "setup.exe"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var cancellation = new CancellationTokenSource();
+        var cleanup = UpdateCheckService.CleanupDownloadsAsync(cancellation.Token, files.Root);
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await cleanup);
+        Assert.IsTrue(File.Exists(Path.Combine(cache, "setup.exe")));
     }
 
     [TestMethod]
@@ -222,6 +299,14 @@ public sealed class UpdateDownloadTests
         Assert.IsTrue(model.DownloadUpdateCommand.CanExecute(null));
         model.StopUpdates();
     });
+
+    private static string CreateDownloadCache(string root)
+    {
+        var directory = Path.Combine(root, "Sims4ModSieve-update-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        File.WriteAllBytes(Path.Combine(directory, "setup.exe"), Payload);
+        return directory;
+    }
 
     private static AvailableUpdate Update() => new(Version, UpdateCheckService.ReleasePrefix + "tag/v" + Version,
         new(AssetUrl, AssetUrl + ".sha256", Payload.Length));
