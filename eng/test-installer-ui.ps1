@@ -285,7 +285,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $app 'Sims4ModSieve.exe')) -or -not 
 Write-Host 'PASS SingleUninstallConfirmationDefaultsToKeepDataAndCanCancel'
 
 $uninstall = Start-CustomUninstall
-Click-Button (Find-Button '是')
+$question = Find-Button '是'
+[InstallerReviewWindows]::PostMessage($question.Window, 0x0100, [IntPtr]0x0D, [IntPtr]::Zero) | Out-Null
+[InstallerReviewWindows]::PostMessage($question.Window, 0x0101, [IntPtr]0x0D, [IntPtr]::Zero) | Out-Null
 Finish-Uninstall $uninstall
 if (-not (Test-Path -LiteralPath (Join-Path $data 'test-user-data.txt'))) { throw 'Default uninstall deleted user data.' }
 Write-Host 'PASS DefaultUninstallPreservesData'

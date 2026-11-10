@@ -91,6 +91,7 @@ var
   DisabledFolderList: TNewListBox;
   DisabledCancelButton: TNewButton;
   DisabledWarningForm: TSetupForm;
+  UninstallLargeIcon, UninstallSmallIcon: THandle;
 
 function CreateFileW(FileName: String; Access, Share: Cardinal; Security: NativeUInt;
   Creation, Flags: Cardinal; Template: THandle): THandle;
@@ -103,6 +104,10 @@ function OpenProcess(Access: Cardinal; Inherit: Boolean; ProcessId: Cardinal): T
   external 'OpenProcess@kernel32.dll stdcall';
 function WaitForSingleObject(Handle: THandle; Milliseconds: Cardinal): Cardinal;
   external 'WaitForSingleObject@kernel32.dll stdcall';
+function ExtractIconExW(FileName: String; IconIndex: Integer; var LargeIcon, SmallIcon: THandle; Count: Cardinal): Cardinal;
+  external 'ExtractIconExW@shell32.dll stdcall';
+function DestroyIcon(Icon: THandle): Boolean;
+  external 'DestroyIcon@user32.dll stdcall';
 
 function DataDirectory: String;
 begin
@@ -265,6 +270,17 @@ begin
   end;
 end;
 
+procedure ShowUninstallWindowIcon(Sender: TObject);
+var
+  Form: TSetupForm;
+begin
+  Form := TSetupForm(Sender);
+  if (UninstallLargeIcon = 0) and (UninstallSmallIcon = 0) then
+    ExtractIconExW(ExpandConstant('{app}\Sims4ModSieve.exe'), 0, UninstallLargeIcon, UninstallSmallIcon, 1);
+  if UninstallSmallIcon <> 0 then SendMessage(Form.Handle, $0080, 0, UninstallSmallIcon);
+  if UninstallLargeIcon <> 0 then SendMessage(Form.Handle, $0080, 1, UninstallLargeIcon);
+end;
+
 function ConfirmUninstallOptions: Boolean;
 var
   Form: TSetupForm;
@@ -275,10 +291,12 @@ var
 begin
   Form := CreateCustomForm(380, 168, False, True);
   try
-    Form.Caption := '卸载 Sims 4 Mod Sieve';
+    Form.Caption := '卸载 Sims4ModSieve';
     Form.ClientWidth := ScaleX(380);
     Form.ClientHeight := ScaleY(168);
-    Form.BorderStyle := bsDialog;
+    Form.BorderStyle := bsSingle;
+    Form.BorderIcons := [biSystemMenu];
+    Form.OnShow := @ShowUninstallWindowIcon;
     Form.Position := poScreenCenter;
     Form.Color := $F2F5F6;
     Form.Font.Name := 'Microsoft YaHei UI';
@@ -305,17 +323,17 @@ begin
     ClearData.Checked := False;
     CancelButton := TNewButton.Create(Form);
     CancelButton.Parent := Form;
-    CancelButton.SetBounds(ScaleX(288), ScaleY(126), ScaleX(76), ScaleY(26));
+    CancelButton.SetBounds(ScaleX(202), ScaleY(126), ScaleX(76), ScaleY(26));
     CancelButton.Caption := '否';
     CancelButton.ModalResult := mrCancel;
     CancelButton.Cancel := True;
-    CancelButton.Default := True;
     UninstallButton := TNewButton.Create(Form);
     UninstallButton.Parent := Form;
-    UninstallButton.SetBounds(ScaleX(202), ScaleY(126), ScaleX(76), ScaleY(26));
+    UninstallButton.SetBounds(ScaleX(288), ScaleY(126), ScaleX(76), ScaleY(26));
     UninstallButton.Caption := '是';
     UninstallButton.ModalResult := mrOK;
-    Form.ActiveControl := CancelButton;
+    UninstallButton.Default := True;
+    Form.ActiveControl := UninstallButton;
     Result := Form.ShowModal = mrOK;
     if Result then RemoveUserData := ClearData.Checked;
   finally
@@ -359,10 +377,12 @@ begin
   Form := CreateCustomForm(430, 238, False, True);
   DisabledWarningForm := Form;
   try
-    Form.Caption := '仍有禁用的 Mod';
+    Form.Caption := '卸载 Sims4ModSieve';
     Form.ClientWidth := ScaleX(430);
     Form.ClientHeight := ScaleY(238);
-    Form.BorderStyle := bsDialog;
+    Form.BorderStyle := bsSingle;
+    Form.BorderIcons := [biSystemMenu];
+    Form.OnShow := @ShowUninstallWindowIcon;
     Form.Position := poScreenCenter;
     Form.Color := $F2F5F6;
     Form.Font.Name := 'Microsoft YaHei UI';
@@ -377,7 +397,7 @@ begin
     Description.Caption := Format('还有 %d 个 Mod 处于禁用状态。卸载后工具就不能帮你恢复它们，需要自己手动去掉 .off 后缀恢复。', [Count]);
     DisabledFolderList := TNewListBox.Create(Form);
     DisabledFolderList.Parent := Form;
-    DisabledFolderList.SetBounds(ScaleX(16), ScaleY(80), ScaleX(398), ScaleY(100));
+    DisabledFolderList.SetBounds(ScaleX(16), ScaleY(80), ScaleX(398), ScaleY(72));
     DisabledFolderList.Items.Assign(DisabledFolders);
     DisabledFolderList.ItemIndex := 0;
     DisabledFolderList.ShowHint := True;
@@ -385,7 +405,7 @@ begin
     SelectDisabledFolder(DisabledFolderList);
     OpenButton := TBitmapButton.Create(Form);
     OpenButton.Parent := Form;
-    OpenButton.SetBounds(ScaleX(16), ScaleY(198), ScaleX(80), ScaleY(22));
+    OpenButton.SetBounds(ScaleX(24), ScaleY(164), ScaleX(80), ScaleY(20));
     OpenButton.Caption := '打开文件夹';
     OpenButton.Cursor := crHand;
     OpenButton.TabStop := True;
@@ -531,4 +551,6 @@ procedure DeinitializeUninstall;
 begin
   ReleaseDataLock;
   if DisabledFolders <> nil then DisabledFolders.Free;
+  if UninstallSmallIcon <> 0 then DestroyIcon(UninstallSmallIcon);
+  if UninstallLargeIcon <> 0 then DestroyIcon(UninstallLargeIcon);
 end;
