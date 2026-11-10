@@ -330,7 +330,7 @@
                 </RadioButton>
             </StackPanel>
         </Border>
-        <local:CreditsPanel x:Name="CreditsContent" Grid.Column="1" Margin="88,52,88,24"
+        <local:CreditsPanel x:Name="CreditsContent" Grid.Column="1"
             Visibility="{Binding IsCreditsSettings, Converter={StaticResource BooleanToVisibilityConverter}}" />
         <ScrollViewer x:Name="SettingsContentScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
             <ScrollViewer.Style>

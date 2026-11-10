@@ -19,6 +19,87 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class CreditsTests
 {
     [TestMethod]
+    public Task BurstUpdatesRenderTransformsWithoutRelayout() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var button = (Button)panel.FindName("ConfettiButton");
+        var overlay = (Canvas)panel.FindName("EffectsOverlay");
+        for (var click = 0; click < 3; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        await Task.Delay(200);
+        var layouts = 0;
+        var frames = 0;
+        var intervals = new List<double>();
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var lastFrame = timer.Elapsed.TotalMilliseconds;
+        void Layout(object? sender, EventArgs e) => layouts++;
+        void Frame(object? sender, EventArgs e)
+        {
+            var now = timer.Elapsed.TotalMilliseconds;
+            intervals.Add(now - lastFrame);
+            lastFrame = now;
+            frames++;
+        }
+        overlay.LayoutUpdated += Layout;
+        CompositionTarget.Rendering += Frame;
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        try { await Task.Delay(1200); }
+        finally
+        {
+            overlay.LayoutUpdated -= Layout;
+            CompositionTarget.Rendering -= Frame;
+        }
+        intervals.Sort();
+        Assert.IsGreaterThan(0, frames);
+        Console.WriteLine($"Particle animation: frames={frames}, layouts={layouts}, UI allocations={GC.GetAllocatedBytesForCurrentThread() - allocated}, frame p95={intervals[(int)(intervals.Count * 0.95)]:F1} ms");
+        Assert.IsLessThan(frames / 2, layouts, "粒子位移不应在每一帧重排页面布局。");
+    });
+
+    [TestMethod]
+    public Task WholePageClicksCreateHeartsExceptFloatingConfettiButton() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        window.Show();
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await WpfTestHost.LayoutAsync(window);
+        var page = Descendants<SettingsPage>(window).Single();
+        var panel = Descendants<CreditsPanel>(window).Single();
+        var nav = (RadioButton)page.FindName("CreditsSectionButton");
+        var sidebar = (FrameworkElement)((FrameworkElement)nav.Parent).Parent;
+        var overlay = (Canvas)panel.FindName("EffectsOverlay");
+        var rightPane = new Rect(sidebar.ActualWidth, 0, page.ActualWidth - sidebar.ActualWidth, page.ActualHeight);
+        foreach (var point in new[] { new Point(rightPane.Left + 2, 2), new Point(rightPane.Right - 2, rightPane.Height / 2),
+            new Point(rightPane.Left + 2, rightPane.Bottom - 2) })
+        {
+            var hit = page.InputHitTest(point) as DependencyObject;
+            Assert.IsNotNull(hit);
+            Assert.IsTrue(ReferenceEquals(hit, panel) || panel.IsAncestorOf(hit), "页面留白也应属于爱心点击范围。");
+            ((UIElement)hit).RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+                { RoutedEvent = Mouse.PreviewMouseDownEvent });
+        }
+        Assert.AreEqual(3, overlay.Children.Count);
+        var button = (Button)panel.FindName("ConfettiButton");
+        AssertHitRectangle(button);
+        button.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+            { RoutedEvent = Mouse.PreviewMouseDownEvent });
+        PressSpace(button);
+        Assert.AreEqual(3, overlay.Children.Cast<FrameworkElement>().Count(item => Equals(item.Tag, "Heart")));
+        Assert.AreEqual("1", ((TextBlock)panel.FindName("ConfettiClickCount")).Text);
+        model.GoHomeCommand.Execute(null);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(0, overlay.Children.Count);
+    });
+
+    [TestMethod]
     public void ConfettiMilestonesOccurOnceAndResetOnLeaving()
     {
         var state = new CreditsInteractionState();
@@ -173,9 +254,12 @@ public sealed class CreditsTests
             if (frame == 10)
             {
                 var pieces = overlay.Children.Cast<FrameworkElement>().ToArray();
-                var spread = pieces.Max(Canvas.GetLeft) - pieces.Min(Canvas.GetLeft);
+                var positions = pieces.Select(piece => ParticleCenter(piece, overlay)).ToArray();
+                var spread = positions.Max(point => point.X) - positions.Min(point => point.X);
                 Assert.IsGreaterThan(overlay.ActualWidth * 0.8, spread, "爆发后应铺开到板块两侧。");
-                Assert.IsLessThan(overlay.ActualHeight * 0.1, pieces.Min(Canvas.GetTop), "最高的一批应接近页面顶部。");
+                Assert.IsLessThan(overlay.ActualHeight * 0.1, positions.Min(point => point.Y), "最高的一批应接近页面顶部。");
+                Assert.IsTrue(positions.Any(point => point.Y > overlay.ActualHeight * 0.35 && point.Y < overlay.ActualHeight * 0.6),
+                    "同一时刻也要有中景粒子，不能都挤在一条弧线上。");
                 Assert.IsTrue(sawFront && sawBack, "彩带应边转边翻面。");
             }
             if (frame == 33)
@@ -296,26 +380,39 @@ public sealed class CreditsTests
             button.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = Mouse.PreviewMouseDownEvent });
             PressSpace(button);
         }
-        Assert.IsTrue(overlay.Children.Cast<FrameworkElement>().Any(item => Equals(item.Tag, "Heart")));
+        Assert.IsFalse(overlay.Children.Cast<FrameworkElement>().Any(item => Equals(item.Tag, "Heart")), "礼花按钮不能同时生成爱心。");
         Assert.IsTrue(overlay.Children.Cast<FrameworkElement>().Any(item => Equals(item.Tag, "Ribbon") || Equals(item.Tag, "Petal")));
+        panel.EmitHeart(new Point(overlay.ActualWidth / 2, overlay.ActualHeight / 2));
+        await WpfTestHost.LayoutAsync(window);
         var heart = overlay.Children.Cast<FrameworkElement>().First(item => Equals(item.Tag, "Heart"));
-        var initialX = Canvas.GetLeft(heart);
-        var initialY = Canvas.GetTop(heart);
+        var initial = ParticleCenter(heart, overlay);
         await Task.Delay(120);
-        Assert.IsGreaterThan(initialX, Canvas.GetLeft(heart));
-        Assert.IsLessThan(initialY, Canvas.GetTop(heart));
+        Assert.IsGreaterThan(initial.X, ParticleCenter(heart, overlay).X);
+        Assert.IsLessThan(initial.Y, ParticleCenter(heart, overlay).Y);
         await Task.Delay(4200);
         Assert.AreEqual(0, overlay.Children.Count, "动画结束必须移除元素。");
         var surprises = new Dictionary<int, string> { [5] = "Clawd", [6] = "Star", [7] = "ChatGpt", [8] = "DeepSeek" };
         for (var click = 2; click <= 8; click++)
         {
-            if (surprises.ContainsKey(click)) await Task.Delay(4200);
             button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             if (surprises.TryGetValue(click, out var tag))
                 Assert.IsTrue(overlay.Children.Cast<FrameworkElement>().Any(item => Equals(item.Tag, tag)), tag);
+            Assert.AreEqual(click.ToString(), ((TextBlock)panel.FindName("ConfettiClickCount")).Text);
         }
+        foreach (var tag in surprises.Values)
+            Assert.IsTrue(overlay.Children.Cast<FrameworkElement>().Any(item => Equals(item.Tag, tag)), "连点达到上限后仍需保留彩蛋：" + tag);
         await Task.Delay(350);
+        var iconBounds = overlay.Children.Cast<FrameworkElement>().Where(item => surprises.Values.Contains(item.Tag as string))
+            .Select(item => item.TransformToAncestor(overlay).TransformBounds(new Rect(item.RenderSize))).OrderBy(bounds => bounds.Left).ToArray();
+        for (var index = 1; index < iconBounds.Length; index++)
+            Assert.IsFalse(iconBounds[index - 1].IntersectsWith(iconBounds[index]), "快速连点的图标不能互相遮住。");
         SaveReview(window, "credits-confetti.png");
+        if (Environment.GetEnvironmentVariable("SIMS4_CREDITS_ANIMATION_REVIEW") == "1")
+            for (var frame = 0; frame < 24; frame++)
+            {
+                SaveReview(window, $"easter-eggs-{frame:D2}.png");
+                await Task.Delay(100);
+            }
         for (var click = 9; click <= 20; click++) button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Assert.IsTrue(secret.IsVisible);
         await Task.Delay(650);
@@ -329,11 +426,11 @@ public sealed class CreditsTests
         model.SelectSettingsSectionCommand.Execute("about");
         await WpfTestHost.LayoutAsync(window);
         Assert.AreEqual(0, overlay.Children.Count);
+        Assert.AreEqual("0", ((TextBlock)panel.FindName("ConfettiClickCount")).Text);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
         for (var click = 1; click <= 5; click++)
         {
-            if (click == 5) await Task.Delay(4200);
             button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         }
         Assert.IsTrue(overlay.Children.Cast<FrameworkElement>().Any(item => Equals(item.Tag, "Clawd")));
@@ -389,6 +486,9 @@ public sealed class CreditsTests
         using var stream = File.Create(Path.Combine(directory, filename));
         encoder.Save(stream);
     }
+
+    private static Point ParticleCenter(FrameworkElement particle, Canvas overlay) => particle.TranslatePoint(
+        new Point(particle.ActualWidth / 2, particle.ActualHeight / 2), overlay);
 
     private static void PressSpace(ButtonBase button)
     {

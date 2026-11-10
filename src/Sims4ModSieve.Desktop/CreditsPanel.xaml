@@ -12,7 +12,7 @@
     <Grid x:Name="CelebrationSurface" Background="Transparent" ClipToBounds="True"
           PreviewMouseDown="Surface_PreviewMouseDown">
         <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <ScrollViewer x:Name="SupportersScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+        <ScrollViewer x:Name="SupportersScroll" Margin="88,52,88,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
             <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource PageVerticalScrollBarStyle}" /></ScrollViewer.Resources>
             <StackPanel>
                 <TextBlock Text="感谢名单" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,38" />
@@ -35,30 +35,42 @@
                 </Border>
             </StackPanel>
         </ScrollViewer>
-        <Button x:Name="ConfettiButton" Grid.Row="1" HorizontalAlignment="Center" Margin="0,26,0,0" Width="40" Height="40"
-                Background="Transparent" BorderThickness="0" Cursor="Hand" FocusVisualStyle="{x:Null}"
-                ToolTip="撒一点礼花" AutomationProperties.Name="撒一点礼花" Click="ConfettiButton_Click">
-            <Button.Template>
-                <ControlTemplate TargetType="Button">
-                    <Border Background="Transparent">
-                        <Grid x:Name="PartyIcon" Width="24" Height="24" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
-                            <Path Fill="#E4D9EC" Stroke="#8F789E" StrokeThickness="1.2" StrokeLineJoin="Round"
-                                  Data="M 3,21 L 7,8 L 16,17 Z" />
-                            <Path Stroke="#B392C4" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                  Data="M 10,5 C 10,2 14,5 14,1 M 16,10 C 19,10 17,6 21,6 M 17,15 L 21,13 M 6,13 L 12,19" />
-                            <Path Fill="#D4AA70" Data="M 17,2 L 19,3 L 18,5 L 16,4 Z M 21,9 L 23,10 L 22,12 L 20,11 Z" />
+        <Grid Grid.Row="1" Margin="0,26,0,24">
+            <Button x:Name="ConfettiButton" HorizontalAlignment="Center" Width="48" Height="48"
+                    Background="Transparent" BorderThickness="0" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                    ToolTip="撒一点礼花" AutomationProperties.Name="撒一点礼花" Click="ConfettiButton_Click">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="Transparent">
+                            <Border x:Name="FloatingFace" Background="White" BorderBrush="#EAE3EF" BorderThickness="0.7" CornerRadius="24" Margin="2">
+                                <Border.Effect><DropShadowEffect Color="#473552" BlurRadius="12" ShadowDepth="2" Opacity="0.18" /></Border.Effect>
+                                <Grid x:Name="PartyIcon" Width="24" Height="24" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+                                    <Path Fill="#E4D9EC" Stroke="#8F789E" StrokeThickness="1.2" StrokeLineJoin="Round"
+                                          Data="M 3,21 L 7,8 L 16,17 Z" />
+                                    <Path Stroke="#B392C4" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="M 10,5 C 10,2 14,5 14,1 M 16,10 C 19,10 17,6 21,6 M 17,15 L 21,13 M 6,13 L 12,19" />
+                                    <Path Fill="#D4AA70" Data="M 17,2 L 19,3 L 18,5 L 16,4 Z M 21,9 L 23,10 L 22,12 L 20,11 Z" />
+                                </Grid>
+                            </Border>
                         </Grid>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="PartyIcon" Property="RenderTransform"><Setter.Value><RotateTransform Angle="-8" /></Setter.Value></Setter></Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Button.Template>
-        </Button>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="FloatingFace" Property="Background" Value="#FBF8FC" />
+                                <Setter TargetName="PartyIcon" Property="RenderTransform"><Setter.Value><RotateTransform Angle="-8" /></Setter.Value></Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+            <TextBlock x:Name="ConfettiClickCount" Text="0" ToolTip="本次点击次数" AutomationProperties.Name="礼花点击次数"
+                       FontSize="11" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                <TextBlock.RenderTransform><TranslateTransform X="42" /></TextBlock.RenderTransform>
+            </TextBlock>
+        </Grid>
         <Canvas x:Name="EffectsOverlay" Grid.RowSpan="2" IsHitTestVisible="False" ClipToBounds="True" />
         <Border x:Name="SecretMessage" IsHitTestVisible="False" Visibility="Collapsed" Opacity="0"
                 Grid.RowSpan="2"
-                VerticalAlignment="Bottom" Margin="16,0,16,28" Background="Transparent" Padding="20,18">
+                VerticalAlignment="Center" Margin="88,0,88,0" Background="Transparent" Padding="20,18">
             <TextBlock Text="感谢每一位提过建议、反馈过问题的人，&#10;请我吃过薯片的朋友们，以及亲爱的 agent 们。&#10;&#10;谢谢你还在使用它"
                        TextWrapping="Wrap" TextAlignment="Center" FontSize="13" Foreground="{StaticResource AccentBrush}" />
         </Border>

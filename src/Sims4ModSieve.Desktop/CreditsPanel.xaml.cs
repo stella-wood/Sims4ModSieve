@@ -4,7 +4,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using System.Windows.Threading;
 using Path = System.Windows.Shapes.Path;
 
 namespace Sims4ModSieve.Desktop;
@@ -17,23 +16,22 @@ public partial class CreditsPanel : UserControl
     private const int PetalsPerBurst = 15;
     private static readonly Brush[] ConfettiBrushes = [Brush("#FF6B8A"), Brush("#FF9F43"), Brush("#FFD93D"),
         Brush("#4ADE80"), Brush("#38BDF8"), Brush("#A78BFA"), Brush("#F472B6")];
+    private static readonly Brush HeartBrush = Brush("#F16B9A");
+    private static readonly DrawingImage PetalImage = CreatePetalImage();
     private readonly CreditsInteractionState interaction = new();
     private readonly List<Particle> particles = [];
     private readonly Stopwatch clock = Stopwatch.StartNew();
-    private readonly DispatcherTimer frameTimer = new(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
+    private bool rendering;
     private double? messageBirth;
 
-    public CreditsPanel()
-    {
-        InitializeComponent();
-        frameTimer.Tick += RenderFrame;
-    }
+    public CreditsPanel() => InitializeComponent();
 
     private sealed class Particle
     {
         public required FrameworkElement Element { get; init; }
         public required ScaleTransform Scale { get; init; }
         public required RotateTransform Rotation { get; init; }
+        public required TranslateTransform Translation { get; init; }
         public Point Origin { get; init; }
         public double Birth { get; init; }
         public double Lifetime { get; init; }
@@ -64,6 +62,7 @@ public partial class CreditsPanel : UserControl
     private void Surface_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
+        if (e.OriginalSource is DependencyObject source && (ReferenceEquals(source, ConfettiButton) || ConfettiButton.IsAncestorOf(source))) return;
         EmitHeart(e.GetPosition(EffectsOverlay));
     }
 
@@ -85,7 +84,7 @@ public partial class CreditsPanel : UserControl
     {
         var heart = new Path
         {
-            Data = (Geometry)FindResource("CreditsHeartGeometry"), Fill = Brush("#CA92A6"),
+            Data = (Geometry)FindResource("CreditsHeartGeometry"), Fill = HeartBrush,
             Stretch = Stretch.Uniform, Width = Random.Shared.Next(10, 16), Height = 15, Tag = "Heart"
         };
         AddParticle(heart, origin, true, false, 1.5,
@@ -95,21 +94,48 @@ public partial class CreditsPanel : UserControl
     private void ConfettiButton_Click(object sender, RoutedEventArgs e)
     {
         var surprise = interaction.ClickConfetti();
+        ConfettiClickCount.Text = interaction.ConfettiClicks.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var origin = ConfettiButton.TranslatePoint(new Point(ConfettiButton.ActualWidth / 2, ConfettiButton.ActualHeight / 2), EffectsOverlay);
+        var height = Math.Max(40, origin.Y - 18);
+        const double drag = 2.6;
+        double LaunchSpeed(double terminal)
+        {
+            var speed = height * drag;
+            for (var iteration = 0; iteration < 5; iteration++) speed = height * drag + terminal * Math.Log(1 + speed / terminal);
+            return speed;
+        }
         if (surprise == CreditsSurprise.Message)
         {
             SecretMessage.Visibility = Visibility.Visible;
             messageBirth = clock.Elapsed.TotalSeconds;
             StartRendering();
         }
-        else if (surprise != CreditsSurprise.None && particles.Count(particle => !particle.IsHeart) < MaximumParticles)
+        else if (surprise != CreditsSurprise.None)
         {
+            if (particles.Count(particle => !particle.IsHeart) == MaximumParticles)
+            {
+                var oldest = particles.First(particle => particle.IsRibbon || Equals(particle.Element.Tag, "Petal"));
+                EffectsOverlay.Children.Remove(oldest.Element);
+                particles.Remove(oldest);
+            }
             var icon = CreateSurprise(surprise);
-            AddParticle(icon, origin, false, false, 3.4, Random.Shared.Next(-40, 41), -235, 150, 45, 10);
+            var terminal = height / 3.4;
+            var lane = surprise switch
+            {
+                CreditsSurprise.Clawd => -0.75,
+                CreditsSurprise.Star => -0.25,
+                CreditsSurprise.ChatGpt => 0.25,
+                _ => 0.75
+            };
+            AddParticle(icon, origin, false, false, 3.4, lane * EffectsOverlay.ActualWidth * drag * 0.38,
+                -LaunchSpeed(terminal) * 0.8, 0, 45, 10, drag: drag, terminalVelocity: terminal * 0.8);
         }
-        var height = Math.Max(40, origin.Y - 18);
-        const double drag = 2.6;
-        for (var index = 0; index < BurstSize && particles.Count(particle => !particle.IsHeart) < MaximumParticles; index++)
+        var remaining = MaximumParticles - particles.Count(particle => !particle.IsHeart);
+        var ribbonTerminal = height / 3.0;
+        var petalTerminal = height / 3.7;
+        var ribbonSpeed = LaunchSpeed(ribbonTerminal);
+        var petalSpeed = LaunchSpeed(petalTerminal);
+        for (var index = 0; index < BurstSize && index < remaining; index++)
         {
             var petal = (index + 1) * PetalsPerBurst / BurstSize != index * PetalsPerBurst / BurstSize;
             FrameworkElement shape = petal ? CreatePetal() : new Rectangle
@@ -118,42 +144,39 @@ public partial class CreditsPanel : UserControl
                 RadiusX = 1, RadiusY = 1, Width = Random.Shared.Next(5, 8), Height = Random.Shared.Next(12, 19)
             };
             shape.Tag = petal ? "Petal" : "Ribbon";
-            var angle = Math.Clamp(-75 + index * 150.0 / (BurstSize - 1) + Random.Shared.NextDouble() * 2 - 1, -75, 75) * Math.PI / 180;
-            var terminal = height / (petal ? 3.7 : 3.0);
-            var speed = height * drag;
-            // 按当前页面高度求初速度，让中央粒子的最高点接近页顶。
-            for (var iteration = 0; iteration < 5; iteration++) speed = height * drag + terminal * Math.Log(1 + speed / terminal);
-            var lift = Math.Abs(angle) < 0.06 ? 1 : 0.78 + Random.Shared.NextDouble() * 0.22;
-            var vx = (EffectsOverlay.ActualWidth / 2 - 12) * drag * Math.Sin(angle) / Math.Sin(75 * Math.PI / 180);
-            if (index is > 0 and < BurstSize - 1) vx *= 0.75 + Random.Shared.NextDouble() * 0.25;
-            AddParticle(shape, origin, false, !petal, 4, vx, -Math.Cos(angle) * speed * lift,
+            // 横向落点和上升高度独立分层，避免粒子全部排成一条抛物线。
+            var spread = index % 10 == 0 ? -0.98 : index % 10 == 9 ? 0.98
+                : -1 + (index % 10 + Random.Shared.NextDouble()) / 5;
+            var lift = index == BurstSize - 5 ? 1 : 0.5 + (index / 10 + Random.Shared.NextDouble()) / 14;
+            var terminal = petal ? petalTerminal : ribbonTerminal;
+            var speed = petal ? petalSpeed : ribbonSpeed;
+            var vx = (EffectsOverlay.ActualWidth / 2 - 12) * drag * spread;
+            AddParticle(shape, origin, false, !petal, 4, vx, -speed * lift,
                 0, Random.Shared.Next(petal ? -35 : -240, petal ? 36 : 241),
                 petal ? 12 : 5, Random.Shared.Next(360), drag, index * 0.0004,
-                terminal * Math.Cos(angle) * lift, 1);
+                terminal * lift, 1);
         }
     }
 
-    private static FrameworkElement CreatePetal()
+    private static FrameworkElement CreatePetal() => new Image
     {
-        var petal = new Grid { Width = Random.Shared.Next(14, 21), Height = Random.Shared.Next(14, 21) };
-        var drawing = new Canvas { Width = 20, Height = 24 };
-        drawing.Children.Add(new Path
-        {
-            Data = Geometry.Parse("M 10,23 C 7,18 1,13 2,6 C 2,1 6,0 9,3 L 10,6 L 12,2 C 17,-1 20,3 18,9 C 17,15 12,19 10,23 Z"),
-            Fill = new LinearGradientBrush
+        Source = PetalImage, Width = Random.Shared.Next(14, 21), Height = Random.Shared.Next(14, 21), Stretch = Stretch.Uniform
+    };
+
+    private static DrawingImage CreatePetalImage()
+    {
+        var drawing = new DrawingGroup();
+        drawing.Children.Add(new GeometryDrawing(Brushes.Transparent, null, new RectangleGeometry(new Rect(0, 0, 20, 24))));
+        drawing.Children.Add(new GeometryDrawing(new LinearGradientBrush
             {
                 StartPoint = new Point(0.1, 0), EndPoint = new Point(0.85, 1),
                 GradientStops = { new GradientStop(Color.FromRgb(251, 232, 238), 0),
                     new GradientStop(Color.FromRgb(236, 186, 206), 0.55), new GradientStop(Color.FromRgb(210, 143, 171), 1) }
-            }
-        });
-        drawing.Children.Add(new Path
-        {
-            Data = Geometry.Parse("M 10,21 C 9,16 12,11 11,8"),
-            Stroke = Brush("#CB8EAB"), StrokeThickness = 0.6, Opacity = 0.45
-        });
-        petal.Children.Add(new Viewbox { Child = drawing });
-        return petal;
+            }, null, Geometry.Parse("M 10,23 C 7,18 1,13 2,6 C 2,1 6,0 9,3 L 10,6 L 12,2 C 17,-1 20,3 18,9 C 17,15 12,19 10,23 Z")));
+        drawing.Children.Add(new GeometryDrawing(null, new Pen(Brush("#73CB8EAB"), 0.6), Geometry.Parse("M 10,21 C 9,16 12,11 11,8")));
+        var image = new DrawingImage(drawing);
+        image.Freeze();
+        return image;
     }
 
     private FrameworkElement CreateSurprise(CreditsSurprise surprise)
@@ -179,12 +202,13 @@ public partial class CreditsPanel : UserControl
     {
         var scale = new ScaleTransform();
         var rotation = new RotateTransform();
+        var translation = new TranslateTransform();
         element.RenderTransformOrigin = new Point(0.5, 0.5);
-        element.RenderTransform = new TransformGroup { Children = { scale, rotation } };
+        element.RenderTransform = new TransformGroup { Children = { scale, rotation, translation } };
         element.IsHitTestVisible = false;
         var particle = new Particle
         {
-            Element = element, Scale = scale, Rotation = rotation, Origin = origin,
+            Element = element, Scale = scale, Rotation = rotation, Translation = translation, Origin = origin,
             Birth = clock.Elapsed.TotalSeconds + delay, Lifetime = lifetime, VelocityX = vx, VelocityY = vy,
             Gravity = gravity, Spin = spin, Drift = drift, IsHeart = heart, IsRibbon = ribbon,
             Phase = Random.Shared.NextDouble() * Math.Tau, InitialAngle = initialAngle, Drag = drag,
@@ -200,7 +224,9 @@ public partial class CreditsPanel : UserControl
 
     private void StartRendering()
     {
-        frameTimer.Start();
+        if (rendering) return;
+        rendering = true;
+        CompositionTarget.Rendering += RenderFrame;
     }
 
     private void RenderFrame(object? sender, EventArgs e)
@@ -224,8 +250,8 @@ public partial class CreditsPanel : UserControl
                 continue;
             }
             var sway = Math.Sin(age * 3 + particle.Phase) * particle.Drift * Math.Min(1, age * 2);
-            Canvas.SetLeft(particle.Element, particle.Origin.X + particle.VelocityX * travel + sway - particle.Element.Width / 2);
-            Canvas.SetTop(particle.Element, y - particle.Element.Height / 2);
+            particle.Translation.X = particle.VelocityX * travel + sway;
+            particle.Translation.Y = y - particle.Origin.Y;
             particle.Rotation.Angle = particle.InitialAngle + particle.Spin * age + sway;
             if (particle.IsRibbon) particle.Scale.ScaleX = Math.Cos(age * 9 + particle.Phase);
             particle.Element.Opacity = Math.Min(1, (particle.Lifetime - age) / particle.FadeDuration);
@@ -247,7 +273,8 @@ public partial class CreditsPanel : UserControl
 
     private void StopRendering()
     {
-        frameTimer.Stop();
+        CompositionTarget.Rendering -= RenderFrame;
+        rendering = false;
     }
 
     private void ResetCelebration()
@@ -259,6 +286,7 @@ public partial class CreditsPanel : UserControl
         SecretMessage.Opacity = 0;
         messageBirth = null;
         interaction.Reset();
+        ConfettiClickCount.Text = "0";
     }
 
     private void Panel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)

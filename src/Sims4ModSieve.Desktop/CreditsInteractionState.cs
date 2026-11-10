@@ -5,6 +5,7 @@ internal enum CreditsSurprise { None, Clawd, Star, ChatGpt, DeepSeek, Message }
 internal sealed class CreditsInteractionState
 {
     private int confettiClicks;
+    public int ConfettiClicks => confettiClicks;
 
     public CreditsSurprise ClickConfetti() => ++confettiClicks switch
     {
