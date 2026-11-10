@@ -332,10 +332,11 @@ public sealed class SettingsViewModelTests
             return path;
         }
         public MainWindowViewModel Model(Picker? picker = null, IDuplicateRunService? run = null,
-            IFileActionService? actions = null, Dialogs? dialogs = null, SettingsSupportService? support = null) => new(
+            IFileActionService? actions = null, Dialogs? dialogs = null, SettingsSupportService? support = null,
+            Func<DownloadedUpdate, Task>? startUpdate = null) => new(
                 run ?? new DuplicateRunService(DuplicateScanner.CreateDefault()), picker ?? new Picker(), Store,
                 fileActionService: actions, fileActionDialogs: dialogs ?? new Dialogs(),
-                settingsSupport: support ?? new SettingsSupportService(Root, Folder("Documents")));
+                settingsSupport: support ?? new SettingsSupportService(Root, Folder("Documents")), startUpdate: startUpdate);
         public void Dispose() { Directory.Delete(Root, recursive: true); }
     }
 

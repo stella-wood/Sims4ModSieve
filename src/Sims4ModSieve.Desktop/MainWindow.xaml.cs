@@ -14,7 +14,8 @@ public partial class MainWindow : Window
 
     private void ShowUpdatePopup(object sender, RoutedEventArgs eventArgs) => UpdatePopup.IsOpen = !UpdatePopup.IsOpen;
 
-    private void UpdatePopupOpened(object? sender, EventArgs eventArgs) => UpdateDownloadButton.Focus();
+    private void UpdatePopupOpened(object? sender, EventArgs eventArgs) =>
+        (UpdateDownloadButton.IsVisible ? UpdateDownloadButton : UpdateRestartButton.IsVisible ? UpdateRestartButton : UpdateCancelButton).Focus();
 
     private void UpdatePopupKeyDown(object sender, KeyEventArgs eventArgs)
     {
@@ -44,6 +45,7 @@ public partial class MainWindow : Window
         UpdateToolTip.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>
             [new CustomPopupPlacement(new Point(targetSize.Width - popupSize.Width, -popupSize.Height - 6), PopupPrimaryAxis.Horizontal)];
         DataContext = viewModel;
+        viewModel.UpdateRestartRequested += RestartForUpdate;
         Closing += (_, eventArgs) =>
         {
             if (!viewModel.IsBusy) return;
@@ -55,11 +57,15 @@ public partial class MainWindow : Window
         viewModel.DuplicateGroupLocationRequested += LocateDuplicateGroup;
         Closed += (_, _) =>
         {
+            viewModel.UpdateRestartRequested -= RestartForUpdate;
+            viewModel.StopUpdates();
             viewModel.DuplicateGroupLocationRequested -= LocateDuplicateGroup;
             viewModel.PropertyChanged -= CloseAfterWork;
             closingAfterWork = null;
         };
     }
+
+    private void RestartForUpdate(object? sender, EventArgs eventArgs) => Close();
 
     private void CloseAfterWork(object? sender, PropertyChangedEventArgs eventArgs)
     {

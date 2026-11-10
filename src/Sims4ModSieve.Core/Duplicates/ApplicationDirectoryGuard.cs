@@ -23,7 +23,11 @@ public sealed class ApplicationDirectoryGuard(string? directory = null, Action<s
         if (!PathRules.Comparer.Equals(Path.GetDirectoryName(normalized), DirectoryPath)) return false;
         var name = Path.GetFileName(normalized);
         if (name.EndsWith(".off", StringComparison.OrdinalIgnoreCase)) name = name[..^4];
-        return OwnedFiles.Contains(name) || name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+        var uninstaller = name.Length == 12 && name.StartsWith("unins", StringComparison.OrdinalIgnoreCase)
+            && name[5..8].All(char.IsAsciiDigit) && name[8] == '.'
+            && (name[9..].Equals("exe", StringComparison.OrdinalIgnoreCase)
+                || name[9..].Equals("dat", StringComparison.OrdinalIgnoreCase) || name[9..].Equals("msg", StringComparison.OrdinalIgnoreCase));
+        return OwnedFiles.Contains(name) || uninstaller || name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(".runtimeconfig.json", StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase);

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$SkipArchive)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -15,10 +15,10 @@ if ((Split-Path $out -Parent) -ne $releaseDir -or (Split-Path $zip -Parent) -ne 
 foreach ($target in @((Join-Path $root 'artifacts'), $releaseDir, $out, $zip)) { if ((Test-Path $target) -and ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse point: $target" } }
 if (Test-Path $out) { Remove-Item -LiteralPath $out -Recurse -Force }
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
-& "$PSScriptRoot/dotnet.cmd" restore $project --locked-mode --nologo -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64
+& "$PSScriptRoot/dotnet.cmd" restore $project --locked-mode --nologo -m:1 -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64
 if ($LASTEXITCODE -ne 0) { throw 'Locked RID restore failed.' }
 & "$PSScriptRoot/check-vulnerabilities.ps1"
-& "$PSScriptRoot/dotnet.cmd" publish $project -c Release --no-restore --nologo -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64 -p:Version=$Version -o $out
+& "$PSScriptRoot/dotnet.cmd" publish $project -c Release --no-restore --nologo -m:1 -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64 -p:Version=$Version -o $out
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 $required = @(
     'Sims4ModSieve.exe', 'PresentationNative_cor3.dll', 'wpfgfx_cor3.dll',
@@ -30,6 +30,7 @@ $required = @(
     'licenses/StbImageSharp-2.30.16-UNLICENSE.txt',
     'licenses/StbImageWriteSharp-1.16.7-README-LICENSE.txt',
     'licenses/YamlDotNet-16.3.0-LICENSE.txt',
+    'licenses/InnoSetup-7.1.1-LICENSE.txt',
     'licenses/dotnet-runtime-10.0.14/LICENSE.TXT',
     'licenses/dotnet-runtime-10.0.14/THIRD-PARTY-NOTICES.TXT',
     'licenses/dotnet-runtime-10.0.14/WINDOWSDESKTOP-LICENSE.txt'
@@ -44,6 +45,7 @@ $manifest = Get-ChildItem $out -Recurse -File | Where-Object Name -ne 'SHA256SUM
     "$(($_ | Get-FileHash -Algorithm SHA256).Hash.ToLowerInvariant())  $relative"
 }
 $manifest | Set-Content -LiteralPath (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
+if ($SkipArchive) { Write-Host "Publish directory: $out"; return }
 Compress-Archive -LiteralPath $out -DestinationPath $zip -CompressionLevel Optimal
 Add-Type -AssemblyName System.IO.Compression
 $archive = [IO.Compression.ZipFile]::OpenRead($zip)

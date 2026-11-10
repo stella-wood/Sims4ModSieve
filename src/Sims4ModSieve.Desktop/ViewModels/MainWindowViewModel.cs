@@ -57,7 +57,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Func<IReadOnlyList<string>>? pickIgnoredFiles = null,
         ModDisableService? modDisableService = null,
         Func<IReadOnlyList<string>>? pickDisabledFiles = null,
-        Func<string, bool>? confirmModChange = null)
+        Func<string, bool>? confirmModChange = null,
+        Func<DownloadedUpdate, Task>? startUpdate = null)
     {
         this.duplicateRunService = duplicateRunService;
         this.conflictDetailsCopy = conflictDetailsCopy ?? System.Windows.Clipboard.SetText;
@@ -112,7 +113,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         LoadSettings();
         InitializeConflict();
         InitializeSettings();
-        OpenUpdateReleaseCommand = new RelayCommand(_ => OpenUpdateRelease());
+        InitializeUpdates(startUpdate);
         InitializeFileManagement();
     }
 
