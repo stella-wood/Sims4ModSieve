@@ -1,5 +1,12 @@
 # Third-party notices
 
+## 安装器
+
+- Inno Setup 7.1.1 — Inno Setup License — https://github.com/jrsoftware/issrc/tree/is-7_1_1
+  构建工具及生成的安装、卸载程序保留上游版权与网站信息，完整许可见 `licenses/InnoSetup-7.1.1-LICENSE.txt`。
+- 中文向导使用 Inno Setup 7.1.1 包内 `Languages/ChineseSimplified.isl`，维护者 Zhenghan Yang（Kira），不另行下载或修改翻译。
+  来源：https://github.com/jrsoftware/issrc/blob/is-7_1_1/Files/Languages/ChineseSimplified.isl ，随 Inno Setup 软件包按上述许可使用，原维护者署名保留于语言文件与安装器的翻译说明中。
+
 ## Runtime dependencies
 
 `Sims4ModSieve.Packages` 引用 `LlamaLogic.Packages` 作为只读 DBPF 索引底座。

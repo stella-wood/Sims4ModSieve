@@ -9,16 +9,29 @@ namespace Sims4ModSieve.Desktop;
 
 public partial class App : Application
 {
+    private readonly bool startUserInterface = true;
     private SingleInstanceLock? instanceLock;
     private readonly CancellationTokenSource updateCancellation = new();
-    private readonly HttpClient updateClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private readonly HttpClient updateClient = new(new HttpClientHandler { AllowAutoRedirect = false })
+        { Timeout = Timeout.InfiniteTimeSpan };
 
     static App() => ToolTipService.InitialShowDelayProperty.OverrideMetadata(
         typeof(FrameworkElement), new FrameworkPropertyMetadata(650));
 
+    public App() { }
+
+    public App(bool startUserInterface) => this.startUserInterface = startUserInterface;
+
     protected override void OnStartup(StartupEventArgs eventArgs)
     {
         base.OnStartup(eventArgs);
+        if (!startUserInterface) return;
+
+        if (InstallerChecks.TryRun(eventArgs.Args, out var installerExitCode))
+        {
+            Shutdown(installerExitCode);
+            return;
+        }
 
         try
         {
@@ -31,6 +44,7 @@ public partial class App : Application
                 return;
             }
 
+            _ = UpdateCheckService.CleanupDownloadsAsync(updateCancellation.Token);
             var window = new MainWindow();
             MainWindow = window;
             window.Show();

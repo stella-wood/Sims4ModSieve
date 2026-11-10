@@ -140,8 +140,9 @@ public sealed class UpdateCheckTests
     {
         using var files = new Scenario();
         string? opened = null;
-        var model = files.Model(support: new SettingsSupportService(files.Root, files.Folder("Documents"), openTarget: url => opened = url));
-        using var handler = new Handler((_, _) => Task.FromResult(Response($$"""{"tag_name":"v99.0.0","html_url":"{{Url}}"}""")));
+        var model = files.Model(support: new SettingsSupportService(files.Root, files.Folder("Documents"), openTarget: url => opened = url),
+            startUpdate: _ => Task.FromException(new IOException("test launch failure")));
+        using var handler = UpdateDownloadTests.ValidHandler();
         using var client = new HttpClient(handler);
         var window = new MainWindow(model);
         window.Show();
@@ -174,7 +175,16 @@ public sealed class UpdateCheckTests
         await WpfTestHost.MoveMouseAsync(download);
         SaveScreenshot(window, popup, "home-update-download-hover.png");
         await WpfTestHost.ClickAsync(download);
-        Assert.AreEqual(Url, opened);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsNull(opened);
+        Assert.IsTrue(model.ShowUpdateRestart);
+        Assert.IsFalse(download.IsVisible);
+        var restart = (Button)window.FindName("UpdateRestartButton");
+        Assert.IsTrue(restart.IsVisible);
+        SaveScreenshot(window, popup, "home-update-ready.png");
+        await WpfTestHost.ClickAsync(restart);
+        StringAssert.Contains(model.UpdateStatusText, "未能开始更新");
+        Assert.IsTrue(window.IsVisible);
         keybd_event(0x1B, 0, 0, UIntPtr.Zero);
         keybd_event(0x1B, 0, 2, UIntPtr.Zero);
         await Task.Delay(100);
@@ -220,7 +230,7 @@ public sealed class UpdateCheckTests
         Assert.IsTrue(new Rect(content.RenderSize).Contains(new Rect(offset, child.RenderSize)));
     }
 
-    private static void SaveScreenshot(Window window, Popup popup, string name)
+    internal static void SaveScreenshot(Window window, Popup popup, string name)
     {
         var directory = Environment.GetEnvironmentVariable("SIMS4_UPDATE_SCREENSHOTS");
         if (string.IsNullOrEmpty(directory)) return;

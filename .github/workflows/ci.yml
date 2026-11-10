@@ -27,6 +27,7 @@ jobs:
       SIMS4_SCROLLBAR_REVIEW_DIR: ${{ github.workspace }}/artifacts/ci/screenshots/scrollbars
       SIMS4_SETTINGS_REVIEW_DIR: ${{ github.workspace }}/artifacts/ci/screenshots/settings
       SIMS4_WPF_FAILURE_DIR: ${{ github.workspace }}/artifacts/ci/screenshots/failures
+      SIMS4_UPDATE_SCREENSHOTS: ${{ github.workspace }}/artifacts/ci/screenshots/update
 
     steps:
       - name: Check out repository
@@ -50,24 +51,25 @@ jobs:
       - name: Run tests
         run: dotnet test Sims4ModSieve.sln -c Release --no-build --no-restore --nologo --logger trx --results-directory artifacts/ci/test-results
 
-      - name: Package self-contained Windows x64
+      - name: Package self-contained Windows x64 installer
         shell: pwsh
         run: |
-          ./eng/package-portable.ps1
-          ./eng/test-portable-bundle.ps1
+          ./eng/package-installer.ps1
+          ./eng/test-portable-bundle.ps1 -SkipArchive
+          ./eng/test-installer.ps1 -ReviewUi
 
-      - name: Upload portable package and hash
+      - name: Upload installer and hash
         uses: actions/upload-artifact@v7
         with:
           name: Sims4ModSieve-win-x64
           path: |
-            artifacts/release/Sims4ModSieve-*-win-x64.zip
-            artifacts/release/Sims4ModSieve-*-win-x64.zip.sha256
+            artifacts/release/Sims4ModSieve-*-setup.exe
+            artifacts/release/Sims4ModSieve-*-setup.exe.sha256
             artifacts/release/vulnerabilities.json
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload portable debug symbols
+      - name: Upload Windows x64 debug symbols
         uses: actions/upload-artifact@v7
         with:
           name: Sims4ModSieve-win-x64-symbols
