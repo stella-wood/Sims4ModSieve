@@ -2,8 +2,12 @@ namespace Sims4ModSieve.Desktop.Tests;
 
 internal static class SingleInstanceLockProbe
 {
+    [STAThread]
     private static int Main(string[] args)
     {
+        if (args is ["--startup-splash", var scenario, var dataDirectory])
+            return StartupSplashScreenTests.RunProbe(scenario, dataDirectory);
+
         if (args is not ["--single-instance-lock", var directory]) return 1;
         try
         {

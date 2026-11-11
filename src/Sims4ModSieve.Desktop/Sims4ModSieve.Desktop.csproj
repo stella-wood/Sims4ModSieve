@@ -7,9 +7,12 @@
     <ApplicationIcon>Assets\Sims4ModSieve.ico</ApplicationIcon>
     <AssemblyName>Sims4ModSieve</AssemblyName>
     <RootNamespace>Sims4ModSieve.Desktop</RootNamespace>
+    <!-- 自定义入口先处理安装器检查，并负责启动画面的零时长关闭。 -->
+    <StartupObject>Sims4ModSieve.Desktop.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
+    <SplashScreen Include="Assets\splash.png" />
     <EmbeddedResource Include="Assets\supporters.json" LogicalName="Sims4ModSieve.Desktop.Assets.supporters.json" />
     <InternalsVisibleTo Include="Sims4ModSieve.Desktop.Tests" />
     <Resource Include="Assets\Fonts\SourceHanSansCN-Light.otf" />

@@ -10,33 +10,38 @@ namespace Sims4ModSieve.Desktop;
 public partial class App : Application
 {
     private readonly bool startUserInterface = true;
+    private readonly SplashScreen? splashScreen;
+    private readonly Func<MainWindow> createMainWindow;
+    private readonly string dataDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve");
     private SingleInstanceLock? instanceLock;
     private readonly CancellationTokenSource updateCancellation = new();
-    private readonly HttpClient updateClient = new(new HttpClientHandler { AllowAutoRedirect = false })
-        { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient updateClient;
 
     static App() => ToolTipService.InitialShowDelayProperty.OverrideMetadata(
         typeof(FrameworkElement), new FrameworkPropertyMetadata(650));
 
-    public App() { }
+    public App() : this(null) { }
 
-    public App(bool startUserInterface) => this.startUserInterface = startUserInterface;
+    internal App(SplashScreen? splashScreen, string? dataDirectory = null,
+        Func<MainWindow>? createMainWindow = null, HttpClient? updateClient = null)
+    {
+        this.splashScreen = splashScreen;
+        if (dataDirectory is not null) this.dataDirectory = dataDirectory;
+        this.createMainWindow = createMainWindow ?? (() => new MainWindow());
+        this.updateClient = updateClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            { Timeout = Timeout.InfiniteTimeSpan };
+    }
+
+    public App(bool startUserInterface) : this(null) => this.startUserInterface = startUserInterface;
 
     protected override void OnStartup(StartupEventArgs eventArgs)
     {
         base.OnStartup(eventArgs);
         if (!startUserInterface) return;
 
-        if (InstallerChecks.TryRun(eventArgs.Args, out var installerExitCode))
-        {
-            Shutdown(installerExitCode);
-            return;
-        }
-
         try
         {
-            var dataDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve");
             instanceLock = SingleInstanceLock.TryAcquire(dataDirectory);
             if (instanceLock is null)
             {
@@ -44,15 +49,27 @@ public partial class App : Application
                 return;
             }
 
+            try
+            {
+                splashScreen?.Show(autoClose: false);
+            }
+            catch (Exception exception)
+            {
+                splashScreen?.Close(TimeSpan.Zero);
+                TryWriteStartupFailure(exception);
+            }
             _ = UpdateCheckService.CleanupDownloadsAsync(updateCancellation.Token);
-            var window = new MainWindow();
+            var window = createMainWindow();
             MainWindow = window;
+            // .NET 10 的 SplashScreen 淡出会丢失 PNG 透明度，首次渲染后直接关闭。
+            window.ContentRendered += (_, _) => splashScreen?.Close(TimeSpan.Zero);
             window.Show();
             _ = ((MainWindowViewModel)window.DataContext).CheckForUpdatesAsync(
                 new UpdateCheckService(updateClient), updateCancellation.Token);
         }
         catch (Exception exception)
         {
+            splashScreen?.Close(TimeSpan.Zero);
             TryWriteStartupFailure(exception);
             MessageBox.Show(
                 $"Sims 4 Mod Sieve 启动失败。\n\n{exception.Message}",
@@ -72,19 +89,16 @@ public partial class App : Application
         base.OnExit(eventArgs);
     }
 
-    private static void TryWriteStartupFailure(Exception exception)
+    private void TryWriteStartupFailure(Exception exception)
     {
         try
         {
-            var directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Sims4ModSieve");
-            Directory.CreateDirectory(directory);
-            File.WriteAllText(Path.Combine(directory, "startup-error.log"), exception.ToString());
+            Directory.CreateDirectory(dataDirectory);
+            File.WriteAllText(Path.Combine(dataDirectory, "startup-error.log"), exception.ToString());
         }
         catch (Exception writeException) when (writeException is IOException or UnauthorizedAccessException)
         {
-            // The original startup error is still shown to the user.
+            // 诊断写入失败不能阻止主窗口启动或原有错误提示。
         }
     }
 }

@@ -9,6 +9,43 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class InstallerChecksTests
 {
     [TestMethod]
+    public void InstallerPathEntryReturnsBeforeCreatingWpfApplication()
+    {
+        using var files = new Scenario();
+        var application = System.Windows.Application.Current;
+        var data = files.Folder("Sims4ModSieve");
+        var documents = files.Folder("Documents");
+        Assert.AreEqual(0, Program.Main(["--installer-check-path", files.Folder("App"), data, documents]));
+        Assert.AreEqual(InstallerChecks.UnsafePath, Program.Main(["--installer-check-path", data, data, documents]));
+        Assert.AreSame(application, System.Windows.Application.Current);
+    }
+
+    [TestMethod]
+    public void InstallerUninstallEntryReturnsBeforeCreatingWpfApplication()
+    {
+        using var files = new Scenario();
+        var application = System.Windows.Application.Current;
+        var data = files.Folder("Sims4ModSieve");
+        var report = Path.Combine(files.Root, "uninstall.ini");
+        Assert.AreEqual(0, Program.Main(["--installer-check-uninstall", data, report]));
+        StringAssert.Contains(File.ReadAllText(report), "DisabledCount=0");
+        File.WriteAllText(Path.Combine(data, "disabled-mods.json"), "{");
+        Assert.AreEqual(InstallerChecks.CannotCheck, Program.Main(["--installer-check-uninstall", data]));
+        Assert.AreSame(application, System.Windows.Application.Current);
+    }
+
+    [TestMethod]
+    [DataRow("--installer-check-path")]
+    [DataRow("--installer-check-uninstall")]
+    [DataRow("--installer-unknown")]
+    public void MalformedInstallerEntryReturnsBeforeCreatingWpfApplication(string argument)
+    {
+        var application = System.Windows.Application.Current;
+        Assert.AreEqual(InstallerChecks.CannotCheck, Program.Main([argument]));
+        Assert.AreSame(application, System.Windows.Application.Current);
+    }
+
+    [TestMethod]
     public void RejectsGameAndConfiguredFoldersUsingDirectoryBoundaries()
     {
         using var files = new Scenario();
