@@ -4,6 +4,9 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -12,6 +15,137 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class StartupSplashScreenTests
 {
+    [TestMethod]
+    [DataRow("normal")]
+    [DataRow("minimized")]
+    [DataRow("maximized-minimized")]
+    [DataRow("starting")]
+    [DataRow("dialog")]
+    [DataRow("startup-error")]
+    public Task SecondLaunchActivatesExistingWindowAndRestoresMinimizedState(string state) => WpfTestHost.RunAsync(async () =>
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "s4ms-activation-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        Process StartInstance(string scenario)
+        {
+            var dotnet = Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "dotnet.exe"));
+            var start = new ProcessStartInfo(dotnet)
+            {
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            foreach (var argument in new[] { typeof(SingleInstanceLockProbe).Assembly.Location, "--startup-splash", scenario, directory })
+                start.ArgumentList.Add(argument);
+            start.Environment["TEMP"] = directory;
+            start.Environment["TMP"] = directory;
+            return Process.Start(start)!;
+        }
+        using var first = StartInstance(state == "startup-error" ? "main-window-failure" : "activation-" + state);
+        var firstError = first.StandardError.ReadToEndAsync();
+        Process? second = null;
+        var foregroundWindow = new Window
+        {
+            Title = "激活测试辅助窗口",
+            Content = new Border { Background = Brushes.White },
+        };
+        Exception? testFailure = null;
+        try
+        {
+            Assert.AreEqual("READY", await first.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+            await first.StandardInput.WriteLineAsync();
+            Assert.AreEqual("SPLASH", await first.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+            if (state != "starting")
+            {
+                await first.StandardInput.WriteLineAsync();
+                if (state == "startup-error")
+                {
+                    var errorTimer = Stopwatch.StartNew();
+                    while (!VisibleWindows(first.Id).Any(window => window.Title == "无法启动")
+                        && errorTimer.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(10);
+                    Assert.IsTrue(VisibleWindows(first.Id).Any(window => window.Title == "无法启动"));
+                }
+                else
+                {
+                    Assert.AreEqual("RENDERED", await first.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+                }
+            }
+            foregroundWindow.Show();
+            WpfTestHost.PlaceOnScreen(foregroundWindow, 320, 180);
+            await WpfTestHost.LayoutAsync(foregroundWindow);
+            Assert.IsTrue(foregroundWindow.Activate());
+            foregroundWindow.Topmost = false;
+            Assert.AreEqual(new WindowInteropHelper(foregroundWindow).Handle, GetForegroundWindow());
+
+            second = StartInstance("activation-second");
+            var secondError = second.StandardError.ReadToEndAsync();
+            Assert.AreEqual("READY", await second.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.IsTrue(AllowSetForegroundWindow((uint)second.Id));
+            await second.StandardInput.WriteLineAsync();
+            if (state == "starting")
+            {
+                await second.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.AreEqual(0, second.ExitCode, await secondError);
+                await first.StandardInput.WriteLineAsync();
+                Assert.AreEqual("RENDERED", await first.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+            }
+            var title = state switch
+            {
+                "dialog" => "激活测试对话框",
+                "startup-error" => "无法启动",
+                _ => "Sims 4 Mod Sieve",
+            };
+            var timer = Stopwatch.StartNew();
+            IntPtr target = IntPtr.Zero;
+            while (timer.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                if (!second.HasExited) Assert.IsEmpty(VisibleWindows(second.Id), "第二实例不能显示启动图或主窗口。");
+                target = VisibleWindows(first.Id).FirstOrDefault(window => window.Title == title).Handle;
+                if (target != IntPtr.Zero && GetForegroundWindow() == target && !IsIconic(target)) break;
+                await Task.Delay(10);
+            }
+            Assert.AreNotEqual(IntPtr.Zero, target);
+            Assert.AreEqual(target, GetForegroundWindow(), "再次启动后应将已有窗口切到前台。");
+            Assert.IsFalse(IsIconic(target));
+            Assert.AreEqual(state == "maximized-minimized", IsZoomed(target));
+            Assert.IsFalse(first.HasExited);
+            await second.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.AreEqual(0, second.ExitCode, await secondError);
+            if (state == "startup-error") PostMessage(target, 0x10, IntPtr.Zero, IntPtr.Zero);
+            else await first.StandardInput.WriteLineAsync();
+            await first.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.AreEqual(state == "startup-error" ? -1 : 0, first.ExitCode, await firstError);
+        }
+        catch (Exception exception)
+        {
+            testFailure = exception;
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                if (second is not null)
+                {
+                    if (!second.HasExited) second.Kill();
+                    await second.WaitForExitAsync();
+                    second.Dispose();
+                }
+                if (!first.HasExited) first.Kill();
+                await first.WaitForExitAsync();
+                foregroundWindow.Close();
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (Exception cleanupException) when (testFailure is not null)
+            {
+                throw new AggregateException("测试失败且临时数据清理失败。", testFailure, cleanupException);
+            }
+        }
+    });
+
     [TestMethod]
     [DataRow("normal")]
     [DataRow("second-instance")]
@@ -155,14 +289,39 @@ public sealed class StartupSplashScreenTests
         }, client);
         app.InitializeComponent();
         if (scenario == "main-window-failure") app.Resources["WindowBrush"] = new object();
-        if (scenario is "normal" or "missing-splash")
+        var activation = scenario.StartsWith("activation-", StringComparison.Ordinal) && scenario != "activation-second";
+        if (scenario is "normal" or "missing-splash" || activation)
         {
             app.Dispatcher.BeginInvoke(() =>
             {
+                Window? dialog = null;
+                if (scenario == "activation-maximized-minimized") app.MainWindow.WindowState = WindowState.Maximized;
+                if (scenario is "activation-minimized" or "activation-maximized-minimized")
+                    app.MainWindow.WindowState = WindowState.Minimized;
                 Console.WriteLine("RENDERED");
                 Console.Out.Flush();
-                Console.ReadLine();
-                app.MainWindow.Close();
+                if (activation)
+                {
+                    _ = Task.Run(() =>
+                    {
+                        Console.ReadLine();
+                        app.Dispatcher.BeginInvoke(() =>
+                        {
+                            dialog?.Close();
+                            app.MainWindow.Close();
+                        });
+                    });
+                    if (scenario == "activation-dialog")
+                    {
+                        dialog = new Window { Owner = app.MainWindow, Title = "激活测试对话框", Width = 280, Height = 160 };
+                        dialog.ShowDialog();
+                    }
+                }
+                else
+                {
+                    Console.ReadLine();
+                    app.MainWindow.Close();
+                }
             }, DispatcherPriority.ApplicationIdle);
         }
         Console.WriteLine("READY");
@@ -202,4 +361,8 @@ public sealed class StartupSplashScreenTests
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder name, int count);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int count);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint processId);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr window);
 }

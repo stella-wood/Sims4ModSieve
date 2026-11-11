@@ -1,14 +1,22 @@
 using System.IO;
 using System.Net.Http;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Desktop.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Threading;
 
 namespace Sims4ModSieve.Desktop;
 
 public partial class App : Application
 {
+    private const int ActivateInstanceMessage = 0x8001;
+    private static readonly IntPtr MessageOnlyWindow = new(-3);
     private readonly bool startUserInterface = true;
     private readonly SplashScreen? splashScreen;
     private readonly Func<MainWindow> createMainWindow;
@@ -17,6 +25,8 @@ public partial class App : Application
     private SingleInstanceLock? instanceLock;
     private readonly CancellationTokenSource updateCancellation = new();
     private readonly HttpClient updateClient;
+    private readonly string activationWindowName;
+    private HwndSource? activationSource;
 
     static App() => ToolTipService.InitialShowDelayProperty.OverrideMetadata(
         typeof(FrameworkElement), new FrameworkPropertyMetadata(650));
@@ -31,11 +41,13 @@ public partial class App : Application
         this.createMainWindow = createMainWindow ?? (() => new MainWindow());
         this.updateClient = updateClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
             { Timeout = Timeout.InfiniteTimeSpan };
+        activationWindowName = "Sims4ModSieve.Activate." + Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(Path.TrimEndingDirectorySeparator(Path.GetFullPath(this.dataDirectory)).ToUpperInvariant())));
     }
 
     public App(bool startUserInterface) : this(null) => this.startUserInterface = startUserInterface;
 
-    protected override void OnStartup(StartupEventArgs eventArgs)
+    protected override async void OnStartup(StartupEventArgs eventArgs)
     {
         base.OnStartup(eventArgs);
         if (!startUserInterface) return;
@@ -45,9 +57,17 @@ public partial class App : Application
             instanceLock = SingleInstanceLock.TryAcquire(dataDirectory);
             if (instanceLock is null)
             {
+                await ActivateRunningInstanceAsync();
                 Shutdown();
                 return;
             }
+
+            activationSource = new HwndSource(new HwndSourceParameters(activationWindowName)
+            {
+                ParentWindow = MessageOnlyWindow,
+                WindowStyle = 0,
+            });
+            activationSource.AddHook(ReceiveActivation);
 
             try
             {
@@ -85,9 +105,70 @@ public partial class App : Application
         updateCancellation.Cancel();
         updateClient.Dispose();
         updateCancellation.Dispose();
+        activationSource?.Dispose();
         instanceLock?.Dispose();
         base.OnExit(eventArgs);
     }
+
+    private async Task ActivateRunningInstanceAsync()
+    {
+        var timer = Stopwatch.StartNew();
+        do
+        {
+            var receiver = FindWindowEx(MessageOnlyWindow, IntPtr.Zero, null, activationWindowName);
+            if (receiver != IntPtr.Zero)
+            {
+                GetWindowThreadProcessId(receiver, out var processId);
+                AllowSetForegroundWindow(processId);
+                PostMessage(receiver, ActivateInstanceMessage, IntPtr.Zero, IntPtr.Zero);
+                return;
+            }
+            // 首个进程可能刚获得运行锁，尚未创建消息接收端。
+            await Task.Delay(25);
+        } while (timer.Elapsed < TimeSpan.FromSeconds(1));
+    }
+
+    private IntPtr ReceiveActivation(IntPtr window, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message != ActivateInstanceMessage) return IntPtr.Zero;
+        handled = true;
+        Dispatcher.BeginInvoke(ActivateMainWindow, DispatcherPriority.ApplicationIdle);
+        return IntPtr.Zero;
+    }
+
+    private void ActivateMainWindow()
+    {
+        var handle = MainWindow is { IsVisible: true } window
+            ? new WindowInteropHelper(window).Handle
+            : IntPtr.Zero;
+        if (handle == IntPtr.Zero)
+        {
+            EnumThreadWindows(GetCurrentThreadId(), (candidate, _) =>
+            {
+                if (!IsWindowVisible(candidate)) return true;
+                handle = candidate;
+                return false;
+            }, IntPtr.Zero);
+        }
+        if (handle == IntPtr.Zero || !IsWindowVisible(handle)) return;
+        if (IsIconic(handle)) ShowWindow(handle, 9);
+        var popup = GetLastActivePopup(handle);
+        SetForegroundWindow(popup != IntPtr.Zero && IsWindowVisible(popup) ? popup : handle);
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string? className, string? windowName);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint processId);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] private static extern IntPtr GetLastActivePopup(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+    private delegate bool EnumThreadWindowProc(IntPtr window, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool EnumThreadWindows(uint threadId, EnumThreadWindowProc callback, IntPtr parameter);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
 
     private void TryWriteStartupFailure(Exception exception)
     {
