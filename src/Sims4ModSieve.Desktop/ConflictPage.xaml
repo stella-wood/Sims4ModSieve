@@ -151,10 +151,10 @@
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
                 <Grid Width="16" Height="16" Background="Transparent">
-                    <Border x:Name="Box" Background="White" BorderBrush="#8F8982" BorderThickness="1" CornerRadius="2" />
+                    <Border x:Name="Box" Background="White" BorderBrush="#8F8982" BorderThickness="1" />
                     <Path x:Name="Check" Data="M3.5,8.5 L6.5,11.5 L12.5,5" Stroke="{StaticResource InkBrush}" StrokeThickness="1.7"
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed" IsHitTestVisible="False" />
-                    <Rectangle x:Name="Partial" Width="8" Height="8" RadiusX="1" RadiusY="1" Fill="#8B847C" Visibility="Collapsed" IsHitTestVisible="False" />
+                    <Rectangle x:Name="Partial" Width="8" Height="8" Fill="#8B847C" Visibility="Collapsed" IsHitTestVisible="False" />
                 </Grid>
                 <ControlTemplate.Triggers>
                     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Check" Property="Visibility" Value="Visible" /></Trigger>
@@ -641,7 +641,7 @@
             </Grid>
             <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0">
                 <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <Grid Margin="20,16,20,3.48">
+                    <Grid Margin="20,16,10,3.48">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <TextBlock Text="扫描结果" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <ToggleButton x:Name="ConflictMultiSelectButton"
@@ -746,7 +746,7 @@
                         </Canvas>
                         <TextBlock Text="{Binding EmptyConflictText}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowEmptyConflictRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </Grid>
-                    <Border Grid.Row="3" Padding="20,11,36,11" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <Border Grid.Row="3" Padding="20,11,20,11" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
                         <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
