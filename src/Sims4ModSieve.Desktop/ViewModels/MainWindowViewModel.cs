@@ -867,6 +867,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OpenConflictDuplicatesCommand?.RaiseCanExecuteChanged();
         DeleteConflictFileCommand?.RaiseCanExecuteChanged();
         ToggleConflictFileEnabledCommand?.RaiseCanExecuteChanged();
+        DeleteSelectedConflictFilesCommand?.RaiseCanExecuteChanged();
+        DisableSelectedConflictFilesCommand?.RaiseCanExecuteChanged();
         RefreshSettingsCommands();
         RefreshManagementCommands();
         RefreshResultCommands();

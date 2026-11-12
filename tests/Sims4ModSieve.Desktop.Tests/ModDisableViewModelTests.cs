@@ -1080,6 +1080,7 @@ public sealed class ModDisableViewModelTests
         public List<FileActionFailure> Problems { get; } = [];
         public bool ConfirmDeletion(FileDeletionPreflight preflight)
         { Confirmations.Add(preflight); return Confirm(preflight); }
+        public bool ConfirmFiles(string title, string message) => true;
         public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures) => Problems.AddRange(failures);
     }
 }
