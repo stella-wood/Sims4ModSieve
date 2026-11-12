@@ -56,7 +56,7 @@ public sealed class BareIconButtonHitTests
                     Assert.IsTrue(IsInsideButton(hit, button), $"Hit at {point} did not route through the button.");
                 }
 
-                var confirmation = new DeleteConfirmationWindow();
+                var confirmation = new MultiFileConfirmationWindow("删除文件", "请先关闭游戏\n确定删除所选文件？");
 
                 WpfTestHost.ShowOffScreen(confirmation);
                 confirmation.UpdateLayout();

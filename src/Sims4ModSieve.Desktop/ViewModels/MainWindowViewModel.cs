@@ -73,7 +73,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             settingsStore is DuplicateSettingsStore diskModSettings ? diskModSettings.DataDirectory
                 : Path.Combine(Path.GetTempPath(), "Sims4ModSieve", Guid.NewGuid().ToString("N")));
         this.pickDisabledFiles = pickDisabledFiles ?? PickDisabledFiles;
-        this.confirmModChange = confirmModChange ?? ConfirmModChange;
+        this.confirmModChange = confirmModChange;
         this.fileActionService = fileActionService ?? new FileActionService(new WindowsRecycleBinAdapter(),
             new PhysicalFileMetadataAccess(), this.fileManagementStore, this.modDisableService);
         this.fileActionDialogs = fileActionDialogs ?? new FileActionDialogService();

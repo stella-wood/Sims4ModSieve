@@ -14,7 +14,7 @@ public sealed partial class MainWindowViewModel
     private readonly Func<IReadOnlyList<string>> pickIgnoredFiles;
     private readonly ModDisableService modDisableService;
     private readonly Func<IReadOnlyList<string>> pickDisabledFiles;
-    private readonly Func<string, bool> confirmModChange;
+    private readonly Func<string, bool>? confirmModChange;
     private IReadOnlyList<DisabledModRecord> disabledRecords = [];
     private IReadOnlyList<IgnoredFileRecord> ignoredRecords = [];
     private string fileManagementFeedback = string.Empty;
@@ -114,11 +114,15 @@ public sealed partial class MainWindowViewModel
         if (IsBusy || paths.Count == 0) return;
         try
         {
-            var candidates = paths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).Select(path =>
+            var candidates = paths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(path => !ignoredRecords.Any(record => StringComparer.OrdinalIgnoreCase.Equals(record.Path, path))).Select(path =>
             {
                 var info = new FileInfo(path);
                 return new IgnoredFileRecord(path, info.Length, DateTime.UtcNow);
             }).ToArray();
+            if (candidates.Length == 0) return;
+            if (candidates.Length > 1 && !fileActionDialogs.ConfirmFiles("忽略文件",
+                MultiFileConfirmationWindow.ConfirmationMessage("忽略", candidates.Length, closeGame: false))) return;
             ChangeManagementData(data => data with { Ignored = data.Ignored.Concat(candidates)
                 .DistinctBy(record => record.Path, StringComparer.OrdinalIgnoreCase).ToArray() });
         }
@@ -136,7 +140,12 @@ public sealed partial class MainWindowViewModel
     public void RemoveIgnoredFiles(IReadOnlyList<string> paths)
     {
         if (IsBusy || paths.Count == 0) return;
-        var remove = paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var requested = paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var remove = ignoredRecords.Where(record => requested.Contains(record.Path))
+            .Select(record => record.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (remove.Count == 0) return;
+        if (remove.Count > 1 && !fileActionDialogs.ConfirmFiles("忽略文件",
+            MultiFileConfirmationWindow.ConfirmationMessage("取消忽略", remove.Count, closeGame: false))) return;
         ChangeManagementData(data => data with { Ignored = data.Ignored.Where(record => !remove.Contains(record.Path)).ToArray() });
     }
 
@@ -221,9 +230,9 @@ public sealed partial class MainWindowViewModel
         return dialog.ShowDialog() == true ? dialog.FileNames : [];
     }
 
-    private static bool ConfirmModChange(string action) => MessageBox.Show(Application.Current.MainWindow,
-        $"请先关闭游戏\n确定{action}所选文件？", "", MessageBoxButton.YesNo, MessageBoxImage.Warning,
-        MessageBoxResult.No) == MessageBoxResult.Yes;
+    private bool ConfirmModChange(string action, int count) => confirmModChange?.Invoke(action)
+        ?? fileActionDialogs.ConfirmFiles(action + "文件",
+            MultiFileConfirmationWindow.ConfirmationMessage(action, count, closeGame: true));
 
     private AsyncRelayCommand ModChangeCommand(Func<Task> action, Func<bool>? canExecute = null) =>
         new(action, exception => FileManagementFeedback = exception.Message,
@@ -246,7 +255,7 @@ public sealed partial class MainWindowViewModel
     public async Task DisableFilesAsync(IReadOnlyList<string> paths,
         IReadOnlyDictionary<string, FileStamp>? expectedStamps = null, bool confirmed = false)
     {
-        if (IsBusy || paths.Count == 0 || (!confirmed && !confirmModChange("禁用"))) return;
+        if (IsBusy || paths.Count == 0 || (!confirmed && !ConfirmModChange("禁用", paths.Count))) return;
         var generation = resultGeneration;
         var snapshot = Groups.Select(group => group.Model).ToArray();
         IsBusy = true;
@@ -309,7 +318,7 @@ public sealed partial class MainWindowViewModel
 
     public async Task RestoreDisabledFilesAsync(IReadOnlyList<string> ids)
     {
-        if (IsBusy || ids.Count == 0 || !confirmModChange("启用")) return;
+        if (IsBusy || ids.Count == 0 || !ConfirmModChange("启用", ids.Count)) return;
         var records = disabledRecords.Where(record => ids.Contains(record.Id)).ToArray();
         var generation = resultGeneration;
         var session = conflictSession;
