@@ -175,6 +175,74 @@ public sealed class ConflictRelationshipsDialogTests
         ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();
 
     [TestMethod]
+    public Task RelationshipDialogStartsOpeningBeforeItBecomesVisible() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        var window = OpenWindow(model);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var session = ReviewSession();
+        var card = session.Cards.First(item => item.Type == "override" && item.Files.Any(file => file.Path == A));
+        session.ToggleExpanded(card.Key);
+        await SetSessionAsync(model, session, "all");
+        await WpfTestHost.LayoutAsync(window);
+        var file = model.ConflictRows.Single(row => row.OwnerKey == card.Key && row.File?.Path == A);
+        var dialog = Descendants<ConflictRelationshipsDialog>(window).Single();
+        var pane = (Border)dialog.FindName("Pane");
+        var initiallyVisible = false;
+        var fullyOpaqueWhenShown = false;
+        dialog.IsVisibleChanged += (_, _) =>
+        {
+            if (!dialog.IsVisible) return;
+            initiallyVisible = true;
+            fullyOpaqueWhenShown = pane.Opacity >= 1;
+        };
+        model.OpenConflictRelationshipsCommand.Execute(file);
+        Assert.IsTrue(initiallyVisible);
+        if (SystemParameters.ClientAreaAnimation) Assert.IsFalse(fullyOpaqueWhenShown, "打开弹窗时不应先显示完全不透明的面板");
+        await Task.Delay(280);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(pane.IsVisible);
+        model.CloseConflictRelationshipsCommand.Execute(null);
+        await Task.Delay(230);
+        Assert.IsFalse(dialog.IsVisible);
+    });
+
+    [TestMethod]
+    public Task RelationshipBackdropFadesOnOpenAndClose() => WpfTestHost.RunAsync(async () =>
+    {
+        var model = CreateModel();
+        var window = OpenWindow(model);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var session = ReviewSession();
+        var card = session.Cards.First(item => item.Type == "override" && item.Files.Any(file => file.Path == A));
+        session.ToggleExpanded(card.Key);
+        await SetSessionAsync(model, session, "all");
+        await WpfTestHost.LayoutAsync(window);
+        var file = model.ConflictRows.Single(row => row.OwnerKey == card.Key && row.File?.Path == A);
+        var dialog = Descendants<ConflictRelationshipsDialog>(window).Single();
+        var backdrop = (Grid)dialog.FindName("Backdrop");
+        var brush = (SolidColorBrush)backdrop.Background;
+        var visibleWithTransparentBackdrop = false;
+        dialog.IsVisibleChanged += (_, _) =>
+        {
+            if (dialog.IsVisible) visibleWithTransparentBackdrop = brush.Opacity == 0;
+        };
+        model.OpenConflictRelationshipsCommand.Execute(file);
+        Assert.IsTrue(visibleWithTransparentBackdrop, "显示弹窗时遮罩应从透明开始");
+        Assert.IsTrue(brush.HasAnimatedProperties);
+        await Task.Delay(280);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(brush.Opacity > 0, "打开后应显示遮罩");
+        model.CloseConflictRelationshipsCommand.Execute(null);
+        Assert.IsTrue(brush.HasAnimatedProperties);
+        await Task.Delay(230);
+        Assert.IsFalse(dialog.IsVisible);
+        Assert.AreEqual(0d, brush.Opacity, "关闭后遮罩应淡出");
+    });
+
+    [TestMethod]
     public Task DialogShowsDirectRelationsCopiesAndRestoresFocusAfterEscape() => WpfTestHost.RunAsync(async () =>
     {
         var model = CreateModel();
