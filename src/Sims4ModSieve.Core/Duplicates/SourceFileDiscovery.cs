@@ -76,7 +76,7 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
                     "source-not-found",
                     ScanIssueStage.SourceValidation,
                     source.Path,
-                    "Scan source does not exist or is not a directory.",
+                    "找不到这个文件夹，可能已被移动、改名，或所在的磁盘没有连接。",
                     source.Id));
                 continue;
             }
