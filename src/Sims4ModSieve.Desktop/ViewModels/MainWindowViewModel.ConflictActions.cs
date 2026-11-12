@@ -53,14 +53,15 @@ public sealed partial class MainWindowViewModel
         });
         ToggleConflictFileEnabledCommand = new RelayCommand(value =>
         {
-            if (IsConflictMultiSelect && HasConflictSelection) { ConflictFileActionTask = DisableSelectedConflictFilesAsync(); return; }
-            if (value is ConflictResultRow row) ConflictFileActionTask = ToggleConflictFileEnabledAsync(row);
-        }, value => !IsBusy && (IsConflictMultiSelect && HasConflictSelection || value is ConflictResultRow { File.Stamp: not null }));
+            if (value is not ConflictResultRow row) return;
+            if (ConflictActionAppliesToSelection(row)) { ConflictFileActionTask = DisableSelectedConflictFilesAsync(); return; }
+            ConflictFileActionTask = ToggleConflictFileEnabledAsync(row);
+        }, CanRunConflictRowAction);
         IgnoreConflictCommand = new RelayCommand(value =>
         {
-            if (!IsConflictComplete) return;
-            if (IsConflictMultiSelect && HasConflictSelection) { IgnoreSelectedConflictFiles(); return; }
-            if (value is ConflictResultRow row) TogglePersistentIgnoredFile(row);
+            if (!IsConflictComplete || value is not ConflictResultRow row) return;
+            if (ConflictActionAppliesToSelection(row)) { IgnoreSelectedConflictFiles(); return; }
+            TogglePersistentIgnoredFile(row);
         }, _ => !IsBusy);
         OpenConflictRelationshipsCommand = new RelayCommand(value =>
         {
@@ -104,10 +105,14 @@ public sealed partial class MainWindowViewModel
         });
         DeleteConflictFileCommand = new RelayCommand(value =>
         {
-            if (IsConflictMultiSelect && HasConflictSelection) { ConflictFileActionTask = DeleteSelectedConflictFilesAsync(); return; }
-            if (value is ConflictResultRow row) ConflictFileActionTask = DeleteConflictFileAsync(row);
-        }, value => !IsBusy && (IsConflictMultiSelect && HasConflictSelection || value is ConflictResultRow { File.Stamp: not null }));
+            if (value is not ConflictResultRow row) return;
+            if (ConflictActionAppliesToSelection(row)) { ConflictFileActionTask = DeleteSelectedConflictFilesAsync(); return; }
+            ConflictFileActionTask = DeleteConflictFileAsync(row);
+        }, CanRunConflictRowAction);
     }
+
+    private bool CanRunConflictRowAction(object? value) => !IsBusy && value is ConflictResultRow row
+        && (ConflictActionAppliesToSelection(row) || row.File is { Stamp: not null });
 
     private DisabledModRecord? DisabledRecordFor(ConflictResultRow row) => row.File is { Stamp: { } stamp } file
         ? disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, file.Path)

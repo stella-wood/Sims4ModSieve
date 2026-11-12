@@ -162,8 +162,7 @@ public sealed class ConflictMultiSelectTests
         var rows = model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File).ToArray();
         model.SetConflictFileSelected(rows.Single(row => row.File!.Path == files.A), true);
         model.SetConflictFileSelected(rows.Single(row => row.File!.Path == files.B), true);
-        var third = rows.Single(row => row.File!.Path == files.C);
-        model.DeleteConflictFileCommand.Execute(third);
+        model.DeleteConflictFileCommand.Execute(rows.Single(row => row.File!.Path == files.A));
         await model.ConflictFileActionTask;
         CollectionAssert.AreEquivalent(new[] { files.A, files.B }, adapter.Deleted.ToArray());
         Assert.AreEqual(1, dialogs.Confirmations.Count);
@@ -172,6 +171,29 @@ public sealed class ConflictMultiSelectTests
         CollectionAssert.AreEqual(new[] { files.C }, model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File)
             .Select(row => row.File!.Path).ToArray());
         Assert.AreEqual(0, model.ConflictSelectedCount);
+        Assert.IsTrue(model.CanUndoConflictDelete);
+    });
+
+    [TestMethod]
+    public Task UnselectedRowActionTargetsOnlyThatRowAndKeepsSelection() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out var adapter, out var dialogs);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        model.IsConflictMultiSelect = true;
+        var rows = model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File).ToArray();
+        model.SetConflictFileSelected(rows.Single(row => row.File!.Path == files.A), true);
+        model.SetConflictFileSelected(rows.Single(row => row.File!.Path == files.B), true);
+        model.DeleteConflictFileCommand.Execute(rows.Single(row => row.File!.Path == files.C));
+        await model.ConflictFileActionTask;
+        CollectionAssert.AreEqual(new[] { files.C }, adapter.Deleted.ToArray());
+        Assert.AreEqual(0, dialogs.Confirmations.Count, "未勾选的行仍走单文件确认");
+        CollectionAssert.AreEquivalent(new[] { files.A, files.B }, model.ConflictRows
+            .Where(row => row.Kind == ConflictRowKind.File).Select(row => row.File!.Path).ToArray());
+        Assert.AreEqual(2, model.ConflictSelectedCount);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File).All(row => row.Selection.IsSelected == true));
         Assert.IsTrue(model.CanUndoConflictDelete);
     });
 
@@ -231,17 +253,27 @@ public sealed class ConflictMultiSelectTests
         await WpfTestHost.LayoutAsync(window);
         model.IsConflictMultiSelect = true;
         model.SetConflictFileSelected(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == files.A), true);
-        var row = model.ConflictRows.Single(item => item.Kind == ConflictRowKind.File && item.File?.Path == files.B);
-        var surface = Descendants<Border>(window).Single(border => border.Name == "FileSurface" && ReferenceEquals(border.DataContext, row));
+        var selected = model.ConflictRows.Single(item => item.Kind == ConflictRowKind.File && item.File?.Path == files.A);
+        var selectedSurface = Descendants<Border>(window).Single(border => border.Name == "FileSurface" && ReferenceEquals(border.DataContext, selected));
         await WpfTestHost.LayoutAsync(window);
-        await WpfTestHost.MoveMouseAsync(surface);
+        await WpfTestHost.MoveMouseAsync(selectedSurface);
         RightClick();
         await Task.Delay(200);
-        var menu = surface.ContextMenu;
+        var menu = selectedSurface.ContextMenu;
         Assert.IsTrue(menu.IsOpen);
         CollectionAssert.AreEqual(new[] { "打开所在文件夹", "复制路径", "禁用所选", "删除所选", "查看文件关系", "忽略所选" },
             menu.Items.OfType<MenuItem>().Select(item => item.Header.ToString()).ToArray());
         menu.IsOpen = false;
+
+        var row = model.ConflictRows.Single(item => item.Kind == ConflictRowKind.File && item.File?.Path == files.B);
+        var surface = Descendants<Border>(window).Single(border => border.Name == "FileSurface" && ReferenceEquals(border.DataContext, row));
+        await WpfTestHost.MoveMouseAsync(surface);
+        RightClick();
+        await Task.Delay(200);
+        Assert.IsTrue(surface.ContextMenu.IsOpen);
+        CollectionAssert.AreEqual(new[] { "打开所在文件夹", "复制路径", "禁用", "删除", "查看文件关系", "忽略该文件" },
+            surface.ContextMenu.Items.OfType<MenuItem>().Select(item => item.Header.ToString()).ToArray());
+        surface.ContextMenu.IsOpen = false;
     });
 
     [TestMethod]

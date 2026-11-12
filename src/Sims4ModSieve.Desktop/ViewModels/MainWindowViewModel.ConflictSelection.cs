@@ -32,6 +32,10 @@ public sealed partial class MainWindowViewModel
     public string ConflictMultiSelectText => IsConflictMultiSelect ? "取消多选" : "多选";
     public bool CanRunConflictSelectionAction => IsConflictMultiSelect && HasConflictSelection && !IsBusy && IsConflictComplete;
 
+    // 行上的操作只在那一行已勾选时扩展到全部勾选；未勾选的行只作用于自己。
+    public bool ConflictActionAppliesToSelection(ConflictResultRow row) =>
+        IsConflictMultiSelect && row.File is { } file && conflictSelectedPaths.Contains(file.Path);
+
     private void InitializeConflictSelection()
     {
         DeleteSelectedConflictFilesCommand = new AsyncRelayCommand(DeleteSelectedConflictFilesAsync,

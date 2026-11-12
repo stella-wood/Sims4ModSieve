@@ -66,7 +66,7 @@ public partial class ConflictPage : UserControl
         CloseFileMenu();
         fileMenu = menu;
         menu.Items.Clear();
-        var batch = model.IsConflictMultiSelect && model.ConflictSelectedCount > 0;
+        var batch = model.ConflictActionAppliesToSelection(row);
         void Add(string text, ICommand command) => menu.Items.Add(new MenuItem { Header = text, Command = command, CommandParameter = row, Style = (Style)FindResource("FileMenuItemStyle") });
         Add("打开所在文件夹", model.OpenConflictFolderCommand);
         Add("复制路径", model.CopyConflictPathCommand);
