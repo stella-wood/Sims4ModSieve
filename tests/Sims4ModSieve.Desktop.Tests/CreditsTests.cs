@@ -25,7 +25,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -61,7 +61,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -104,7 +104,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -145,7 +145,7 @@ public sealed class CreditsTests
         });
         var model = files.Model(support: support);
         var window = new MainWindow(model) { Width = 920, Height = 640 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -171,7 +171,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -217,7 +217,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -250,7 +250,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -303,7 +303,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -370,10 +370,10 @@ public sealed class CreditsTests
         var recording = Environment.GetEnvironmentVariable("SIMS4_CREDITS_ANIMATION_REVIEW") == "1";
         if (recording)
         {
-            WpfTestHost.PlaceOnScreen(window);
             window.PreviewMouseDown += (_, e) => { if (e.Timestamp != 0) e.Handled = true; };
         }
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
+        if (recording) WpfTestHost.PlaceOnScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -438,7 +438,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -501,11 +501,11 @@ public sealed class CreditsTests
         var recording = Environment.GetEnvironmentVariable("SIMS4_CREDITS_ANIMATION_REVIEW") == "1";
         if (recording)
         {
-            WpfTestHost.PlaceOnScreen(window);
             // 录制只回放脚本点击，避免桌面上的真实鼠标点击混入。
             window.PreviewMouseDown += (_, e) => { if (e.Timestamp != 0) e.Handled = true; };
         }
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
+        if (recording) WpfTestHost.PlaceOnScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -570,7 +570,7 @@ public sealed class CreditsTests
                 var support = new SettingsSupportService(files.Root, openSupporters: () => new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json)));
                 var model = files.Model(support: support);
                 var window = new MainWindow(model) { Width = size.Width, Height = size.Height };
-                window.Show();
+                WpfTestHost.ShowOffScreen(window);
                 model.OpenSettingsCommand.Execute(null);
                 model.SelectSettingsSectionCommand.Execute("credits");
                 await WpfTestHost.LayoutAsync(window);
@@ -605,7 +605,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -673,7 +673,7 @@ public sealed class CreditsTests
             .Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name!.Trim()).ToArray();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);
@@ -697,7 +697,7 @@ public sealed class CreditsTests
         {
             var model = files.Model(support: new SettingsSupportService(files.Root, openSupporters: () => File.OpenRead(path)));
             var window = new MainWindow(model) { Width = 1180, Height = 780 };
-            window.Show();
+            WpfTestHost.ShowOffScreen(window);
             model.OpenSettingsCommand.Execute(null);
             model.SelectSettingsSectionCommand.Execute("credits");
             await WpfTestHost.LayoutAsync(window);
@@ -728,8 +728,8 @@ public sealed class CreditsTests
         var model = files.Model();
         var nativeInput = Environment.GetEnvironmentVariable("SIMS4_CREDITS_NATIVE_REVIEW") == "1";
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        WpfTestHost.ShowOffScreen(window);
         if (nativeInput) WpfTestHost.PlaceOnScreen(window);
-        window.Show();
         model.OpenSettingsCommand.Execute(null);
         await WpfTestHost.LayoutAsync(window);
         var page = Descendants<SettingsPage>(window).Single();
@@ -818,7 +818,7 @@ public sealed class CreditsTests
         using var files = new Scenario();
         var model = files.Model();
         var window = new MainWindow(model) { Width = 920, Height = 640 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("credits");
         await WpfTestHost.LayoutAsync(window);

@@ -502,8 +502,6 @@ public sealed class ConflictV2SessionTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Left = 70;
-        window.Top = 50;
         foreach (var mixed in new[] { false, true })
         {
             var comparisons = mixed ? new[] { Resource(1, (A, "same"), (B, "same"), (C, "other")) }

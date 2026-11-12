@@ -145,7 +145,7 @@ public sealed class UpdateCheckTests
         using var handler = UpdateDownloadTests.ValidHandler();
         using var client = new HttpClient(handler);
         var window = new MainWindow(model);
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         WpfTestHost.PlaceOnScreen(window);
         await WpfTestHost.LayoutAsync(window);
         var icon = (Button)window.FindName("UpdateButton");

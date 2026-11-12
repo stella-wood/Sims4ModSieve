@@ -43,8 +43,6 @@ public sealed class ConflictRelationshipsDialogTests
     {
         var model = CreateModel();
         var window = OpenWindow(model);
-        window.Left = 70;
-        window.Top = 50;
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
@@ -246,9 +244,6 @@ public sealed class ConflictRelationshipsDialogTests
     {
         var model = CreateModel();
         var window = OpenWindow(model);
-        // 本测试打开真实 WPF 窗口，同时保存客户区供人工检查。
-        window.Left = 70;
-        window.Top = 50;
         var trace = new StringWriter();
         var listener = new TextWriterTraceListener(trace);
         PresentationTraceSources.DataBindingSource.Listeners.Add(listener);
@@ -513,10 +508,7 @@ public sealed class ConflictRelationshipsDialogTests
     {
         var model = CreateModel();
         var window = OpenWindow(model);
-        window.Left = 60;
-        window.Top = 40;
-        window.Topmost = true;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var session = ReviewSession();

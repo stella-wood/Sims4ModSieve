@@ -34,7 +34,7 @@ public sealed class PortableScanLocationTests
         model.Sources.Clear();
         model.ConflictSources.Clear();
         var window = new MainWindow(model);
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenDuplicateScannerCommand.Execute(null);
         Assert.IsFalse(model.HasApplicationLocationWarning);
         var source = new ScanSourceViewModel(app);
@@ -82,7 +82,7 @@ public sealed class PortableScanLocationTests
         if (programFilesOnly) File.WriteAllText(Path.Combine(app, "Sims4ModSieve.exe"), "program");
         var model = CreateModel(files, app, app);
         var window = new MainWindow(model);
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenDuplicateScannerCommand.Execute(null);
         await model.StartScanCommand.ExecuteAsync();
         await WpfTestHost.LayoutAsync(window);

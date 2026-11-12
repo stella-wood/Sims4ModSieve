@@ -35,8 +35,8 @@ public sealed class DuplicateGroupHeaderTests
             new NoFolderPicker(), new EmptySettingsStore(), resultSession: session);
         model.OpenDuplicateScannerCommand.Execute(null);
         session.Replace(groups);
-        var window = new MainWindow(model) { Left = -10000, Top = -10000, ShowActivated = false, ShowInTaskbar = false };
-        window.Show();
+        var window = new MainWindow(model);
+        WpfTestHost.ShowOffScreen(window);
 
         foreach (var (width, height) in new[] { (1180, 780), (920, 640) })
         {
@@ -109,6 +109,7 @@ public sealed class DuplicateGroupHeaderTests
         {
             Left = 60, Top = 40, Width = width, Height = height, Topmost = true, ShowInTaskbar = false,
         };
+        // 真实鼠标点击与键盘空格需要屏内窗口。
         window.Show();
         window.Activate();
         await WpfTestHost.LayoutAsync(window);

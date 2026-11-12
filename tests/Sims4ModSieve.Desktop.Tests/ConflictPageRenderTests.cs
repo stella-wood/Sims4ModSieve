@@ -40,7 +40,7 @@ public sealed class ConflictPageRenderTests
         session.ToggleExpanded(session.Cards.Single().Key);
         await SetSessionAsync(model, session, "all");
         var window = OpenWindow(model);
-        window.Left = 30; window.Top = 30; window.Topmost = true; window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await WpfTestHost.LayoutAsync(window);
         var row = model.ConflictRows.First(row => row.File is not null);
         var surface = Descendants<Border>(window).Single(border => border.Name == "FileSurface" && ReferenceEquals(border.DataContext, row));
@@ -218,9 +218,7 @@ public sealed class ConflictPageRenderTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Left = 70;
-        window.Top = 50;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await SetSessionAsync(model, session, "all");
         await WpfTestHost.LayoutAsync(window);
         var row = model.ConflictRows.Single(row => row.File?.Path == A);
@@ -263,9 +261,7 @@ public sealed class ConflictPageRenderTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Left = 70;
-        window.Top = 50;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await SetSessionAsync(model, session, "all");
         await WpfTestHost.LayoutAsync(window);
         var explanation = model.ConflictRows.Single(row => row.Kind == ConflictRowKind.Explanation);
@@ -339,9 +335,7 @@ public sealed class ConflictPageRenderTests
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        window.Left = 70;
-        window.Top = 50;
-        window.Activate();
+        WpfTestHost.PlaceOnScreen(window);
         await SetSessionAsync(model, ConflictV2SessionTests.ContainmentSession(), "all");
         model.IncludeConflictScripts = false;
         await model.ConflictRowsRefreshTask;
@@ -478,12 +472,11 @@ public sealed class ConflictPageRenderTests
         // 与正式应用一样加载 Assets/Sims4ModSieve.ico，标题栏图标才有证据。
         var window = new MainWindow(model)
         {
-            Left = -10000, Top = -10000, ShowActivated = false, ShowInTaskbar = false,
             Icon = BitmapFrame.Create(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "Sims4ModSieve.ico"))),
         };
         return Show(window);
     }
-    private static MainWindow Show(MainWindow window) { window.Show(); return window; }
+    private static MainWindow Show(MainWindow window) { WpfTestHost.ShowOffScreen(window); return window; }
 
     internal static async Task SetSessionAsync(MainWindowViewModel model, ConflictResultSession session, string view = "resources")
     {

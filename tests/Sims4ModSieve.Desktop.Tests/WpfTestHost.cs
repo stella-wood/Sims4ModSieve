@@ -76,9 +76,32 @@ internal static class WpfTestHost
         await window.Dispatcher.InvokeAsync(() => window.UpdateLayout(), DispatcherPriority.ApplicationIdle);
     }
 
+    public static void ShowOffScreen(Window window)
+    {
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = -10000;
+        window.Top = -10000;
+        window.ShowActivated = false;
+        window.ShowInTaskbar = false;
+        window.StateChanged += HideMaximizedWindow;
+        window.Show();
+        window.UpdateLayout();
+    }
+
+    private static void HideMaximizedWindow(object? sender, EventArgs args)
+    {
+        // 最大化会把屏外窗口移回显示器，透明度避免布局测试遮住桌面。
+        var window = (Window)sender!;
+        window.Opacity = window.WindowState == WindowState.Maximized ? 0 : 1;
+    }
+
+    // 仅真实鼠标输入、键盘焦点或前台激活测试使用；其余窗口用 ShowOffScreen。
     public static void PlaceOnScreen(Window window, double width = 1180, double height = 780, Rect? workArea = null)
     {
         var area = workArea ?? SystemParameters.WorkArea;
+        window.StateChanged -= HideMaximizedWindow;
+        window.Opacity = 1;
+        window.ShowInTaskbar = false;
         window.WindowState = WindowState.Normal;
         var availableWidth = Math.Min(width, area.Width - 32);
         var availableHeight = Math.Min(height, area.Height - 32);
@@ -90,6 +113,7 @@ internal static class WpfTestHost
         window.Top = area.Top + (area.Height - availableHeight) / 2;
         window.Topmost = true;
         window.Activate();
+        window.UpdateLayout();
         var dpi = VisualTreeHelper.GetDpi(window);
         Console.WriteLine($"Native input window: workArea={area}; bounds={new Rect(window.Left, window.Top, window.Width, window.Height)}; dpi={dpi.PixelsPerInchX}x{dpi.PixelsPerInchY}");
     }

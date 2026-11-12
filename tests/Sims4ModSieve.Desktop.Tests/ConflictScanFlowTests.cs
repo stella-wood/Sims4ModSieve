@@ -27,7 +27,7 @@ public sealed class ConflictScanFlowTests
         WritePackage(mods, "b.package", 0, "second", toolingType);
         var model = CreateViewModel(mods);
         var window = new MainWindow(model);
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         await model.StartConflictScanCommand.ExecuteAsync();

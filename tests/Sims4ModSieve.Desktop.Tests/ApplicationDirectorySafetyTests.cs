@@ -113,7 +113,7 @@ public sealed class ApplicationDirectorySafetyTests
         var window = new MainWindow(model);
         try
         {
-            window.Show();
+            WpfTestHost.ShowOffScreen(window);
             await WpfTestHost.LayoutAsync(window);
             var notice = (Border)window.FindName("ApplicationLocationNotice");
             Assert.IsTrue(notice.IsVisible);

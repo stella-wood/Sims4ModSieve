@@ -32,15 +32,11 @@ public sealed class BareIconButtonHitTests
                 {
                     Width = 100,
                     Height = 100,
-                    Left = -10000,
-                    Top = -10000,
-                    ShowActivated = false,
-                    ShowInTaskbar = false,
                     WindowStyle = WindowStyle.None,
                     Content = button,
                 };
 
-                host.Show();
+                WpfTestHost.ShowOffScreen(host);
                 button.ApplyTemplate();
                 host.UpdateLayout();
 
@@ -60,15 +56,9 @@ public sealed class BareIconButtonHitTests
                     Assert.IsTrue(IsInsideButton(hit, button), $"Hit at {point} did not route through the button.");
                 }
 
-                var confirmation = new DeleteConfirmationWindow
-                {
-                    Left = -10000,
-                    Top = -10000,
-                    ShowActivated = false,
-                    ShowInTaskbar = false,
-                };
+                var confirmation = new DeleteConfirmationWindow();
 
-                confirmation.Show();
+                WpfTestHost.ShowOffScreen(confirmation);
                 confirmation.UpdateLayout();
                 Assert.IsTrue(confirmation.IsVisible);
                 confirmation.Close();
