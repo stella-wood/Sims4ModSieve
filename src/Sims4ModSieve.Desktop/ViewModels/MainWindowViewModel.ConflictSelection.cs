@@ -21,6 +21,7 @@ public sealed partial class MainWindowViewModel
         {
             if (!SetProperty(ref isConflictMultiSelect, value)) return;
             if (!value) ClearConflictSelection();
+            OnPropertyChanged(nameof(ConflictMultiSelectText));
             RefreshConflictSelection();
         }
     }
@@ -28,6 +29,7 @@ public sealed partial class MainWindowViewModel
     public int ConflictSelectedCount => conflictSelectedPaths.Count;
     public bool HasConflictSelection => conflictSelectedPaths.Count > 0;
     public string ConflictSelectionText => $"已勾选 {ConflictSelectedCount} 份文件";
+    public string ConflictMultiSelectText => IsConflictMultiSelect ? "取消多选" : "多选";
     public bool CanRunConflictSelectionAction => IsConflictMultiSelect && HasConflictSelection && !IsBusy && IsConflictComplete;
 
     private void InitializeConflictSelection()

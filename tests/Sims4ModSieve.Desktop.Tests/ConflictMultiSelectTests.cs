@@ -29,6 +29,7 @@ public sealed class ConflictMultiSelectTests
         var toggle = Descendants<ToggleButton>(window).Single(button => button.Name == "ConflictMultiSelectButton");
         Assert.IsTrue(toggle.IsVisible);
         Assert.IsFalse(toggle.IsChecked);
+        Assert.AreEqual("多选", toggle.Content);
         var checkboxes = Descendants<CheckBox>(window).Where(box => box.Name is "FileSelection" or "GroupSelection").ToArray();
         Assert.AreEqual(4, checkboxes.Length);
         Assert.IsTrue(checkboxes.All(box => !box.IsVisible));
@@ -39,6 +40,7 @@ public sealed class ConflictMultiSelectTests
         await WpfTestHost.LayoutAsync(window);
         Assert.IsTrue(model.IsConflictMultiSelect);
         Assert.IsTrue(toggle.IsChecked);
+        Assert.AreEqual("取消多选", toggle.Content);
         Assert.IsTrue(checkboxes.Where(box => box.Name == "FileSelection").All(box => box.IsVisible));
         Assert.IsTrue(checkboxes.Single(box => box.Name == "GroupSelection").IsVisible);
         var delete = Descendants<Button>(window).Single(button => button.Name == "DeleteSelectedConflictFilesButton");
@@ -67,6 +69,7 @@ public sealed class ConflictMultiSelectTests
         await WpfTestHost.ClickAsync(toggle);
         await WpfTestHost.LayoutAsync(window);
         Assert.IsFalse(model.IsConflictMultiSelect);
+        Assert.AreEqual("多选", toggle.Content);
         Assert.IsTrue(checkboxes.All(box => !box.IsVisible));
         Assert.IsFalse(delete.IsVisible);
     });
@@ -102,12 +105,19 @@ public sealed class ConflictMultiSelectTests
         Assert.AreEqual(2, model.ConflictSelectedCount);
         Assert.IsNull(header.Selection.IsSelected);
         Assert.IsNull(group.IsChecked);
+        group.ApplyTemplate();
+        Assert.AreEqual(Visibility.Visible, ((FrameworkElement)group.Template.FindName("Partial", group)!).Visibility);
+        Assert.AreEqual(Visibility.Collapsed, ((FrameworkElement)group.Template.FindName("Check", group)!).Visibility);
         Save(window, "multi-select-partial.png");
 
         await WpfTestHost.ClickAsync(group);
         await WpfTestHost.LayoutAsync(window);
         Assert.AreEqual(3, model.ConflictSelectedCount);
         Assert.AreEqual(true, header.Selection.IsSelected);
+        group.ApplyTemplate();
+        Assert.AreEqual(Visibility.Collapsed, ((FrameworkElement)group.Template.FindName("Partial", group)!).Visibility);
+        Assert.AreEqual(Visibility.Visible, ((FrameworkElement)group.Template.FindName("Check", group)!).Visibility);
+        Save(window, "multi-select-group.png");
 
         await WpfTestHost.ClickAsync(group);
         await WpfTestHost.LayoutAsync(window);
