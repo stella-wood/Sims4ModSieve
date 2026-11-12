@@ -149,6 +149,8 @@ public sealed class StartupSplashScreenTests
 
     [TestMethod]
     [DataRow("normal")]
+    [DataRow("same-version")]
+    [DataRow("updated-version")]
     [DataRow("second-instance")]
     [DataRow("main-window-failure")]
     [DataRow("missing-splash")]
@@ -156,6 +158,10 @@ public sealed class StartupSplashScreenTests
     {
         var directory = Path.Combine(Path.GetTempPath(), "s4ms-startup-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
+        var version = new Sims4ModSieve.Desktop.Services.SettingsSupportService().ProductVersion;
+        var versionPath = Path.Combine(directory, "startup-version.txt");
+        if (scenario == "same-version") File.WriteAllText(versionPath, version);
+        if (scenario == "updated-version") File.WriteAllText(versionPath, "older-version");
         var dotnet = Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "dotnet.exe"));
         var start = new ProcessStartInfo(dotnet)
         {
@@ -198,14 +204,14 @@ public sealed class StartupSplashScreenTests
                 }
                 if (!creatingWindow && rendered.IsCompletedSuccessfully && await rendered is { } splashState)
                 {
-                    var expectedSplash = scenario is "normal" or "main-window-failure";
+                    var expectedSplash = scenario is "normal" or "updated-version" or "main-window-failure";
                     Assert.AreEqual(expectedSplash ? "SPLASH" : "NO_SPLASH", splashState);
                     Assert.AreEqual(expectedSplash, hasSplash);
                     creatingWindow = true;
                     rendered = child.StandardOutput.ReadLineAsync();
                     await child.StandardInput.WriteLineAsync();
                 }
-                else if (scenario is "normal" or "missing-splash" && !released && rendered.IsCompletedSuccessfully)
+                else if (scenario is "normal" or "same-version" or "updated-version" or "missing-splash" && !released && rendered.IsCompletedSuccessfully)
                 {
                     Assert.AreEqual("RENDERED", await rendered);
                     Assert.IsFalse(hasSplash, "主窗口渲染后必须关闭启动画面。");
@@ -217,10 +223,14 @@ public sealed class StartupSplashScreenTests
             Assert.IsTrue(child.HasExited, "启动探针未正常退出。");
             Assert.AreEqual(scenario == "main-window-failure" ? -1 : 0,
                 child.ExitCode, await error);
-            Assert.AreEqual(scenario is "normal" or "main-window-failure", sawSplash);
-            Assert.AreEqual(scenario is "normal" or "missing-splash", sawMain);
+            Assert.AreEqual(scenario is "normal" or "updated-version" or "main-window-failure", sawSplash);
+            Assert.AreEqual(scenario is "normal" or "same-version" or "updated-version" or "missing-splash", sawMain);
             Assert.AreEqual(scenario == "main-window-failure", sawError);
             Assert.AreEqual(scenario != "second-instance", creatingWindow);
+            if (scenario is "normal" or "same-version" or "updated-version")
+                Assert.AreEqual(version, File.ReadAllText(versionPath));
+            if (scenario is "main-window-failure" or "missing-splash" or "second-instance")
+                Assert.IsFalse(File.Exists(versionPath), "启动图未成功展示并完成主窗口渲染时不能记录版本。");
             if (sawError || scenario == "missing-splash")
             {
                 var log = File.ReadAllText(Path.Combine(directory, "startup-error.log"));
@@ -291,7 +301,7 @@ public sealed class StartupSplashScreenTests
         app.InitializeComponent();
         if (scenario == "main-window-failure") app.Resources["WindowBrush"] = new object();
         var activation = scenario.StartsWith("activation-", StringComparison.Ordinal) && scenario != "activation-second";
-        if (scenario is "normal" or "missing-splash" || activation)
+        if (scenario is "normal" or "same-version" or "updated-version" or "missing-splash" || activation)
         {
             app.Dispatcher.BeginInvoke(() =>
             {

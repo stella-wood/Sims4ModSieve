@@ -69,9 +69,15 @@ public partial class App : Application
             });
             activationSource.AddHook(ReceiveActivation);
 
+            var version = new SettingsSupportService().ProductVersion;
+            var splashShown = false;
             try
             {
-                splashScreen?.Show(autoClose: false);
+                if (splashScreen is not null && ShouldShowSplash(version))
+                {
+                    splashScreen.Show(autoClose: false);
+                    splashShown = true;
+                }
             }
             catch (Exception exception)
             {
@@ -82,7 +88,15 @@ public partial class App : Application
             var window = createMainWindow();
             MainWindow = window;
             // .NET 10 的 SplashScreen 淡出会丢失 PNG 透明度，首次渲染后直接关闭。
-            window.ContentRendered += (_, _) => splashScreen?.Close(TimeSpan.Zero);
+            window.ContentRendered += (_, _) =>
+            {
+                splashScreen?.Close(TimeSpan.Zero);
+                if (splashShown)
+                {
+                    splashShown = false;
+                    RememberSplashVersion(version);
+                }
+            };
             window.Show();
             _ = ((MainWindowViewModel)window.DataContext).CheckForUpdatesAsync(
                 new UpdateCheckService(updateClient), updateCancellation.Token);
@@ -180,6 +194,33 @@ public partial class App : Application
         catch (Exception writeException) when (writeException is IOException or UnauthorizedAccessException)
         {
             // 诊断写入失败不能阻止主窗口启动或原有错误提示。
+        }
+    }
+
+    private bool ShouldShowSplash(string version)
+    {
+        try
+        {
+            var path = Path.Combine(dataDirectory, "startup-version.txt");
+            return !File.Exists(path) || File.ReadAllText(path).Trim() != version;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            TryWriteStartupFailure(exception);
+            return true;
+        }
+    }
+
+    private void RememberSplashVersion(string version)
+    {
+        try
+        {
+            Directory.CreateDirectory(dataDirectory);
+            File.WriteAllText(Path.Combine(dataDirectory, "startup-version.txt"), version);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            TryWriteStartupFailure(exception);
         }
     }
 }
