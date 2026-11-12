@@ -73,6 +73,7 @@ public sealed class StartupSplashScreenTests
                     Assert.AreEqual("RENDERED", await first.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)));
                 }
             }
+            // 验证第二次启动能夺回前台，必须先激活另一个真实窗口。
             foregroundWindow.Show();
             WpfTestHost.PlaceOnScreen(foregroundWindow, 320, 180);
             await WpfTestHost.LayoutAsync(foregroundWindow);

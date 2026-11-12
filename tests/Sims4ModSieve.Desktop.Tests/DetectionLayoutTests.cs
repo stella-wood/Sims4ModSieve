@@ -79,17 +79,13 @@ public sealed class DetectionLayoutTests
         var model = new MainWindowViewModel(new DuplicateRunService(DuplicateScanner.CreateDefault()),
             new NoFolderPicker(), new TemporarySettings(), resultSession: duplicateSession);
         var window = OpenWindow(model);
-        window.Topmost = true;
         foreach (var state in new[] { "normal", "narrow", "short", "maximized", "restored" })
         {
             window.WindowState = WindowState.Normal;
             window.MinHeight = state == "short" ? 1 : 640;
             window.Width = state is "narrow" or "short" ? 920 : 1180;
             window.Height = state == "short" ? 480 : state == "narrow" ? 640 : 780;
-            window.Left = 50;
-            window.Top = 40;
             if (state == "maximized") window.WindowState = WindowState.Maximized;
-            window.Activate();
             model.GoHomeCommand.Execute(null);
             await WpfTestHost.LayoutAsync(window);
             Assert.IsTrue(model.IsHomeVisible);

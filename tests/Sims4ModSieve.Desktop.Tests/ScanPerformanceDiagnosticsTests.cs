@@ -28,7 +28,7 @@ public sealed class ScanPerformanceDiagnosticsTests
         var support = new SettingsSupportService(files.Root, copyText: text => copied = text);
         var model = files.Model(support: support);
         var window = new MainWindow(model);
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("diagnostics");
         await model.RefreshDiagnosticsAsync();
@@ -82,7 +82,7 @@ public sealed class ScanPerformanceDiagnosticsTests
         var support = new SettingsSupportService(files.Root, copyText: text => copied = text);
         var model = files.Model(support: support);
         var window = new MainWindow(model);
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenDuplicateScannerCommand.Execute(null);
         await model.StartScanCommand.ExecuteAsync();
         StringAssert.Contains(model.LatestScanTiming, "重复检测 · 完成");

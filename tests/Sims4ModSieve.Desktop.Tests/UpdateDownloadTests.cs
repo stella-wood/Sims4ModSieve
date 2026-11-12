@@ -263,7 +263,7 @@ public sealed class UpdateDownloadTests
         using var client = new HttpClient(handler);
         var model = files.Model();
         var window = new MainWindow(model);
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         WpfTestHost.PlaceOnScreen(window);
         await model.CheckForUpdatesAsync(new(client));
         await WpfTestHost.LayoutAsync(window);

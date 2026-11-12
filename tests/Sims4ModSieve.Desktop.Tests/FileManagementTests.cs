@@ -265,7 +265,7 @@ public sealed class FileManagementTests
         var actions = new FileActionService(adapter, new PhysicalFileMetadataAccess(), store);
         var model = Model(files, actions, store, pick: () => [sample, sample.ToUpperInvariant()]);
         var window = new MainWindow(model) { Width = 1280, Height = 1100 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("files");
         await model.FileManagementRefreshTask;
@@ -349,7 +349,7 @@ public sealed class FileManagementTests
         using var files = new Scenario();
         var model = Model(files);
         var window = new MainWindow(model) { Width = 1280, Height = 1100 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("files");
         await model.FileManagementRefreshTask;

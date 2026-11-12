@@ -27,7 +27,7 @@ public sealed class SettingsPageTests
             string.Join("\n", Enumerable.Range(1, 80).Select(index => $"测试日志第 {index} 行")));
         var model = files.Model(support: support);
         var window = new MainWindow(model) { Width = 1180, Height = 640, IsHitTestVisible = false };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("diagnostics");
         await model.RefreshDiagnosticsAsync();
@@ -67,7 +67,7 @@ public sealed class SettingsPageTests
         File.WriteAllText(Path.Combine(support.LogDirectory, "application-error.log"), text);
         var model = files.Model(support: support);
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("diagnostics");
         await model.RefreshDiagnosticsAsync();
@@ -110,8 +110,7 @@ public sealed class SettingsPageTests
         var support = new SettingsSupportService(files.Root);
         var model = files.Model(support: support);
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
-        window.Activate();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("about");
         await WpfTestHost.LayoutAsync(window);
@@ -185,7 +184,7 @@ public sealed class SettingsPageTests
         var logs = files.Folder("Sims4ModSieve");
         var model = files.Model(support: support);
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("diagnostics");
         await model.RefreshDiagnosticsAsync();
@@ -233,7 +232,7 @@ public sealed class SettingsPageTests
         var support = new SettingsSupportService(files.Root, copyText: value => copied = value);
         var model = files.Model(support: support);
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("diagnostics");
         await model.RefreshDiagnosticsAsync();
@@ -327,8 +326,7 @@ public sealed class SettingsPageTests
         var support = new SettingsSupportService(files.Root, files.Folder("Documents"), openTarget: targets.Add, copyText: value => copied = value);
         var model = files.Model(picker, support: support);
         var window = new MainWindow(model);
-        window.Show();
-        window.Activate();
+        WpfTestHost.ShowOffScreen(window);
         var page = Descendants<SettingsPage>(window).Single();
         var settingNavigation = Descendants<Button>(window).Single(button => Equals(button.Content, "设置"));
         await WpfTestHost.LayoutAsync(window);

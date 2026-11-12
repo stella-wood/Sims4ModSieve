@@ -205,7 +205,7 @@ public sealed class ModDisableViewModelTests
         await model.DisableFilesAsync([paths[0]]);
         File.WriteAllText(paths[0], "replacement stays here");
         var window = new MainWindow(model) { Width = 1180, Height = 900 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("files");
         await model.FileManagementRefreshTask;
@@ -312,7 +312,7 @@ public sealed class ModDisableViewModelTests
         var dialogs = new Dialogs();
         var model = Model(files, pick: () => paths.Take(2).ToArray(), dialogs: dialogs);
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("files");
         await model.FileManagementRefreshTask;
@@ -480,7 +480,7 @@ public sealed class ModDisableViewModelTests
         model.DisabledFiles.ToggleMultiSelectCommand.Execute(null);
         foreach (var row in model.DisabledFiles.Files.Where(row => paths.Take(2).Contains(row.Path))) row.IsSelected = true;
         var window = new MainWindow(model) { Width = 1180, Height = 900 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("files");
         await model.FileManagementRefreshTask;
@@ -587,7 +587,7 @@ public sealed class ModDisableViewModelTests
         await model.DisableFilesAsync(paths.Take(2).ToArray());
         model.AddIgnoredFiles(paths.Skip(2).ToArray());
         var window = new MainWindow(model) { Width = 1180, Height = 1100 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("files");
         await model.FileManagementRefreshTask;
@@ -732,7 +732,7 @@ public sealed class ModDisableViewModelTests
         await model.DisableFilesAsync([disabledPaths[0]]);
         model.AddIgnoredFiles([ignoredPaths[0]]);
         var window = new MainWindow(model) { Width = 1180, Height = 1100 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("files");
         await model.FileManagementRefreshTask;
@@ -963,7 +963,7 @@ public sealed class ModDisableViewModelTests
         adapter.QueryRelease = release.Task;
         var model = Model(files, actions: actions);
         var window = new MainWindow(model) { Width = 1180, Height = 1000 };
-        window.Show();
+        WpfTestHost.ShowOffScreen(window);
         model.OpenSettingsCommand.Execute("files");
         try
         {
