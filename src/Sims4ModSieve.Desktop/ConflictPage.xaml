@@ -128,11 +128,46 @@
                 </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
         </Style>
-        <Style x:Key="ConflictExpandButtonStyle" TargetType="Button">
+        <Style x:Key="ConflictMultiSelectToggleStyle" TargetType="ToggleButton">
+            <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="Transparent" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="HorizontalAlignment" Value="Left" />
-            <Setter Property="Margin" Value="0,-5,0,-5" />
-            <Setter Property="Padding" Value="0,5" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
+                </Border>
+            </ControlTemplate></Setter.Value></Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource HoverTextBrush}" /></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /><Setter Property="Cursor" Value="Arrow" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ConflictGroupCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
+                <Grid Width="16" Height="16" Background="Transparent">
+                    <Border x:Name="Box" Background="White" BorderBrush="#8F8982" BorderThickness="1" />
+                    <Path x:Name="Check" Data="M3.5,8.5 L6.5,11.5 L12.5,5" Stroke="{StaticResource InkBrush}" StrokeThickness="1.7"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed" IsHitTestVisible="False" />
+                    <Rectangle x:Name="Partial" Width="8" Height="8" Fill="#8B847C" Visibility="Collapsed" IsHitTestVisible="False" />
+                </Grid>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsChecked" Value="True"><Setter TargetName="Check" Property="Visibility" Value="Visible" /></Trigger>
+                    <Trigger Property="IsChecked" Value="{x:Null}"><Setter TargetName="Partial" Property="Visibility" Value="Visible" /></Trigger>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" /></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="ConflictChevronButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="AutomationProperties.Name" Value="{Binding ExpandName, Mode=OneWay}" />
@@ -140,14 +175,9 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="HitArea" Background="Transparent" Padding="{TemplateBinding Padding}">
-                            <Grid IsHitTestVisible="False">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Border Width="24" Height="24" BorderThickness="1" BorderBrush="Transparent">
-                                    <Path x:Name="Arrow" Data="M6,3 L11,8 L6,13" Width="16" Height="16" HorizontalAlignment="Left" Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5" />
-                                </Border>
-                                <ContentPresenter Grid.Column="1" Margin="5,0,8,0" VerticalAlignment="Center" />
-                            </Grid>
+                        <Border Background="Transparent">
+                            <Path x:Name="Arrow" Data="M6,3 L11,8 L6,13" Width="16" Height="16" HorizontalAlignment="Left"
+                                  Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <DataTrigger Binding="{Binding IsExpanded}" Value="True">
@@ -155,6 +185,23 @@
                             </DataTrigger>
                             <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /></Trigger>
                         </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ConflictHeaderContentButtonStyle" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0,5" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding ExpandName, Mode=OneWay}" />
+            <Setter Property="AutomationProperties.AutomationId" Value="{Binding Key, Mode=OneWay}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -195,8 +242,20 @@
         </Style>
         <DataTemplate x:Key="ConflictHeaderTemplate">
             <Grid Margin="0,6">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
-                <Button x:Name="ExpandButton" Style="{StaticResource ConflictExpandButtonStyle}" Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
+                <Button x:Name="ChevronButton" Style="{StaticResource ConflictChevronButtonStyle}" VerticalAlignment="Center"
+                        Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                <CheckBox x:Name="GroupSelection"
+                          Grid.Column="1"
+                          Margin="0,0,8,0"
+                          VerticalAlignment="Center"
+                          IsThreeState="True"
+                          IsChecked="{Binding Selection.IsSelected, Mode=OneWay}"
+                          Style="{StaticResource ConflictGroupCheckBoxStyle}"
+                          Visibility="Collapsed"
+                          Click="ConflictGroupSelection_Click"
+                          AutomationProperties.Name="选择本组文件" />
+                <Button x:Name="ExpandButton" Grid.Column="2" Margin="5,0,8,0" Style="{StaticResource ConflictHeaderContentButtonStyle}" Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Ellipse x:Name="StateDot" Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
@@ -207,13 +266,16 @@
                         </WrapPanel>
                     </Grid>
                 </Button>
-                <Button Grid.Column="1" Style="{StaticResource ConflictRowActionStyle}" ToolTip="忽略／取消忽略本组" AutomationProperties.Name="忽略／取消忽略本组"
+                <Button Grid.Column="3" Style="{StaticResource ConflictRowActionStyle}" ToolTip="忽略／取消忽略本组" AutomationProperties.Name="忽略／取消忽略本组"
                         Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
             </Grid>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding Priority}" Value="NeedsReview"><Setter TargetName="StateDot" Property="Fill" Value="{StaticResource ConflictNeedReviewBrush}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Priority}" Value="CanOrganize"><Setter TargetName="StateDot" Property="Fill" Value="{StaticResource ConflictCanOrganizeBrush}" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsIgnored}" Value="True"><Setter TargetName="Title" Property="FontWeight" Value="Normal" /><Setter TargetName="GroupLabel" Property="FontWeight" Value="Normal" /></DataTrigger>
+                <DataTrigger Binding="{Binding DataContext.IsConflictMultiSelect, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                    <Setter TargetName="GroupSelection" Property="Visibility" Value="Visible" />
+                </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
         <DataTemplate x:Key="ConflictProblemHeaderTemplate">
@@ -259,8 +321,16 @@
             <Border x:Name="FileSurface" Background="#F3F1ED" Margin="20,0,0,0" Padding="38,10,10,10" ToolTip="{Binding FilePath}" ContextMenuOpening="FileContextMenu_Opening">
                 <Border.ContextMenu><ContextMenu Style="{StaticResource FileContextMenuStyle}" /></Border.ContextMenu>
                 <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <Grid Margin="0,0,10,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <CheckBox x:Name="FileSelection"
+                              Margin="0,0,11,0"
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding Selection.IsSelected, Mode=OneWay}"
+                              IsEnabled="{Binding IsSelectableFile}"
+                              Visibility="Collapsed"
+                              Click="ConflictFileSelection_Click"
+                              AutomationProperties.Name="{Binding Title}" />
+                    <Grid Grid.Column="1" Margin="0,0,10,0">
                         <Grid Width="{Binding ActualWidth, ElementName=Title}" HorizontalAlignment="Left">
                             <Button x:Name="FileDetailsButton" Style="{StaticResource ConflictNameButtonStyle}" ToolTip="{Binding FilePath}" AutomationProperties.Name="{Binding Title}"
                                     Command="{Binding DataContext.OpenConflictRelationshipsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
@@ -283,7 +353,7 @@
                             </WrapPanel>
                         </StackPanel>
                     </Grid>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
                         <Button Style="{StaticResource ConflictRowActionStyle}" ToolTip="打开所在文件夹" AutomationProperties.Name="打开所在文件夹" Command="{Binding DataContext.OpenConflictFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                             <Path Width="16" Height="16" IsHitTestVisible="False" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Data="M1,4 L6,4 L8,6 L15,6 L15,14 L1,14 Z M1,6 L1,2 L6,2 L8,4 L14,4 L14,6" />
                         </Button>
@@ -296,6 +366,17 @@
             </Border>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsProblemFileContent}" Value="True"><Setter TargetName="FileSurface" Property="Margin" Value="0" /><Setter TargetName="FileSurface" Property="Padding" Value="38,4,10,10" /></DataTrigger>
+                <DataTrigger Binding="{Binding DataContext.IsConflictMultiSelect, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                    <Setter TargetName="FileSelection" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="FileSurface" Property="Padding" Value="12,10,10,10" />
+                </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsProblemFileContent}" Value="True" />
+                        <Condition Binding="{Binding DataContext.IsConflictMultiSelect, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="FileSurface" Property="Padding" Value="12,4,10,10" />
+                </MultiDataTrigger>
                 <DataTrigger Binding="{Binding IsBundle}" Value="True"><Setter TargetName="FileSurface" Property="Background" Value="#E5E0D9" /><Setter TargetName="FileSurface" Property="Margin" Value="20,0,0,12" /></DataTrigger>
                 <DataTrigger Binding="{Binding IsIgnored}" Value="True"><Setter TargetName="Title" Property="FontWeight" Value="Normal" /></DataTrigger>
                 <Trigger SourceName="FileSurface" Property="IsMouseOver" Value="True"><Setter TargetName="FileSurface" Property="Background" Value="#E8E4DE" /></Trigger>
@@ -560,7 +641,17 @@
             </Grid>
             <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0">
                 <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <TextBlock Text="扫描结果" FontSize="18" FontWeight="SemiBold" Margin="20,16,20,3.48" />
+                    <Grid Margin="20,16,10,3.48">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="扫描结果" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <ToggleButton x:Name="ConflictMultiSelectButton"
+                                      Grid.Column="1"
+                                      Content="{Binding ConflictMultiSelectText}"
+                                      Style="{StaticResource ConflictMultiSelectToggleStyle}"
+                                      IsChecked="{Binding IsConflictMultiSelect, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsConflictComplete}"
+                                      AutomationProperties.Name="{Binding ConflictMultiSelectText}" />
+                    </Grid>
                     <Border x:Name="ConflictQuickFilterBar" Grid.Row="1" Height="32" Background="Transparent" BorderThickness="0,0,0,1" Padding="38,0,20,0" BorderBrush="{StaticResource BorderBrush}">
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -655,23 +746,33 @@
                         </Canvas>
                         <TextBlock Text="{Binding EmptyConflictText}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowEmptyConflictRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </Grid>
-                    <Border Grid.Row="3" Padding="20,11,36,11" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <Border Grid.Row="3" Padding="20,11,20,11" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
                         <StackPanel>
-                            <WrapPanel>
-                                <Button x:Name="ToggleAllConflictGroupsButton" Width="24" Height="24" Cursor="Hand" Command="{Binding ToggleAllConflictGroupsCommand}" ToolTip="{Binding ConflictExpandCollapseToolTip}" Style="{StaticResource BareIconButtonStyle}">
-                                    <Grid Width="16" Height="16" IsHitTestVisible="False">
-                                        <Path Data="M 1,2 L 15,2 M 1,8 L 15,8 M 1,14 L 15,14" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="{Binding ShowCollapseAllConflictIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                        <Path Data="M 1,5 L 15,5 M 1,8 L 15,8 M 1,11 L 15,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="{Binding ShowExpandAllConflictIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    </Grid>
-                                </Button>
-                                <TextBlock Text="{Binding ConflictFileActionStatusText}" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource DataTextStyle}" FontSize="10" Foreground="{StaticResource MutedBrush}" />
-                                <Button x:Name="ConflictFileManagementLink" Command="{Binding OpenSettingsCommand}" CommandParameter="files"
-                                    Visibility="{Binding ShowConflictFileManagementLink, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                    Style="{StaticResource EntranceActionStyle}" Padding="0" Foreground="#A892C5" FontSize="10" VerticalAlignment="Center">
-                                    <TextBlock Text="去设置处理 →" TextDecorations="Underline" />
-                                </Button>
-                                <Button x:Name="UndoConflictDeleteButton" Content="撤回" Command="{Binding UndoLastDeleteCommand}" Style="{StaticResource HeaderBackButtonStyle}" Margin="8,0,0,0" Padding="4,2" Visibility="{Binding CanUndoConflictDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            </WrapPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <Button x:Name="ToggleAllConflictGroupsButton" Width="24" Height="24" Cursor="Hand" Command="{Binding ToggleAllConflictGroupsCommand}" ToolTip="{Binding ConflictExpandCollapseToolTip}" Style="{StaticResource BareIconButtonStyle}">
+                                        <Grid Width="16" Height="16" IsHitTestVisible="False">
+                                            <Path Data="M 1,2 L 15,2 M 1,8 L 15,8 M 1,14 L 15,14" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="{Binding ShowCollapseAllConflictIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <Path Data="M 1,5 L 15,5 M 1,8 L 15,8 M 1,11 L 15,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="{Binding ShowExpandAllConflictIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </Grid>
+                                    </Button>
+                                    <TextBlock x:Name="ConflictSelectionNote" Text="{Binding ConflictSelectionText}" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource DataTextStyle}" FontSize="10" Foreground="{StaticResource MutedBrush}"
+                                               Visibility="{Binding IsConflictMultiSelect, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <TextBlock Text="{Binding ConflictFileActionStatusText}" Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource DataTextStyle}" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+                                    <Button x:Name="ConflictFileManagementLink" Command="{Binding OpenSettingsCommand}" CommandParameter="files"
+                                        Visibility="{Binding ShowConflictFileManagementLink, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                        Style="{StaticResource EntranceActionStyle}" Padding="0" Foreground="#A892C5" FontSize="10" VerticalAlignment="Center">
+                                        <TextBlock Text="去设置处理 →" TextDecorations="Underline" />
+                                    </Button>
+                                    <Button x:Name="UndoConflictDeleteButton" Content="撤回" Command="{Binding UndoLastDeleteCommand}" Style="{StaticResource HeaderBackButtonStyle}" Margin="8,0,0,0" Padding="4,2" Visibility="{Binding CanUndoConflictDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                </WrapPanel>
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
+                                            Visibility="{Binding IsConflictMultiSelect, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <Button x:Name="DeleteSelectedConflictFilesButton" Content="删除" Command="{Binding DeleteSelectedConflictFilesCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="16,8" Margin="0,0,8,0" />
+                                    <Button x:Name="DisableSelectedConflictFilesButton" Content="禁用" Command="{Binding DisableSelectedConflictFilesCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="16,8" />
+                                </StackPanel>
+                            </Grid>
                             <TextBlock Text="没查出冲突不代表没有冲突" Visibility="{Binding ShowConflictWarning, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#9A6A32" FontSize="11" />
                         </StackPanel>
                     </Border>

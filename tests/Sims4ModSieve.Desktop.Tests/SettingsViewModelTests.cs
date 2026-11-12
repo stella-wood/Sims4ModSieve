@@ -355,6 +355,7 @@ public sealed class SettingsViewModelTests
     {
         public List<FileActionFailure> Problems { get; } = [];
         public bool ConfirmDeletion(FileDeletionPreflight preflight) => true;
+        public bool ConfirmFiles(string title, string message) => true;
         public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures) => Problems.AddRange(failures);
     }
 

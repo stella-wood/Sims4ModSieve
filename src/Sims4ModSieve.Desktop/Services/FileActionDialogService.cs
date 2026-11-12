@@ -6,6 +6,8 @@ public interface IFileActionDialogService
 {
     bool ConfirmDeletion(FileDeletionPreflight preflight);
 
+    bool ConfirmFiles(string title, string message);
+
     void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures);
 }
 
@@ -14,6 +16,15 @@ public sealed class FileActionDialogService : IFileActionDialogService
     public bool ConfirmDeletion(FileDeletionPreflight preflight)
     {
         var dialog = new DeleteConfirmationWindow()
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+        return dialog.ShowDialog() == true;
+    }
+
+    public bool ConfirmFiles(string title, string message)
+    {
+        var dialog = new MultiFileConfirmationWindow(title, message)
         {
             Owner = Application.Current?.MainWindow,
         };

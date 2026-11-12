@@ -604,7 +604,9 @@ public sealed class ConflictFileActionTests
     }
     private sealed class Dialogs : IFileActionDialogService
     {
+        public List<(string Title, string Message)> Confirmations { get; } = [];
         public bool ConfirmDeletion(FileDeletionPreflight preflight) => true;
+        public bool ConfirmFiles(string title, string message) { Confirmations.Add((title, message)); return true; }
         public void ShowProblems(string title, IReadOnlyList<FileActionFailure> problems) { }
     }
     private sealed class TestRecycleBin : IRecycleBinAdapter

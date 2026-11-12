@@ -66,15 +66,28 @@ public partial class ConflictPage : UserControl
         CloseFileMenu();
         fileMenu = menu;
         menu.Items.Clear();
+        var batch = model.ConflictActionAppliesToSelection(row);
         void Add(string text, ICommand command) => menu.Items.Add(new MenuItem { Header = text, Command = command, CommandParameter = row, Style = (Style)FindResource("FileMenuItemStyle") });
         Add("打开所在文件夹", model.OpenConflictFolderCommand);
         Add("复制路径", model.CopyConflictPathCommand);
         menu.Items.Add(new Separator { Style = (Style)FindResource("FileMenuSeparatorStyle") });
-        Add(row.DisableMenuText, model.ToggleConflictFileEnabledCommand);
-        Add(row.DeleteMenuText, model.DeleteConflictFileCommand);
+        Add(batch ? "禁用所选" : row.DisableMenuText, model.ToggleConflictFileEnabledCommand);
+        Add(batch ? "删除所选" : row.DeleteMenuText, model.DeleteConflictFileCommand);
         menu.Items.Add(new Separator { Style = (Style)FindResource("FileMenuSeparatorStyle") });
         Add("查看文件关系", model.OpenConflictRelationshipsCommand);
-        Add(row.IgnoreMenuText, model.IgnoreConflictCommand);
+        Add(batch ? "忽略所选" : row.IgnoreMenuText, model.IgnoreConflictCommand);
+    }
+
+    private void ConflictFileSelection_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel model || sender is not CheckBox { DataContext: ConflictResultRow row } box) return;
+        model.SetConflictFileSelected(row, box.IsChecked == true);
+    }
+
+    private void ConflictGroupSelection_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel model || sender is not CheckBox { DataContext: ConflictResultRow row }) return;
+        model.ToggleConflictGroupSelection(row);
     }
 
     private void ConflictFilterPopup_Opened(object? sender, EventArgs e)
