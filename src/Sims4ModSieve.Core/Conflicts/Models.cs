@@ -91,7 +91,10 @@ public sealed record PackageConflictScanIssue(
     string Message,
     string? SourceId = null,
     PackageReadStage? ReadStage = null,
-    string? Detail = null);
+    string? Detail = null)
+{
+    public string? LinkTarget { get; init; }
+}
 
 public static class PackageConflictScanIssueCode
 {

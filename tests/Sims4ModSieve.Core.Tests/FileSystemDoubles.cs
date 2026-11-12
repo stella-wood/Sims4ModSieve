@@ -49,7 +49,8 @@ internal sealed class FaultingFileSystemAccess(
 
 internal sealed class ReparsePointFileSystemAccess(
     IFileSystemAccess inner,
-    string reparsePoint) : IFileSystemAccess
+    string reparsePoint,
+    string? linkTarget = null) : IFileSystemAccess
 {
     public bool DirectoryExists(string path) => inner.DirectoryExists(path);
 
@@ -67,6 +68,9 @@ internal sealed class ReparsePointFileSystemAccess(
     public FileStamp GetFileStamp(string path) => inner.GetFileStamp(path);
 
     public Stream OpenRead(string path) => inner.OpenRead(path);
+
+    public string? GetLinkTarget(string path) =>
+        string.Equals(path, reparsePoint, StringComparison.OrdinalIgnoreCase) ? linkTarget : null;
 }
 
 internal sealed class SequencedStampFileSystem(

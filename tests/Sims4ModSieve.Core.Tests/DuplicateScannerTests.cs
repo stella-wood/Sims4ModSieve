@@ -158,6 +158,29 @@ public sealed class DuplicateScannerTests
     }
 
     [TestMethod]
+    public async Task ReparsePointIssuesExplainInChineseAndShowLinkTarget()
+    {
+        using var temp = new TempDirectory();
+        var root = temp.CreateDirectory("root");
+        var reparse = temp.CreateDirectory("root", "linked");
+        var target = Path.Combine(temp.Path, "real-mods");
+        var physical = new PhysicalFileSystemAccess();
+        var scanner = new DuplicateScanner(
+            new ReparsePointFileSystemAccess(physical, reparse, target),
+            new StableFileHasher(physical, TimeSpan.Zero),
+            new DuplicateSelectionService());
+
+        var nested = await scanner.ScanAsync(new DuplicateScanRequest([new ScanSource("root", root)]));
+        var source = await scanner.ScanAsync(new DuplicateScanRequest([new ScanSource("linked", reparse)]));
+
+        Assert.AreEqual("reparse-point-skipped", nested.Issues.Single().Code);
+        StringAssert.Contains(nested.Issues.Single().Message, "没有跟进去扫描");
+        StringAssert.Contains(nested.Issues.Single().Message, "真实位置：" + target);
+        Assert.AreEqual("source-is-reparse-point", source.Issues.Single().Code);
+        StringAssert.Contains(source.Issues.Single().Message, "真实位置：" + target);
+    }
+
+    [TestMethod]
     public async Task ProducesDeterministicGroupAndFileOrdering()
     {
         using var temp = new TempDirectory();

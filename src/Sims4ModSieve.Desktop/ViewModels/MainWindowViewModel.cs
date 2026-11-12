@@ -91,6 +91,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OpenConflictCommand = new RelayCommand(_ => ShowConflict(), _ => !IsBusy);
         GoHomeCommand = new RelayCommand(_ => ShowHome(), _ => !IsBusy);
         AddSourceCommand = new RelayCommand(_ => AddSource(), _ => !IsBusy);
+        ScanLinkTargetCommand = new RelayCommand(ScanLinkTarget,
+            parameter => !IsBusy && parameter is string target && CanAddLinkTarget(target, ActiveSources));
         ChangeModsRootCommand = new RelayCommand(_ => ChangeModsRoot(), _ => !IsBusy);
         RemoveSourceCommand = new RelayCommand(RemoveSource, _ => !IsBusy);
         StartScanCommand = new AsyncRelayCommand(
@@ -167,7 +169,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get => isConflictVisible;
         private set
         {
-            if (SetProperty(ref isConflictVisible, value)) RefreshConflictVisibility();
+            if (SetProperty(ref isConflictVisible, value))
+            {
+                RefreshConflictVisibility();
+                ScanLinkTargetCommand?.RaiseCanExecuteChanged();
+            }
         }
     }
 
@@ -499,6 +505,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 ? "扫描完成，没有发现重复文件"
                 : $"扫描完成，发现 {report.Groups.Count} 组重复文件";
             var firstIssue = report.Issues.FirstOrDefault();
+            DuplicateLinkTarget = firstIssue?.LinkTarget;
             StatusDetail = firstIssue is null
                 ? $"共查看 {report.DiscoveredFileCount:N0} 个文件，结果完整。"
                 : $"共查看 {report.DiscoveredFileCount:N0} 个文件；有 {report.Issues.Count} 项未完成检查。\n"
@@ -726,6 +733,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             StartConflictScanCommand?.RaiseCanExecuteChanged();
         }
         RefreshApplicationLocationWarning();
+        RefreshLinkTargetActions();
     }
 
     private void OnSourcePropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -735,6 +743,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             StartScanCommand.RaiseCanExecuteChanged();
             StartConflictScanCommand?.RaiseCanExecuteChanged();
             RefreshApplicationLocationWarning();
+            RefreshLinkTargetActions();
         }
     }
 
@@ -823,6 +832,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsStatusVisible = false;
         StatusText = string.Empty;
         StatusDetail = string.Empty;
+        DuplicateLinkTarget = null;
     }
 
     private void ClearFileActionHistory()
@@ -861,6 +871,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OpenDuplicateScannerCommand.RaiseCanExecuteChanged();
         OpenConflictCommand.RaiseCanExecuteChanged();
         AddSourceCommand.RaiseCanExecuteChanged();
+        ScanLinkTargetCommand.RaiseCanExecuteChanged();
         ChangeModsRootCommand.RaiseCanExecuteChanged();
         RemoveSourceCommand.RaiseCanExecuteChanged();
         StartScanCommand.RaiseCanExecuteChanged();

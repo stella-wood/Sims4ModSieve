@@ -391,8 +391,13 @@
         </DataTemplate>
         <DataTemplate x:Key="ConflictTextTemplate">
             <Grid x:Name="TextLayout" Margin="26,6,0,7">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                 <TextBlock x:Name="Title" Grid.ColumnSpan="2" Text="{Binding Title}" FontSize="11" FontWeight="Normal" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" ToolTip="{Binding Tooltip}" />
+                <Button x:Name="ConflictScanLinkTarget" Grid.Row="1" Grid.ColumnSpan="2" Content="改为扫描真实位置" HorizontalAlignment="Left" Margin="0,4,0,0"
+                        Style="{StaticResource EntranceActionStyle}" FontSize="11" ToolTip="{Binding LinkTarget}"
+                        Command="{Binding DataContext.ScanLinkTargetCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding LinkTarget}"
+                        Visibility="{Binding ShowScanLinkTarget, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <Button x:Name="DuplicateNavigation" Grid.Column="1" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Center" Style="{StaticResource EntranceActionStyle}" Padding="0" Foreground="#A892C5" FontSize="11"
                         Command="{Binding DataContext.OpenConflictDuplicatesCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding DuplicateLink}">
                     <TextBlock Text="去重复检测一键处理 →" TextDecorations="Underline" />
