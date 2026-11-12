@@ -164,11 +164,10 @@
                 </ControlTemplate.Triggers>
             </ControlTemplate></Setter.Value></Setter>
         </Style>
-        <Style x:Key="ConflictExpandButtonStyle" TargetType="Button">
+        <Style x:Key="ConflictChevronButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="HorizontalAlignment" Value="Left" />
-            <Setter Property="Margin" Value="0,-5,0,-5" />
-            <Setter Property="Padding" Value="0,5" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="AutomationProperties.Name" Value="{Binding ExpandName, Mode=OneWay}" />
@@ -176,14 +175,9 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="HitArea" Background="Transparent" Padding="{TemplateBinding Padding}">
-                            <Grid IsHitTestVisible="False">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                <Border Width="24" Height="24" BorderThickness="1" BorderBrush="Transparent">
-                                    <Path x:Name="Arrow" Data="M6,3 L11,8 L6,13" Width="16" Height="16" HorizontalAlignment="Left" Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5" />
-                                </Border>
-                                <ContentPresenter Grid.Column="1" Margin="5,0,8,0" VerticalAlignment="Center" />
-                            </Grid>
+                        <Border Background="Transparent">
+                            <Path x:Name="Arrow" Data="M6,3 L11,8 L6,13" Width="16" Height="16" HorizontalAlignment="Left"
+                                  Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <DataTrigger Binding="{Binding IsExpanded}" Value="True">
@@ -191,6 +185,23 @@
                             </DataTrigger>
                             <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /></Trigger>
                         </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ConflictHeaderContentButtonStyle" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0,5" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding ExpandName, Mode=OneWay}" />
+            <Setter Property="AutomationProperties.AutomationId" Value="{Binding Key, Mode=OneWay}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -231,8 +242,11 @@
         </Style>
         <DataTemplate x:Key="ConflictHeaderTemplate">
             <Grid Margin="0,6">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
+                <Button x:Name="ChevronButton" Style="{StaticResource ConflictChevronButtonStyle}" VerticalAlignment="Center"
+                        Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
                 <CheckBox x:Name="GroupSelection"
+                          Grid.Column="1"
                           Margin="0,0,8,0"
                           VerticalAlignment="Center"
                           IsThreeState="True"
@@ -241,7 +255,7 @@
                           Visibility="Collapsed"
                           Click="ConflictGroupSelection_Click"
                           AutomationProperties.Name="选择本组文件" />
-                <Button x:Name="ExpandButton" Grid.Column="1" Style="{StaticResource ConflictExpandButtonStyle}" Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+                <Button x:Name="ExpandButton" Grid.Column="2" Margin="5,0,8,0" Style="{StaticResource ConflictHeaderContentButtonStyle}" Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Ellipse x:Name="StateDot" Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
@@ -252,7 +266,7 @@
                         </WrapPanel>
                     </Grid>
                 </Button>
-                <Button Grid.Column="2" Style="{StaticResource ConflictRowActionStyle}" ToolTip="忽略／取消忽略本组" AutomationProperties.Name="忽略／取消忽略本组"
+                <Button Grid.Column="3" Style="{StaticResource ConflictRowActionStyle}" ToolTip="忽略／取消忽略本组" AutomationProperties.Name="忽略／取消忽略本组"
                         Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
             </Grid>
             <DataTemplate.Triggers>
