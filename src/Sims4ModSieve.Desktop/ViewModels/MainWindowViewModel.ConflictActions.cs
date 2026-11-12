@@ -53,11 +53,14 @@ public sealed partial class MainWindowViewModel
         });
         ToggleConflictFileEnabledCommand = new RelayCommand(value =>
         {
-            if (value is ConflictResultRow row) ConflictFileActionTask = ToggleConflictFileEnabledAsync(row);
-        }, value => !IsBusy && value is ConflictResultRow { File.Stamp: not null });
+            if (value is not ConflictResultRow row) return;
+            if (ConflictActionAppliesToSelection(row)) { ConflictFileActionTask = DisableSelectedConflictFilesAsync(); return; }
+            ConflictFileActionTask = ToggleConflictFileEnabledAsync(row);
+        }, CanRunConflictRowAction);
         IgnoreConflictCommand = new RelayCommand(value =>
         {
-            if (value is not ConflictResultRow row || !IsConflictComplete) return;
+            if (!IsConflictComplete || value is not ConflictResultRow row) return;
+            if (ConflictActionAppliesToSelection(row)) { IgnoreSelectedConflictFiles(); return; }
             TogglePersistentIgnoredFile(row);
         }, _ => !IsBusy);
         OpenConflictRelationshipsCommand = new RelayCommand(value =>
@@ -102,9 +105,14 @@ public sealed partial class MainWindowViewModel
         });
         DeleteConflictFileCommand = new RelayCommand(value =>
         {
-            if (value is ConflictResultRow row) ConflictFileActionTask = DeleteConflictFileAsync(row);
-        }, _ => !IsBusy);
+            if (value is not ConflictResultRow row) return;
+            if (ConflictActionAppliesToSelection(row)) { ConflictFileActionTask = DeleteSelectedConflictFilesAsync(); return; }
+            ConflictFileActionTask = DeleteConflictFileAsync(row);
+        }, CanRunConflictRowAction);
     }
+
+    private bool CanRunConflictRowAction(object? value) => !IsBusy && value is ConflictResultRow row
+        && (ConflictActionAppliesToSelection(row) || row.File is { Stamp: not null });
 
     private DisabledModRecord? DisabledRecordFor(ConflictResultRow row) => row.File is { Stamp: { } stamp } file
         ? disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, file.Path)
@@ -226,6 +234,11 @@ public sealed partial class MainWindowViewModel
         });
         if (!ReferenceEquals(session, conflictSession) || !IsConflictComplete) return;
         session.AcceptFileChanges(prepared);
+        if (!restore)
+        {
+            conflictSelectedPaths.ExceptWith(paths);
+            RefreshConflictSelection();
+        }
         if (ConflictRelationships is { } relationships) ConflictRelationships = session.Relationships(relationships.File.Path);
         await RefreshConflictRowsAsync(restoreViewport);
         RefreshConflictResults();

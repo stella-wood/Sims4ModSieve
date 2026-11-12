@@ -244,9 +244,9 @@ public sealed partial class MainWindowViewModel
     }
 
     public async Task DisableFilesAsync(IReadOnlyList<string> paths,
-        IReadOnlyDictionary<string, FileStamp>? expectedStamps = null)
+        IReadOnlyDictionary<string, FileStamp>? expectedStamps = null, bool confirmed = false)
     {
-        if (IsBusy || paths.Count == 0 || !confirmModChange("禁用")) return;
+        if (IsBusy || paths.Count == 0 || (!confirmed && !confirmModChange("禁用"))) return;
         var generation = resultGeneration;
         var snapshot = Groups.Select(group => group.Model).ToArray();
         IsBusy = true;

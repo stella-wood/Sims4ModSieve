@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
@@ -8,6 +9,24 @@ using Sims4ModSieve.Packages;
 namespace Sims4ModSieve.Desktop.ViewModels;
 
 public enum ConflictRowKind { PackagePair, ScriptPair, Resource, Module, Content, File, Technical, Explanation, Problem, RangeProblem, TechnicalHeader, CopyDetails, Duplicate, GroupReference, TechnicalListHeader, TechnicalListFile, TechnicalScroll }
+
+public sealed class ConflictSelectionCell : INotifyPropertyChanged
+{
+    private bool? isSelected;
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    // 组行用 null 表示只勾选了一部分；文件行只会是 true/false。
+    public bool? IsSelected
+    {
+        get => isSelected;
+        set
+        {
+            if (isSelected == value) return;
+            isSelected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+        }
+    }
+}
 
 public sealed record ConflictResultRow(
     string Key, ConflictRowKind Kind, int Depth, string Title,
@@ -22,6 +41,9 @@ public sealed record ConflictResultRow(
 {
     public string? LinkTarget { get; init; }
     public bool ShowScanLinkTarget { get; init; }
+    // 勾选状态独立于行记录：记录本身保持不可变，避免绑定订阅改变行的相等值。
+    public ConflictSelectionCell Selection { get; init; } = new();
+    public bool IsSelectableFile => Kind == ConflictRowKind.File && File is { Stamp: not null };
     public bool IsDisabled { get; init; }
     public bool IsFileIgnored { get; init; }
     public string FilePath => File is null ? "" : File.Path + (IsDisabled ? ".off" : "");
