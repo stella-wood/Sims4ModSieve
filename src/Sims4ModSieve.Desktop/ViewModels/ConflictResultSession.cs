@@ -187,7 +187,7 @@ public sealed partial class ConflictResultSession
             var category = Classify(issue.Code, packageStage: issue.ReadStage);
             if (issue.Stage is PackageConflictScanIssueStage.SourceValidation or PackageConflictScanIssueStage.Discovery
                 || issue.Code is "entry-metadata-failed" or "source-metadata-failed")
-                ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Detail ?? issue.Message));
+                ranges.Add(new(issue.Path, RangeSummary(issue.Code), issue.Code, issue.Detail ?? issue.Message));
             else Add(issue.Path, true, null, new(issue.Code, null, issue.Detail ?? issue.Message, category));
         }
         foreach (var issue in scripts.Issues)
@@ -196,7 +196,7 @@ public sealed partial class ConflictResultSession
             var category = Classify(issue.Code, scriptStage: issue.Stage);
             if (issue.Stage is ScriptArchiveIssueStage.SourceValidation or ScriptArchiveIssueStage.Discovery
                 || issue.Code is "entry-metadata-failed" or "source-metadata-failed")
-                ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Detail ?? issue.Message, IsScript: true));
+                ranges.Add(new(issue.Path, RangeSummary(issue.Code), issue.Code, issue.Detail ?? issue.Message, IsScript: true));
             else Add(issue.Path, issue.EntryName is null, issue.EntryName is null ? null : "script:" + issue.EntryName,
                 new(issue.Code, issue.EntryName, issue.Detail ?? issue.Message, category));
         }
@@ -206,7 +206,7 @@ public sealed partial class ConflictResultSession
             if (issue.Stage is ScanIssueStage.SourceValidation or ScanIssueStage.Discovery)
             {
                 if (!ranges.Any(problem => StringComparer.OrdinalIgnoreCase.Equals(problem.Path, issue.Path) && problem.Code == issue.Code))
-                    ranges.Add(new(issue.Path, "检查范围无法访问", issue.Code, issue.Message));
+                    ranges.Add(new(issue.Path, RangeSummary(issue.Code), issue.Code, issue.Message));
             }
             else Add(issue.Path, true, null, new(issue.Code, null, issue.Message,
                 issue.Code == "file-changed-during-hash" ? ConflictProblemCategory.Changed : ConflictProblemCategory.Access));
@@ -372,6 +372,10 @@ public sealed partial class ConflictResultSession
         uint? resourceType, string? entryName) =>
         (entryName is null ? "" : (resourceType is { } type ? GetResourceTypeDisplayName(type) + " · " + entryName : entryName) + " · ")
         + ProblemTechnical(code, detail, category);
+
+    // 链接是故意不跟进去的，不是权限问题，单独说明，免得玩家以为文件夹坏了。
+    private static string RangeSummary(string code) =>
+        code is "source-is-reparse-point" or "reparse-point-skipped" ? "链接没有跟进去检查" : "检查范围无法访问";
 
     public static string GetProblemSummary(ConflictProblemCategory category) => category switch
     {

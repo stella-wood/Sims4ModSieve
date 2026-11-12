@@ -11,6 +11,9 @@ public interface IFileSystemAccess
     FileStamp GetFileStamp(string path);
 
     Stream OpenRead(string path);
+
+    /// <summary>联接或符号链接指向的最终位置；不是链接或读不到时返回 null。只用于给玩家看。</summary>
+    string? GetLinkTarget(string path) => null;
 }
 
 public sealed class PhysicalFileSystemAccess : IFileSystemAccess
@@ -35,4 +38,17 @@ public sealed class PhysicalFileSystemAccess : IFileSystemAccess
         FileShare.ReadWrite | FileShare.Delete,
         bufferSize: 128 * 1024,
         FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+    public string? GetLinkTarget(string path)
+    {
+        try
+        {
+            FileSystemInfo info = Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path);
+            return info.ResolveLinkTarget(returnFinalTarget: true)?.FullName;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 }

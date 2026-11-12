@@ -89,7 +89,7 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
                         "source-is-reparse-point",
                         ScanIssueStage.SourceValidation,
                         source.Path,
-                        "Reparse-point scan sources are not followed.",
+                        LinkMessage(source.Path, "这个文件夹是链接（联接或符号链接），为了安全没有跟进去扫描。"),
                         source.Id));
                     continue;
                 }
@@ -189,7 +189,7 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
                             "reparse-point-skipped",
                             ScanIssueStage.Discovery,
                             path,
-                            "Reparse points are not followed.",
+                            LinkMessage(path, "这是一个链接（联接或符号链接），为了安全没有跟进去扫描。"),
                             source.Id));
                         continue;
                     }
@@ -238,6 +238,10 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
 
         return files;
     }
+
+    // 游戏会跟随链接加载里面的 mod，玩家需要知道真实位置才能把它加进扫描范围。
+    private string LinkMessage(string path, string text) =>
+        fileSystem.GetLinkTarget(path) is { } target ? $"{text}真实位置：{target}" : text;
 
     public static IReadOnlyList<ScanSourceSnapshot> CreateSourceSnapshots(IReadOnlyList<NormalizedSource> sources)
     {

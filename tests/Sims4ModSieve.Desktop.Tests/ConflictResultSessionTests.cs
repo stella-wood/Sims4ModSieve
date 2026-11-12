@@ -201,6 +201,19 @@ public sealed class ConflictResultSessionTests
     }
 
     [TestMethod]
+    public void ReparsePointRangesAreNotReportedAsInaccessible()
+    {
+        var packages = Packages(paths: [A], issues: [
+            new("reparse-point-skipped", PackageConflictScanIssueStage.Discovery, @"C:\Mods\Linked", "ignored"),
+            new("source-unavailable", PackageConflictScanIssueStage.SourceValidation, @"C:\Offline", "ignored")]);
+        var session = new ConflictResultSession();
+        session.Replace(packages, Contents(), Scripts());
+
+        Assert.AreEqual("链接没有跟进去检查", session.RangeProblems.Single(problem => problem.Code == "reparse-point-skipped").Summary);
+        Assert.AreEqual("检查范围无法访问", session.RangeProblems.Single(problem => problem.Code == "source-unavailable").Summary);
+    }
+
+    [TestMethod]
     public void WholeUnknownMultipleReasonsAndRangesStaySeparate()
     {
         var scripts = Scripts(issues: [
