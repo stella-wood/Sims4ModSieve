@@ -80,7 +80,10 @@ public sealed record ScriptArchiveIssue(
     string Message,
     string? SourceId = null,
     string? EntryName = null,
-    string? Detail = null);
+    string? Detail = null)
+{
+    public string? LinkTarget { get; init; }
+}
 
 public static class ScriptArchiveIssueCode
 {

@@ -85,12 +85,8 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
             {
                 if ((fileSystem.GetAttributes(source.Path) & FileAttributes.ReparsePoint) != 0)
                 {
-                    issues.Add(new ScanIssue(
-                        "source-is-reparse-point",
-                        ScanIssueStage.SourceValidation,
-                        source.Path,
-                        LinkMessage(source.Path, "这个文件夹是链接（联接或符号链接），为了安全没有跟进去扫描。"),
-                        source.Id));
+                    issues.Add(LinkIssue("source-is-reparse-point", ScanIssueStage.SourceValidation,
+                        source.Path, source.Id, "这个文件夹是链接（联接或符号链接），为了安全没有跟进去扫描。"));
                     continue;
                 }
             }
@@ -108,6 +104,8 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
             valid.Add(source);
         }
 
+        issues.RemoveAll(issue => issue.Code == "source-is-reparse-point"
+            && issue.LinkTarget is { } target && IsTargetCovered(target, valid));
         return valid;
     }
 
@@ -185,12 +183,9 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
 
                     if ((attributes & FileAttributes.ReparsePoint) != 0)
                     {
-                        issues.Add(new ScanIssue(
-                            "reparse-point-skipped",
-                            ScanIssueStage.Discovery,
-                            path,
-                            LinkMessage(path, "这是一个链接（联接或符号链接），为了安全没有跟进去扫描。"),
-                            source.Id));
+                        var issue = LinkIssue("reparse-point-skipped", ScanIssueStage.Discovery,
+                            path, source.Id, "这是一个链接（联接或符号链接），为了安全没有跟进去扫描。");
+                        if (issue.LinkTarget is not { } target || !IsTargetCovered(target, sources)) issues.Add(issue);
                         continue;
                     }
 
@@ -240,8 +235,32 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
     }
 
     // 游戏会跟随链接加载里面的 mod，玩家需要知道真实位置才能把它加进扫描范围。
-    private string LinkMessage(string path, string text) =>
-        fileSystem.GetLinkTarget(path) is { } target ? $"{text}真实位置：{target}" : text;
+    private ScanIssue LinkIssue(string code, ScanIssueStage stage, string path, string sourceId, string text)
+    {
+        var target = fileSystem.GetLinkTarget(path);
+        return new(code, stage, path, target is null ? text : $"{text}真实位置：{target}", sourceId)
+        { LinkTarget = target };
+    }
+
+    private bool IsTargetCovered(string target, IReadOnlyList<NormalizedSource> sources)
+    {
+        if (applicationGuard.Contains(target)) return false;
+        foreach (var source in sources.Where(source => PathRules.IsWithin(target, source.Path)))
+        {
+            try
+            {
+                // 范围内还有一层链接时，发现阶段仍会跳过，不能当作已经覆盖。
+                var current = target;
+                while ((fileSystem.GetAttributes(current) & FileAttributes.ReparsePoint) == 0)
+                {
+                    if (PathRules.Comparer.Equals(current, source.Path)) return true;
+                    current = Path.GetDirectoryName(current)!;
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+        }
+        return false;
+    }
 
     public static IReadOnlyList<ScanSourceSnapshot> CreateSourceSnapshots(IReadOnlyList<NormalizedSource> sources)
     {

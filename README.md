@@ -81,6 +81,9 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 **发现 bug 或者有建议？**
 欢迎在 [Issues](https://github.com/stella-wood/Sims4ModSieve/issues) 里反馈。附上「设置 → 诊断与反馈」里复制的版本和系统信息会更好排查。
 
+**提示链接没有跟进去检查？**
+可点击「改为扫描真实位置」把目标目录加入当前页的检查范围，再开始扫描。具体规则见[链接与真实位置](docs/design/冲突检测页面方案-v1.md#链接与真实位置)。
+
 ## 从源码构建
 
 需要 .NET SDK 10.0.403 或兼容的 .NET 10 SDK（版本由 `global.json` 固定）。`eng\dotnet.cmd` 会优先使用项目内的本地 SDK，找不到时使用系统的 `dotnet`。两处都没有 SDK 时会报 `A compatible .NET SDK was not found`，先从 [.NET 下载页](https://dotnet.microsoft.com/download/dotnet/10.0) 安装 .NET 10 SDK（不是 Runtime）。

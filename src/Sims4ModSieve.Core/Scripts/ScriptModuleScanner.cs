@@ -399,7 +399,7 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem, string? ap
         },
         issue.Path,
         issue.Message,
-        issue.SourceId);
+        issue.SourceId) { LinkTarget = issue.LinkTarget };
 
     private static IReadOnlyList<ScriptArchiveIssue> OrderIssues(IEnumerable<ScriptArchiveIssue> issues) =>
         ReadOnlyLists.Freeze(issues

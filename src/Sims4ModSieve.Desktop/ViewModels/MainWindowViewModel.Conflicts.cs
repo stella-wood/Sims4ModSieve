@@ -288,6 +288,7 @@ public sealed partial class MainWindowViewModel
             });
         var publishedRows = rows.Select(row => row with
         {
+            ShowScanLinkTarget = row.LinkTarget is { } target && CanAddLinkTarget(target, ConflictSources),
             IsDisabled = IsDisabled(row.File),
             FileCountText = row.IsCardStart && countsByKey.TryGetValue(row.Key, out var counts) ? counts : row.FileCountText,
         }).ToArray();

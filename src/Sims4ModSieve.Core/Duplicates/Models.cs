@@ -81,7 +81,10 @@ public sealed record ScanIssue(
     ScanIssueStage Stage,
     string Path,
     string Message,
-    string? SourceId = null);
+    string? SourceId = null)
+{
+    public string? LinkTarget { get; init; }
+}
 
 public sealed record DuplicateReport(
     DateTime StartedAtUtc,

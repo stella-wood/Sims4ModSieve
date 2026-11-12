@@ -12,7 +12,7 @@ public interface IFileSystemAccess
 
     Stream OpenRead(string path);
 
-    /// <summary>联接或符号链接指向的最终位置；不是链接或读不到时返回 null。只用于给玩家看。</summary>
+    /// <summary>联接或符号链接指向的最终位置；不是链接或读不到时返回 null。</summary>
     string? GetLinkTarget(string path) => null;
 }
 

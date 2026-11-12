@@ -346,7 +346,7 @@ public sealed class PackageConflictScanner(
         },
         issue.Path,
         issue.Message,
-        issue.SourceId);
+        issue.SourceId) { LinkTarget = issue.LinkTarget };
 
     private static IReadOnlyList<PackageConflictScanIssue> OrderIssues(IEnumerable<PackageConflictScanIssue> issues) =>
         ReadOnlyLists.Freeze(issues
