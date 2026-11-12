@@ -234,6 +234,11 @@ public sealed partial class MainWindowViewModel
         });
         if (!ReferenceEquals(session, conflictSession) || !IsConflictComplete) return;
         session.AcceptFileChanges(prepared);
+        if (!restore)
+        {
+            conflictSelectedPaths.ExceptWith(paths);
+            RefreshConflictSelection();
+        }
         if (ConflictRelationships is { } relationships) ConflictRelationships = session.Relationships(relationships.File.Path);
         await RefreshConflictRowsAsync(restoreViewport);
         RefreshConflictResults();

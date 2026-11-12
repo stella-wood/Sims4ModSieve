@@ -298,7 +298,7 @@ public sealed partial class MainWindowViewModel
         bool? GroupSelection(string key) => groupTotals.TryGetValue(key, out var total) && total > 0
             ? groupSelections.GetValueOrDefault(key) == total ? true
                 : groupSelections.GetValueOrDefault(key) == 0 ? false : null
-            : null;
+            : false;
         var publishedRows = rows.Select(row => row with
         {
             IsDisabled = IsDisabled(row.File),

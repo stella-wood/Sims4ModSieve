@@ -647,6 +647,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 IReadOnlyList<string> duplicatePaths = result.CompletedPaths;
                 IReadOnlyList<string> conflictPaths = result.CompletedPaths;
+                if (owner == "conflict")
+                {
+                    var disabledByPath = (result.RestoredRecords ?? []).Where(record => record.DisabledMod is not null)
+                        .ToDictionary(record => record.Item.OriginalPath, record => record.DisabledMod!, StringComparer.OrdinalIgnoreCase);
+                    conflictPaths = result.CompletedPaths.Select(path => disabledByPath.TryGetValue(path, out var disabled)
+                        ? disabled.OriginalPath : path).ToArray();
+                    if (disabledByPath.Count > 0) await RefreshFileManagementAsync();
+                }
                 if (owner == "ignored")
                 {
                     var records = (result.RestoredRecords ?? []).Where(record => record.DisabledMod is null).ToArray();

@@ -46,10 +46,9 @@ public sealed partial class MainWindowViewModel
 
     public void SetConflictFileSelected(ConflictResultRow row, bool selected)
     {
-        if (!IsConflictMultiSelect || row.File is not { Stamp: not null } file) return;
-        if (selected) conflictSelectedPaths.Add(file.Path); else conflictSelectedPaths.Remove(file.Path);
-        row.Selection.IsSelected = selected;
-        SyncConflictGroupSelection(row.OwnerKey);
+        if (!IsConflictMultiSelect || row.File is not { Stamp: not null }) return;
+        SetRowSelected(row, selected);
+        SyncConflictSelectionRows();
         RefreshConflictSelection();
     }
 
@@ -61,18 +60,14 @@ public sealed partial class MainWindowViewModel
         if (files.Length == 0) return;
         var select = !files.All(IsRowSelected);
         foreach (var row in files) SetRowSelected(row, select);
-        header.Selection.IsSelected = select;
+        SyncConflictSelectionRows();
         RefreshConflictSelection();
     }
 
     public void ClearConflictSelection()
     {
         conflictSelectedPaths.Clear();
-        foreach (var row in conflictRows)
-        {
-            if (row.Kind == ConflictRowKind.File) row.Selection.IsSelected = false;
-            else if (row.IsCardStart && row.Selection.IsSelected is not null) row.Selection.IsSelected = null;
-        }
+        SyncConflictSelectionRows();
         RefreshConflictSelection();
     }
 
@@ -99,15 +94,19 @@ public sealed partial class MainWindowViewModel
         row.Selection.IsSelected = selected;
     }
 
-    private void SyncConflictGroupSelection(string ownerKey)
+    private void SyncConflictSelectionRows()
     {
-        if (ownerKey.Length == 0) return;
-        var header = conflictRows.FirstOrDefault(row => row.IsCardStart && string.Equals(row.Key, ownerKey, StringComparison.Ordinal));
-        if (header is null) return;
-        var files = SelectableFiles(ownerKey);
-        header.Selection.IsSelected = files.Length == 0 ? null
-            : files.All(IsRowSelected) ? true
-            : files.Any(IsRowSelected) ? null : false;
+        foreach (var row in conflictRows.Where(row => row.Kind == ConflictRowKind.File))
+            row.Selection.IsSelected = row.IsSelectableFile && IsRowSelected(row);
+        var filesByOwner = conflictRows.Where(row => row.IsSelectableFile)
+            .ToLookup(row => row.OwnerKey, StringComparer.Ordinal);
+        foreach (var header in conflictRows.Where(row => row.IsCardStart))
+        {
+            var files = filesByOwner[header.Key];
+            header.Selection.IsSelected = !files.Any() ? false
+                : files.All(IsRowSelected) ? true
+                : files.Any(IsRowSelected) ? null : false;
+        }
     }
 
     // 已勾选的文件按会话里的卡片解析；被筛选隐藏的文件仍参与操作，数量提示保持同一口径。
@@ -134,8 +133,16 @@ public sealed partial class MainWindowViewModel
     private async Task DeleteSelectedConflictFilesAsync()
     {
         if (IsBusy || !IsConflictComplete || !IsConflictMultiSelect) return;
-        var candidates = ConflictSelectionCandidates();
-        if (candidates.Count == 0) return;
+        var candidates = ConflictSelectionCandidates().Select(candidate =>
+        {
+            var disabled = disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, candidate.Path)
+                && record.Size == candidate.ExpectedSize && record.LastWriteTimeUtc == candidate.ExpectedLastWriteTimeUtc);
+            return disabled is null ? candidate : candidate with
+            {
+                Path = disabled.DisabledPath, DisabledMod = disabled, ExpectedIdentity = disabled.Identity,
+            };
+        }).ToArray();
+        if (candidates.Length == 0) return;
         var session = conflictSession;
         var duplicateGeneration = resultGeneration;
         var duplicateSnapshot = Groups.Select(group => group.Model).ToArray();
@@ -151,16 +158,19 @@ public sealed partial class MainWindowViewModel
             var result = await fileActionService.DeleteAsync(preflight);
             if (result.CompletedPaths.Count > 0)
             {
+                var byPath = candidates.ToDictionary(candidate => candidate.Path, StringComparer.OrdinalIgnoreCase);
+                var completedPaths = result.CompletedPaths.Select(path => byPath[path].DisabledMod?.OriginalPath ?? path).ToArray();
+                PublishDisabledMods(new(disabledRecords.Where(record => !result.CompletedPaths.Contains(
+                    record.DisabledPath, StringComparer.OrdinalIgnoreCase)).ToArray(), []));
                 if (!ReferenceEquals(session, conflictSession))
                 {
-                    if (duplicateGeneration == resultGeneration) resultSession.SynchronizeDeletedPaths(result.CompletedPaths);
+                    if (duplicateGeneration == resultGeneration) resultSession.SynchronizeDeletedPaths(completedPaths);
                     fileActionService.ClearLastDelete();
                     return;
                 }
                 RememberDeletion("conflict", session, duplicateSnapshot, duplicateGeneration, result.CompletedPaths);
-                conflictSelectedPaths.ExceptWith(result.CompletedPaths);
-                await UpdateConflictFilePathsAsync(session, result.CompletedPaths, restore: false, restoreViewport);
-                if (duplicateGeneration == resultGeneration) resultSession.SynchronizeDeletedPaths(result.CompletedPaths);
+                await UpdateConflictFilePathsAsync(session, completedPaths, restore: false, restoreViewport);
+                if (duplicateGeneration == resultGeneration) resultSession.SynchronizeDeletedPaths(completedPaths);
                 if (ReferenceEquals(session, conflictSession)) ConflictFileActionStatusText = $"本次删除 {result.CompletedPaths.Count} 个文件，已移入回收站";
             }
             if (result.Failures.Count > 0) fileActionDialogs.ShowProblems("部分文件未能删除", result.Failures);

@@ -1,5 +1,8 @@
 using System.IO;
+using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -148,6 +151,282 @@ public sealed class ConflictMultiSelectTests
         model.IsConflictMultiSelect = false;
         Assert.AreEqual(0, model.ConflictSelectedCount);
         Assert.IsTrue(model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File).All(row => row.Selection.IsSelected != true));
+    });
+
+    [TestMethod]
+    public Task SamePathSelectionSynchronizesRowsAndGroups() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out _, out _);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var session = new ConflictResultSession();
+        session.Replace(ConflictResultSessionTests.Packages(), Contents(), Scripts([
+            Collision("pkg.a", (files.A, "x"), (files.B, "y"), (files.C, "x")),
+            Collision("pkg.b", (files.A, "x"), (files.B, "x")),
+        ]));
+        foreach (var card in session.Cards) session.ToggleExpanded(card.Key);
+        await SetSessionAsync(model, session, "all");
+        var window = OpenWindow(model);
+        window.Height = 1300;
+        model.IsConflictMultiSelect = true;
+        await WpfTestHost.LayoutAsync(window);
+        var copies = model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File && row.File?.Path == files.A).ToArray();
+        Assert.AreEqual(2, copies.Length);
+
+        model.SetConflictFileSelected(copies[0], true);
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        Assert.IsTrue(copies.All(row => row.Selection.IsSelected == true));
+        Assert.IsTrue(copies.All(model.ConflictActionAppliesToSelection));
+        Assert.IsTrue(model.ConflictRows.Where(row => row.IsCardStart).All(row => row.Selection.IsSelected is null));
+        await WpfTestHost.LayoutAsync(window);
+        var boxes = Descendants<CheckBox>(window).Where(box => box.Name == "FileSelection"
+            && box.DataContext is ConflictResultRow { File: { } file } && file.Path == files.A).ToArray();
+        Assert.AreEqual(2, boxes.Length);
+        Assert.IsTrue(boxes.All(box => box.IsChecked == true));
+
+        model.SetConflictFileSelected(copies[1], false);
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+        Assert.IsTrue(copies.All(row => row.Selection.IsSelected == false));
+        Assert.IsTrue(model.ConflictRows.Where(row => row.IsCardStart).All(row => row.Selection.IsSelected == false));
+
+        var smaller = model.ConflictRows.Single(row => row.IsCardStart
+            && session.Cards.Single(card => card.Key == row.Key).Files.Count == 2);
+        model.ToggleConflictGroupSelection(smaller);
+        Assert.AreEqual(2, model.ConflictSelectedCount);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File && row.File?.Path != files.C)
+            .All(row => row.Selection.IsSelected == true));
+        Assert.IsTrue(smaller.Selection.IsSelected);
+        Assert.IsNull(model.ConflictRows.Single(row => row.IsCardStart && row.Key != smaller.Key).Selection.IsSelected);
+        await WpfTestHost.LayoutAsync(window);
+        Save(window, "multi-select-shared-path.png");
+        model.ToggleConflictGroupSelection(smaller);
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File || row.IsCardStart)
+            .All(row => row.Selection.IsSelected == false));
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task ClearingSelectionResetsRenderedGroupCheckbox(bool exitMultiSelect) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out _, out _);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        var window = OpenWindow(model);
+        model.IsConflictMultiSelect = true;
+        model.SetConflictFileSelected(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == files.A), true);
+        Assert.IsNull(model.ConflictRows.Single(row => row.IsCardStart).Selection.IsSelected);
+        if (exitMultiSelect) { model.IsConflictMultiSelect = false; model.IsConflictMultiSelect = true; }
+        else model.ClearConflictSelection();
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File || row.IsCardStart)
+            .All(row => row.Selection.IsSelected == false));
+        var group = Descendants<CheckBox>(window).Single(box => box.Name == "GroupSelection");
+        Assert.IsFalse(group.IsChecked);
+        group.ApplyTemplate();
+        Assert.AreEqual(Visibility.Collapsed, ((FrameworkElement)group.Template.FindName("Partial", group)!).Visibility);
+        Save(window, $"multi-select-cleared-{exitMultiSelect}.png");
+        model.ToggleConflictExpandedCommand.Execute(model.ConflictRows.Single(row => row.IsCardStart));
+        await model.ConflictRowsRefreshTask;
+        Assert.IsFalse(model.ConflictRows.Single(row => row.IsCardStart).Selection.IsSelected);
+    });
+
+    [TestMethod]
+    public Task BatchDeleteIncludesDisabledFilesAndUndoKeepsThemDisabled() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out var adapter, out var dialogs);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        await model.DisableFilesAsync([files.A]);
+        var disabledId = model.DisabledFiles.Files.Single().Id;
+        var window = OpenWindow(model);
+        model.IsConflictMultiSelect = true;
+        foreach (var path in new[] { files.A, files.B })
+            model.SetConflictFileSelected(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == path), true);
+        await WpfTestHost.LayoutAsync(window);
+        var button = Descendants<Button>(window).Single(button => ReferenceEquals(button.Command, model.DeleteConflictFileCommand)
+            && button.DataContext is ConflictResultRow { File: { } file } && file.Path == files.A);
+        Assert.IsTrue(button.IsEnabled);
+        ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!).Invoke();
+        await WpfTestHost.LayoutAsync(window);
+        await model.ConflictFileActionTask;
+        CollectionAssert.AreEquivalent(new[] { files.A + ".off", files.B }, adapter.Deleted.ToArray());
+        Assert.AreEqual(0, dialogs.Problems.Count);
+        Assert.AreEqual(0, model.DisabledFiles.Files.Count);
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+        CollectionAssert.AreEqual(new[] { files.C }, model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File)
+            .Select(row => row.File!.Path).ToArray());
+        Assert.IsFalse(File.Exists(files.A + ".off"));
+        Assert.IsFalse(File.Exists(files.B));
+        Assert.IsTrue(model.CanUndoConflictDelete);
+        await WpfTestHost.LayoutAsync(window);
+        Save(window, "multi-select-mixed-deleted.png");
+
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(File.Exists(files.A));
+        Assert.IsTrue(File.Exists(files.A + ".off"));
+        Assert.IsTrue(File.Exists(files.B));
+        Assert.AreEqual(disabledId, model.DisabledFiles.Files.Single().Id);
+        Assert.IsTrue(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == files.A).IsDisabled);
+        Assert.AreEqual(3, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+        Assert.AreEqual(0, dialogs.Problems.Count);
+        Assert.IsFalse(model.CanUndoConflictDelete);
+        Save(window, "multi-select-mixed-restored.png");
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task MixedBatchDeleteKeepsFailedFileSelected(bool failDisabled) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out var adapter, out var dialogs);
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        await model.DisableFilesAsync([files.A]);
+        model.IsConflictMultiSelect = true;
+        foreach (var path in new[] { files.A, files.B })
+            model.SetConflictFileSelected(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == path), true);
+        adapter.FailDeletePath = failDisabled ? files.A + ".off" : files.B;
+        await model.DeleteSelectedConflictFilesCommand.ExecuteAsync();
+        var failedPath = failDisabled ? files.A : files.B;
+        Assert.AreEqual(1, adapter.Deleted.Count);
+        Assert.AreEqual(adapter.FailDeletePath, dialogs.Problems.Single().Path);
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        Assert.IsTrue(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == failedPath).Selection.IsSelected);
+        Assert.AreEqual(failDisabled ? 1 : 0, model.DisabledFiles.Files.Count);
+        Assert.AreEqual(2, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(3, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
+        Assert.IsTrue(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == files.A).IsDisabled);
+        Assert.IsTrue(File.Exists(files.A + ".off"));
+        Assert.IsTrue(File.Exists(files.B));
+        Assert.IsFalse(File.Exists(files.A));
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+    });
+
+    [TestMethod]
+    [DataRow("ignored", false)]
+    [DataRow("ignored", true)]
+    [DataRow("disabled", false)]
+    [DataRow("disabled", true)]
+    [DataRow("duplicates", false)]
+    [DataRow("duplicates", true)]
+    public Task CrossPageDeletionClearsOnlySuccessfulConflictSelections(string page, bool partialFailure) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var duplicates = new DuplicateResultSession();
+        if (page == "duplicates")
+        {
+            var copies = new[] { files.A, files.B, files.C }.Select(path =>
+            {
+                var info = new FileInfo(path);
+                return new DuplicateFile(path, info.Length, info.LastWriteTimeUtc, [], [], true,
+                    path.Count(character => character == '\\'), PhysicalFileIdentity.Read(path));
+            }).ToArray();
+            var selection = new DuplicateSelectionService().Select(copies);
+            var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(files.A)));
+            duplicates.Replace(duplicates.PrepareGroups([
+                new(hash, copies[0].Size, DuplicateSection.Ordinary, copies, selection.KeepPath, selection.DeletePaths),
+            ]));
+        }
+        var model = Model(files.Root, out var adapter, out var dialogs, duplicates);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        if (page == "disabled") await model.DisableFilesAsync([files.A, files.B]);
+        model.IsConflictMultiSelect = true;
+        foreach (var path in new[] { files.A, files.B })
+            model.SetConflictFileSelected(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == path), true);
+        if (page == "ignored")
+        {
+            model.AddIgnoredFiles([files.A, files.B]);
+            await model.ConflictRowsRefreshTask;
+            Assert.AreEqual(2, model.ConflictSelectedCount, "忽略隐藏文件时仍应保留勾选");
+        }
+        var window = OpenWindow(model);
+        var deletedA = page == "disabled" ? files.A + ".off" : files.A;
+        var deletedB = page == "disabled" ? files.B + ".off" : files.B;
+        if (partialFailure) adapter.FailDeletePath = deletedB;
+        if (page == "duplicates")
+        {
+            model.OpenDuplicateScannerCommand.Execute(null);
+            foreach (var file in model.Groups.Single().Files) file.IsSelected = file.Path != files.C;
+            await model.DeleteSelectedCommand.ExecuteAsync();
+        }
+        else
+        {
+            model.OpenSettingsCommand.Execute("files");
+            await model.FileManagementRefreshTask;
+            var section = page == "ignored" ? model.IgnoredFiles : model.DisabledFiles;
+            section.ToggleMultiSelectCommand.Execute(null);
+            foreach (var file in section.Files) file.IsSelected = true;
+            await section.BulkDeleteCommand!.ExecuteAsync();
+        }
+        model.OpenConflictCommand.Execute(null);
+        model.ShowIgnoredConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(File.Exists(deletedA));
+        Assert.AreEqual(partialFailure, File.Exists(deletedB));
+        Assert.AreEqual(partialFailure ? 1 : 0, dialogs.Problems.Count);
+        Assert.AreEqual(partialFailure ? 1 : 0, model.ConflictSelectedCount);
+        Assert.AreEqual(partialFailure, model.HasConflictSelection);
+        Assert.IsFalse(model.ConflictRows.Any(row => row.File?.Path == files.A));
+        Assert.AreEqual(partialFailure ? 2 : 1, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
+        if (partialFailure)
+            Assert.IsTrue(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == files.B).Selection.IsSelected);
+        Assert.AreEqual(model.ConflictSelectionText, NoteText(window).Text);
+        foreach (var button in Descendants<Button>(window).Where(button => button.Name is "DeleteSelectedConflictFilesButton" or "DisableSelectedConflictFilesButton"))
+            Assert.AreEqual(partialFailure, button.IsEnabled);
+        Assert.AreEqual(partialFailure, model.DeleteSelectedConflictFilesCommand.CanExecute(null));
+        Assert.AreEqual(partialFailure, model.DisableSelectedConflictFilesCommand.CanExecute(null));
+        Save(window, $"multi-select-cross-page-{page}-{partialFailure}.png");
+
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        await model.ConflictRowsRefreshTask;
+        Assert.IsTrue(File.Exists(deletedA));
+        Assert.IsTrue(File.Exists(deletedB));
+        Assert.AreEqual(3, model.ConflictRows.Count(row => row.Kind == ConflictRowKind.File));
+        Assert.IsFalse(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == files.A).Selection.IsSelected);
+        Assert.AreEqual(partialFailure ? 1 : 0, model.ConflictSelectedCount, "撤回不应重新勾选已删除项");
+    });
+
+    [TestMethod]
+    public Task UndoMixedBatchDeleteDoesNotOverwriteDisabledPath() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out _, out var dialogs);
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        await model.DisableFilesAsync([files.A]);
+        model.IsConflictMultiSelect = true;
+        foreach (var path in new[] { files.A, files.B })
+            model.SetConflictFileSelected(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == path), true);
+        await model.DeleteSelectedConflictFilesCommand.ExecuteAsync();
+        File.WriteAllText(files.A + ".off", "keep this replacement");
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        Assert.AreEqual("keep this replacement", File.ReadAllText(files.A + ".off"));
+        Assert.IsTrue(File.Exists(files.B));
+        Assert.IsFalse(File.Exists(files.A));
+        Assert.AreEqual(files.A + ".off", dialogs.Problems.Single().Path);
+        Assert.IsTrue(model.CanUndoConflictDelete);
+        Assert.IsFalse(model.ConflictRows.Any(row => row.File?.Path == files.A));
+        File.Delete(files.A + ".off");
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        await model.ConflictRowsRefreshTask;
+        Assert.IsTrue(File.Exists(files.A + ".off"));
+        Assert.IsTrue(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.File && row.File?.Path == files.A).IsDisabled);
+        Assert.IsFalse(model.CanUndoConflictDelete);
     });
 
     [TestMethod]
@@ -326,7 +605,8 @@ public sealed class ConflictMultiSelectTests
         mouse_event(0x0010, 0, 0, 0, UIntPtr.Zero);
     }
 
-    private static MainWindowViewModel Model(string root, out TestRecycleBin adapter, out RecordingDialogs dialogs)
+    private static MainWindowViewModel Model(string root, out TestRecycleBin adapter, out RecordingDialogs dialogs,
+        DuplicateResultSession? duplicates = null)
     {
         var dataDirectory = Path.Combine(root, "store");
         Directory.CreateDirectory(dataDirectory);
@@ -336,7 +616,7 @@ public sealed class ConflictMultiSelectTests
         var disable = new ModDisableService(dataDirectory);
         return new MainWindowViewModel(new EmptyRun(), new NoPicker(), new Settings(root),
             new FileActionService(adapter, new PhysicalFileMetadataAccess(), store, disable), dialogs,
-            fileManagementStore: store, modDisableService: disable, confirmModChange: _ => true);
+            resultSession: duplicates, fileManagementStore: store, modDisableService: disable, confirmModChange: _ => true);
     }
 
     // 只有真实文件戳才能通过删除前核对；会话直接按磁盘状态构造。
@@ -402,15 +682,26 @@ public sealed class ConflictMultiSelectTests
     {
         private int nextPidl;
         public List<string> Deleted { get; } = [];
+        public string? FailDeletePath { get; set; }
         public bool CanRecycle(string path) => true;
+        public Task<RecycleBinPresence> QueryAsync(IReadOnlyList<RecycleBinItem> items, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new RecycleBinPresence(items.Where(item => File.Exists(item.RecycledPath)).ToArray(),
+                items.Where(item => !File.Exists(item.RecycledPath)).ToArray(), []));
         public Task<RecycleBinDeleteResult> MoveToRecycleBinAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
         {
-            Deleted.AddRange(paths);
-            return Task.FromResult(new RecycleBinDeleteResult(paths.Select(path =>
-                new RecycleBinItem(path, [1, 2, (byte)++nextPidl, 0])).ToArray(), []));
+            var items = paths.Where(path => path != FailDeletePath).Select(path =>
+                new RecycleBinItem(path, [1, 2, (byte)++nextPidl, 0],
+                    Path.Combine(Path.GetDirectoryName(path)!, Guid.NewGuid().ToString("N") + ".recycled"))).ToArray();
+            foreach (var item in items) File.Move(item.OriginalPath, item.RecycledPath!);
+            Deleted.AddRange(items.Select(item => item.OriginalPath));
+            return Task.FromResult(new RecycleBinDeleteResult(items, paths.Where(path => path == FailDeletePath)
+                .Select(path => new FileActionFailure(path, "模拟回收失败")).ToArray()));
         }
-        public Task<FileActionBatchResult> RestoreAsync(IReadOnlyList<RecycleBinItem> items, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new FileActionBatchResult(items.Select(item => item.OriginalPath).ToArray(), [], false));
+        public Task<FileActionBatchResult> RestoreAsync(IReadOnlyList<RecycleBinItem> items, CancellationToken cancellationToken = default)
+        {
+            foreach (var item in items) File.Move(item.RecycledPath!, item.OriginalPath);
+            return Task.FromResult(new FileActionBatchResult(items.Select(item => item.OriginalPath).ToArray(), [], false));
+        }
     }
 
     private sealed class TemporaryFiles : IDisposable
