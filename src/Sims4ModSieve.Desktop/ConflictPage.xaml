@@ -421,11 +421,19 @@
         <DataTemplate x:Key="ConflictTechnicalRelatedGroupsTemplate">
             <ItemsControl ItemsSource="{Binding}" ItemTemplate="{StaticResource ConflictTechnicalRelatedLinkTemplate}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel></ItemsControl>
         </DataTemplate>
+        <Style x:Key="TechnicalEvidenceTextStyle" TargetType="TextBlock">
+            <Setter Property="ToolTip" Value="{Binding Evidence}" />
+            <Style.Triggers><DataTrigger Binding="{Binding Evidence}" Value=""><Setter Property="ToolTip" Value="{x:Null}" /></DataTrigger></Style.Triggers>
+        </Style>
+        <Style x:Key="TechnicalListEvidenceTextStyle" TargetType="TextBlock">
+            <Setter Property="ToolTip" Value="{Binding TechnicalEntry.Cells[0].Evidence}" />
+            <Style.Triggers><DataTrigger Binding="{Binding TechnicalEntry.Cells[0].Evidence}" Value=""><Setter Property="ToolTip" Value="{x:Null}" /></DataTrigger></Style.Triggers>
+        </Style>
         <DataTemplate x:Key="ConflictTechnicalCellTemplate">
             <Border x:Name="Cell" Width="{Binding Table.CellWidth, Mode=OneWay}">
-                <StackPanel x:Name="CellContent" Margin="0,0,12,0" VerticalAlignment="Top">
-                    <TextBlock x:Name="FileName" Text="{Binding FileName}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" />
-                    <TextBlock x:Name="Version" Text="{Binding Version}" TextWrapping="Wrap" ToolTip="{Binding Evidence}" />
+                <StackPanel x:Name="CellContent" Margin="0,0,12,0" VerticalAlignment="Center">
+                    <TextBlock x:Name="FileName" Text="{Binding FileName}" TextWrapping="Wrap" Style="{StaticResource TechnicalEvidenceTextStyle}" />
+                    <TextBlock x:Name="Version" Text="{Binding Version}" TextWrapping="Wrap" Style="{StaticResource TechnicalEvidenceTextStyle}" />
                     <ContentControl x:Name="RelatedContent" HorizontalContentAlignment="Stretch" />
                 </StackPanel>
             </Border>
@@ -442,7 +450,7 @@
         <DataTemplate x:Key="ConflictTechnicalTableTemplate">
             <Grid x:Name="TableRow" Margin="26,8,0,8" MinHeight="26" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <TextBlock x:Name="Identifier" Text="{Binding TechnicalEntry.TableIdentifier}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,0,8,0" />
+                <TextBlock x:Name="Identifier" Text="{Binding TechnicalEntry.TableIdentifier}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,0,8,0" VerticalAlignment="Center" />
                 <ItemsControl Grid.Column="1" ItemsSource="{Binding TechnicalEntry.Cells}" ItemTemplate="{StaticResource ConflictTechnicalCellTemplate}" FontSize="10" Foreground="{StaticResource MutedBrush}" FontWeight="Normal"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0">
                     <ItemsControl.Template><ControlTemplate TargetType="ItemsControl">
@@ -470,10 +478,12 @@
         <DataTemplate x:Key="ConflictTechnicalListFileTemplate">
             <Grid x:Name="ListFile" Margin="26,0,0,8" TextBlock.FontSize="10" TextBlock.Foreground="{StaticResource MutedBrush}" TextBlock.FontWeight="Normal">
                 <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding TechnicalEntry.Cells[0].FileName}" TextTrimming="CharacterEllipsis" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" Margin="0,0,20,0" />
-                <TextBlock Grid.Column="1" Text="{Binding TechnicalEntry.Cells[0].Version}" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" ToolTip="{Binding TechnicalEntry.Cells[0].Evidence}" />
+                <TextBlock Text="{Binding TechnicalEntry.Cells[0].FileName}" TextTrimming="CharacterEllipsis" Style="{StaticResource TechnicalListEvidenceTextStyle}" Margin="0,0,20,0" />
+                <TextBlock Grid.Column="1" Text="{Binding TechnicalEntry.Cells[0].Version}" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Style="{StaticResource TechnicalListEvidenceTextStyle}" />
             </Grid>
-            <DataTemplate.Triggers><DataTrigger Binding="{Binding TechnicalEntry.HasIdenticalVersions}" Value="True"><Setter TargetName="ListFile" Property="TextBlock.Foreground" Value="#A39E98" /></DataTrigger></DataTemplate.Triggers>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding TechnicalEntry.HasIdenticalVersions}" Value="True"><Setter TargetName="ListFile" Property="TextBlock.Foreground" Value="#A39E98" /></DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
         <Style x:Key="ConflictTechnicalScrollBarStyle" TargetType="ScrollBar">
             <Setter Property="Height" Value="11" /><Setter Property="MinHeight" Value="0" /><Setter Property="SmallChange" Value="16" /><Setter Property="FocusVisualStyle" Value="{x:Null}" />

@@ -446,7 +446,7 @@ public sealed class ConflictMultiSelectTests
         CollectionAssert.AreEquivalent(new[] { files.A, files.B }, adapter.Deleted.ToArray());
         Assert.AreEqual(1, dialogs.Confirmations.Count);
         Assert.AreEqual("删除文件", dialogs.Confirmations[0].Title);
-        Assert.AreEqual("请确认游戏已关闭。是否删除这 2 个文件？", dialogs.Confirmations[0].Message);
+        Assert.AreEqual("请先关闭游戏\n确定删除这 2 个文件？", dialogs.Confirmations[0].Message);
         CollectionAssert.AreEqual(new[] { files.C }, model.ConflictRows.Where(row => row.Kind == ConflictRowKind.File)
             .Select(row => row.File!.Path).ToArray());
         Assert.AreEqual(0, model.ConflictSelectedCount);
@@ -495,7 +495,7 @@ public sealed class ConflictMultiSelectTests
         Assert.IsFalse(File.Exists(files.C));
         Assert.IsTrue(File.Exists(files.B));
         Assert.AreEqual(0, adapter.Deleted.Count);
-        CollectionAssert.AreEqual(new[] { ("禁用文件", "请确认游戏已关闭。是否禁用这 2 个文件？") }, dialogs.Confirmations.ToArray());
+        CollectionAssert.AreEqual(new[] { ("禁用文件", "请先关闭游戏\n确定禁用这 2 个文件？") }, dialogs.Confirmations.ToArray());
         Assert.AreEqual(0, model.ConflictSelectedCount);
         Assert.AreEqual("已禁用 2 个文件，可删除 localthumbcache.package", model.ConflictFileActionStatusText);
     });
@@ -513,11 +513,59 @@ public sealed class ConflictMultiSelectTests
         model.SetConflictFileSelected(rows.Single(row => row.File!.Path == files.A), true);
         model.SetConflictFileSelected(rows.Single(row => row.File!.Path == files.B), true);
         model.IgnoreConflictCommand.Execute(rows[0]);
-        CollectionAssert.AreEqual(new[] { ("忽略文件", "是否忽略这 2 个文件？") }, dialogs.Confirmations.ToArray());
+        CollectionAssert.AreEqual(new[] { ("忽略文件", "确定忽略这 2 个文件？") }, dialogs.Confirmations.ToArray());
         CollectionAssert.AreEquivalent(new[] { files.A, files.B }, model.IgnoredFiles.Files.Select(row => row.Path).ToArray());
         Assert.AreEqual(0, model.ConflictSelectedCount);
         Assert.AreEqual("已忽略 2 个文件", model.ConflictFileActionStatusText);
     });
+
+    [TestMethod]
+    public void FileConfirmationMessagesDistinguishSingleAndMultipleOperations()
+    {
+        foreach (var action in new[] { "删除", "禁用", "启用" })
+        {
+            Assert.AreEqual($"请先关闭游戏\n确定{action}所选文件？", MultiFileConfirmationWindow.ConfirmationMessage(action, 1, true));
+            Assert.AreEqual($"请先关闭游戏\n确定{action}这 2 个文件？", MultiFileConfirmationWindow.ConfirmationMessage(action, 2, true));
+        }
+        foreach (var action in new[] { "忽略", "取消忽略" })
+            Assert.AreEqual($"确定{action}这 2 个文件？", MultiFileConfirmationWindow.ConfirmationMessage(action, 2, false));
+    }
+
+    [TestMethod]
+    public Task SingleSelectedIgnoreDoesNotConfirm() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out _, out var dialogs);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        model.IsConflictMultiSelect = true;
+        var row = model.ConflictRows.Single(item => item.Kind == ConflictRowKind.File && item.File?.Path == files.A);
+        model.SetConflictFileSelected(row, true);
+        dialogs.Confirm = false;
+        model.IgnoreConflictCommand.Execute(row);
+        Assert.AreEqual(0, dialogs.Confirmations.Count);
+        Assert.IsTrue(model.IgnoredFiles.Files.Any(item => item.Path == files.A));
+    });
+
+    [TestMethod]
+    public void SettingsMultipleIgnoreAndUnignoreRespectConfirmation()
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out _, out var dialogs);
+        dialogs.Confirm = false;
+        model.AddIgnoredFiles([files.A, files.B]);
+        Assert.AreEqual(0, model.IgnoredFiles.Files.Count);
+        Assert.AreEqual(("忽略文件", "确定忽略这 2 个文件？"), dialogs.Confirmations.Single());
+        dialogs.Confirm = true;
+        model.AddIgnoredFiles([files.A, files.B]);
+        dialogs.Confirm = false;
+        model.RemoveIgnoredFiles([files.A, files.B]);
+        Assert.AreEqual(2, model.IgnoredFiles.Files.Count);
+        Assert.AreEqual(("忽略文件", "确定取消忽略这 2 个文件？"), dialogs.Confirmations.Last());
+        model.RemoveIgnoredFiles([files.A]);
+        Assert.AreEqual(1, model.IgnoredFiles.Files.Count);
+    }
 
     [TestMethod]
     public Task MultiSelectContextMenuNamesSelectionActions() => WpfTestHost.RunAsync(async () =>
@@ -577,7 +625,7 @@ public sealed class ConflictMultiSelectTests
     [TestMethod]
     public Task MultiFileConfirmationRendersOperationTitleMessageAndYesNoButtons() => WpfTestHost.RunAsync(async () =>
     {
-        var window = new MultiFileConfirmationWindow("删除文件", "请确认游戏已关闭。是否删除这 3 个文件？")
+        var window = new MultiFileConfirmationWindow("删除文件", "请先关闭游戏\n确定删除这 3 个文件？")
         {
             Left = -10000, Top = -10000, ShowActivated = false, ShowInTaskbar = false,
         };
@@ -585,13 +633,27 @@ public sealed class ConflictMultiSelectTests
         await WpfTestHost.LayoutAsync(window);
         Assert.AreEqual("删除文件", window.Title);
         var message = Descendants<TextBlock>(window).Single(text => text.Name == "MessageText");
-        Assert.AreEqual("请确认游戏已关闭。是否删除这 3 个文件？", message.Text);
+        Assert.AreEqual("请先关闭游戏\n确定删除这 3 个文件？", message.Text);
         Assert.IsTrue(message.IsVisible);
         var buttons = Descendants<Button>(window).ToArray();
         CollectionAssert.AreEqual(new[] { "否", "是" }, buttons.Select(button => button.Content.ToString()).ToArray());
         Assert.AreEqual(2, Descendants<System.Windows.Shapes.Path>(window).Count());
         Save(window, "multi-file-confirmation.png");
         window.Close();
+    });
+
+    [TestMethod]
+    public Task FileConfirmationButtonsReturnChosenResult() => WpfTestHost.RunAsync(() =>
+    {
+        foreach (var (label, expected) in new[] { ("否", false), ("是", true) })
+        {
+            var window = new MultiFileConfirmationWindow("删除文件", "请先关闭游戏\n确定删除所选文件？");
+            window.Loaded += (_, _) => window.Dispatcher.BeginInvoke(() =>
+                Descendants<Button>(window).Single(button => (string)button.Content == label)
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent)));
+            Assert.AreEqual(expected, window.ShowDialog());
+        }
+        return Task.CompletedTask;
     });
 
     private static TextBlock NoteText(Window window) => Descendants<TextBlock>(window).Single(text => text.Name == "ConflictSelectionNote");

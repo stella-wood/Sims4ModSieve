@@ -60,9 +60,11 @@ public partial class ConflictRelationshipsDialog : UserControl
         expandedCopies.Clear();
         closing = false;
         RebuildRows();
-        Visibility = Visibility.Visible;
         FitPane();
+        Pane.BeginAnimation(OpacityProperty, null);
+        Pane.Opacity = 0;
         Animate(open: true);
+        Visibility = Visibility.Visible;
         Dispatcher.BeginInvoke(() => CloseButton.Focus());
     }
 
@@ -71,10 +73,13 @@ public partial class ConflictRelationshipsDialog : UserControl
         var window = Window.GetWindow(this);
         var widthScale = (window?.ActualWidth ?? 1180) / 1180;
         var heightScale = (window?.ActualHeight ?? 780) / 780;
-        Pane.MaxWidth = Math.Max(1, ActualWidth - 48);
+        var host = VisualTreeHelper.GetParent(this) as FrameworkElement;
+        var availableWidth = ActualWidth > 0 ? ActualWidth : host?.ActualWidth ?? 0;
+        var availableHeight = ActualHeight > 0 ? ActualHeight : host?.ActualHeight ?? 0;
+        Pane.MaxWidth = Math.Max(1, availableWidth - 48);
         Pane.Width = Math.Min(620 * widthScale, Pane.MaxWidth);
-        Pane.MaxHeight = Math.Max(1, Math.Min(440 * heightScale, ActualHeight - 56));
-        Pane.Margin = new Thickness(0, 0, 0, Math.Min(70, ActualHeight * 0.08));
+        Pane.MaxHeight = Math.Max(1, Math.Min(440 * heightScale, availableHeight - 56));
+        Pane.Margin = new Thickness(0, 0, 0, Math.Min(70, availableHeight * 0.08));
     }
 
     private void RebuildRows()
@@ -138,6 +143,8 @@ public partial class ConflictRelationshipsDialog : UserControl
     {
         var duration = TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? open ? 240 : 180 : 1);
         var easing = new CubicEase { EasingMode = open ? EasingMode.EaseOut : EasingMode.EaseIn };
+        BackdropBrush.BeginAnimation(Brush.OpacityProperty,
+            new DoubleAnimation(open ? 0 : 1, open ? 1 : 0, duration) { EasingFunction = easing });
         var transform = (TransformGroup)Pane.RenderTransform;
         ((RotateTransform)transform.Children[0]).BeginAnimation(RotateTransform.AngleProperty,
             new DoubleAnimation(open ? -4 : 0, open ? 0 : -4, duration) { EasingFunction = easing });

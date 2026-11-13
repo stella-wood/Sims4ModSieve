@@ -7,7 +7,6 @@ namespace Sims4ModSieve.Desktop.ViewModels;
 
 public sealed partial class MainWindowViewModel
 {
-    private const string CloseGameNote = "请确认游戏已关闭。";
     private readonly HashSet<string> conflictSelectedPaths = new(StringComparer.OrdinalIgnoreCase);
     private bool isConflictMultiSelect;
 
@@ -128,7 +127,7 @@ public sealed partial class MainWindowViewModel
     }
 
     private static string ConflictConfirmation(string action, int count, bool closeGame) =>
-        (closeGame ? CloseGameNote : string.Empty) + $"是否{action}这 {count} 个文件？";
+        MultiFileConfirmationWindow.ConfirmationMessage(action, count, closeGame);
 
     private async Task DeleteSelectedConflictFilesAsync()
     {
@@ -216,7 +215,7 @@ public sealed partial class MainWindowViewModel
         var allIgnored = candidates.All(candidate => ignoredRecords.Any(record =>
             StringComparer.OrdinalIgnoreCase.Equals(record.Path, Path.GetFullPath(candidate.Path))));
         var action = allIgnored ? "取消忽略" : "忽略";
-        if (!fileActionDialogs.ConfirmFiles("忽略文件",
+        if (candidates.Count > 1 && !fileActionDialogs.ConfirmFiles("忽略文件",
             ConflictConfirmation(action, candidates.Count, closeGame: false))) return;
         var paths = candidates.Select(candidate => candidate.Path).ToArray();
         if (allIgnored)

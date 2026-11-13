@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title=""
-        Width="400"
-        Height="176"
+        Width="324"
+        Height="144"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -19,7 +19,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Grid Width="18" Height="18" Margin="8,0,0,0" VerticalAlignment="Top">
+            <Grid Width="18" Height="18" Margin="8,0,0,0" VerticalAlignment="Center">
                 <Path Data="M9,1 L17,16 L1,16 Z"
                       Stroke="#9A6A32" StrokeThickness="1.4" StrokeLineJoin="Round" />
                 <Path Data="M9,6 L9,11"
@@ -30,7 +30,7 @@
                        Grid.Column="1"
                        Margin="10,0,0,0"
                        FontFamily="Microsoft YaHei UI"
-                       FontSize="14"
+                       FontSize="12"
                        TextWrapping="Wrap"
                        VerticalAlignment="Center" />
         </Grid>

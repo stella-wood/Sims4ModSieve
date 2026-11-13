@@ -14,7 +14,7 @@
 - [App.xaml](../../src/Sims4ModSieve.Desktop/App.xaml)：颜色、字体、按钮、卡片、展开组件及品牌图形资源。
 - [MainWindow.xaml](../../src/Sims4ModSieve.Desktop/MainWindow.xaml)：页面结构、尺寸、局部样式与绑定。
 - [ConflictPage.xaml](../../src/Sims4ModSieve.Desktop/ConflictPage.xaml)、[ConflictResultSession.cs](../../src/Sims4ModSieve.Desktop/ViewModels/ConflictResultSession.cs)：冲突文件关系卡、脚本模块、未完成分析及平铺明细。
-- [DeleteConfirmationWindow.xaml](../../src/Sims4ModSieve.Desktop/DeleteConfirmationWindow.xaml)：紧凑确认窗。
+- [MultiFileConfirmationWindow.xaml](../../src/Sims4ModSieve.Desktop/MultiFileConfirmationWindow.xaml)：文件操作确认窗。
 - [MainWindowViewModel.cs](../../src/Sims4ModSieve.Desktop/ViewModels/MainWindowViewModel.cs)、[DuplicateResultSession.cs](../../src/Sims4ModSieve.Desktop/ViewModels/DuplicateResultSession.cs)：状态、选择及结果会话。
 - [AGENTS.md](../../AGENTS.md)：此前已确认的视觉尺度、操作语义及局部改动边界。
 
@@ -226,9 +226,7 @@
 
 ### 删除确认与错误反馈
 
-删除确认已明确批准为紧凑形式：窗口 320×142、不可调整大小、居中于父窗口、无标题文字、不单列任务栏入口。正文只有「确定删除所选文件？」；右侧依次「否」「是」，按钮各 40×28、间距 8、12 号 Normal。
-
-不要往该确认窗重新加入数量、大小、完整路径、回收站说明、撤回说明或整组警告。后台仍执行文件复核；失败时另行说明。
+文件操作确认窗的尺寸和文案见[多选文件](冲突检测页面方案-v1.md#多选文件)。窗口不可调整大小、居中于父窗口、不单列任务栏入口；右侧依次为「否」「是」。后台仍执行文件复核；失败时另行说明。
 
 意外错误目前使用系统 MessageBox；文件操作失败也用系统警告窗口，最多展示前 8 项并提示其余数量。这是现状，不应在文档中虚构成已实现的自定义 Toast 或统一紫色弹窗。
 
@@ -321,7 +319,7 @@
 
 ## 11. 视觉附件
 
-截图均为现有 XAML 加虚构数据的离屏渲染。文字和样例路径用于布局核验，不是玩家真实扫描记录。确认窗截图仅含客户区，原生无文字标题栏需结合 XAML 规格理解。
+截图均为现有 XAML 加虚构数据的离屏渲染。文字和样例路径用于布局核验，不是玩家真实扫描记录。确认窗截图为历史基线，现行规则见[多选文件](冲突检测页面方案-v1.md#多选文件)。
 
 - [01 首页](./assets/ui-baseline-2026-10-09/01-home.png)
 - [02 初始空结果与离线来源](./assets/ui-baseline-2026-10-09/02-scanner-empty.png)

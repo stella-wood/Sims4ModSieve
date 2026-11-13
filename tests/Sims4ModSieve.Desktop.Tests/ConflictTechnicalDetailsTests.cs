@@ -1046,6 +1046,37 @@ public sealed class ConflictTechnicalDetailsTests
     });
 
     [TestMethod]
+    public Task TechnicalDetailsHideEmptyTooltipsAndKeepEvidenceInBothLayouts() => WpfTestHost.RunAsync(async () =>
+    {
+        var page = new ConflictPage();
+        var window = new Window { ShowInTaskbar = false, ShowActivated = false, Width = 600, Height = 200 };
+        window.Show();
+        foreach (var layout in new[] { "ConflictTechnicalCellTemplate", "ConflictTechnicalListFileTemplate" })
+        {
+            var template = (DataTemplate)page.Resources[layout];
+            foreach (var evidence in new[] { "", "文件路径和资源证据" })
+            {
+                var cell = new ConflictTechnicalCell("示例.package", "版本 1", evidence);
+                object data = layout == "ConflictTechnicalCellTemplate" ? cell :
+                    new ConflictResultRow("test", ConflictRowKind.TechnicalListFile, 1, "示例",
+                        TechnicalEntry: new ConflictTechnicalEntry("TGI", "种类", [cell]));
+                var content = (FrameworkElement)template.LoadContent();
+                content.DataContext = data;
+                window.Content = content;
+                await WpfTestHost.LayoutAsync(window);
+                var text = Descendants<TextBlock>(content).Where(item => item.Text is "示例.package" or "版本 1").ToArray();
+                Assert.AreEqual(2, text.Length);
+                foreach (var item in text)
+                {
+                    if (evidence.Length == 0) Assert.IsNull(item.ToolTip, layout);
+                    else Assert.AreEqual(evidence, item.ToolTip, layout);
+                }
+            }
+        }
+        window.Close();
+    });
+
+    [TestMethod]
     public Task ListHasPlainRowsWithoutExpandersAndRetainsFileEvidence() => WpfTestHost.RunAsync(async () =>
     {
         var session = TechnicalSession(2, 15);

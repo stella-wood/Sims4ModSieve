@@ -15,11 +15,8 @@ public sealed class FileActionDialogService : IFileActionDialogService
 {
     public bool ConfirmDeletion(FileDeletionPreflight preflight)
     {
-        var dialog = new DeleteConfirmationWindow()
-        {
-            Owner = Application.Current?.MainWindow,
-        };
-        return dialog.ShowDialog() == true;
+        return ConfirmFiles("删除文件", MultiFileConfirmationWindow.ConfirmationMessage(
+            "删除", preflight.Candidates.Count, closeGame: true));
     }
 
     public bool ConfirmFiles(string title, string message)
