@@ -392,6 +392,26 @@ public sealed partial class ConflictResultSession
             if (!groupNumbers.ContainsKey(key)) groupNumbers.Add(key, groupNumbers.Count + 1);
     }
 
+    private IEnumerable<ConflictFile> VisibleCardFiles(ConflictCard card, bool showIgnored, CancellationToken token)
+    {
+        var isDuplicateGroup = card.Duplicate is not null || card.Type == "script-duplicate";
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in card.Files)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!seen.Add(file.Path)) continue;
+            var duplicate = isDuplicateGroup ? null : DuplicateFor(file.Path);
+            var siblings = duplicate?.Files.Where(copy => card.Files.Any(member => StringComparer.OrdinalIgnoreCase.Equals(member.Path, copy.Path))).ToArray() ?? [];
+            var visibleSiblings = siblings.Where(copy => !IsFileIgnored(copy.Path)).ToArray();
+            var representative = visibleSiblings.FirstOrDefault(copy => StringComparer.OrdinalIgnoreCase.Equals(copy.Path, duplicate!.Duplicate!.SuggestedKeepPath))
+                ?? visibleSiblings.FirstOrDefault()
+                ?? siblings.FirstOrDefault(copy => StringComparer.OrdinalIgnoreCase.Equals(copy.Path, duplicate!.Duplicate!.SuggestedKeepPath))
+                ?? siblings.FirstOrDefault() ?? file;
+            seen.UnionWith(siblings.Select(copy => copy.Path));
+            if (showIgnored || !IsFileIgnored(representative.Path)) yield return representative;
+        }
+    }
+
     private void AddGroupCards(List<(ConflictPairPriority Priority, string Key, bool Included, Action Build)> cards,
         Func<ConflictResultRow, bool> add, string view, IReadOnlySet<string> expanded, bool showIgnored,
         IReadOnlySet<string>? types, CancellationToken token)
@@ -416,8 +436,13 @@ public sealed partial class ConflictResultSession
                 if (ignoredCount > 0) counts.Add($"{ignoredCount} 已忽略");
                 var summary = $"这 {card.Files.Count} 份文件" + (counts.Count > 0 ? " (含 " + string.Join("、", counts) + ")" : "");
                 var kind = card.Package is not null ? ConflictRowKind.Resource : card.Modules is not null ? ConflictRowKind.Module : ConflictRowKind.Duplicate;
-                if (!add(new(card.Key, kind, 0, card.Title, Priority: card.Priority, IsExpandable: true,
-                    FileCountText: $"{card.Files.Count} 文件" + (ignoredCount > 0 ? $" · {ignoredCount} 已忽略" : ""), IsIgnored: ignored, OwnerKey: card.Key))) return;
+                var visibleFiles = VisibleCardFiles(card, showIgnored, token).ToArray();
+                if (!add(new ConflictResultRow(card.Key, kind, 0, card.Title, Priority: card.Priority, IsExpandable: true,
+                    FileCountText: $"{card.Files.Count} 文件" + (ignoredCount > 0 ? $" · {ignoredCount} 已忽略" : ""), IsIgnored: ignored, OwnerKey: card.Key)
+                {
+                    // 收起仅隐藏文件行，组勾选仍按相同的筛选和副本折叠结果计算。
+                    SelectionFiles = visibleFiles.Where(file => file.HasStamp).ToArray(),
+                })) return;
                 var separator = card.Modules is not null || card.Duplicate is not null && !card.HasRemovedFiles
                     || !card.HasRemovedFiles && card.Package?.Kind is PackageConflictRelationKind.OverrideConflict or PackageConflictRelationKind.SuspectedSameMod ? counts.Count > 0 ? " " : "" : "；";
                 add(new(card.Key + "/explanation", ConflictRowKind.Explanation, 1,
@@ -426,27 +451,17 @@ public sealed partial class ConflictResultSession
                         : summary + separator + (card.Modules is not null ? ScriptExplanation(card.Modules) + (card.HasRemovedFiles ? "。" + card.Explanation : "")
                             : card.Explanation)).TrimEnd('。'),
                     OwnerKey: card.Key, IsIgnored: ignored, DuplicateLink: card.Duplicate is null || card.HasRemovedFiles ? null : Link(card)));
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var activeFiles = card.Files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 var annotationPairs = card.Package is null ? null : card.HasRemovedFiles && card.Package.Kind != PackageConflictRelationKind.OverrideConflict
                     ? groupingInput!.Pairs.Where(pair => activeFiles.Contains(pair.FirstPath) && activeFiles.Contains(pair.SecondPath)).ToArray()
                     : card.Package.Relations.Select(relation => relation.Pair).ToArray();
                 var visibleIndex = 0;
-                foreach (var file in card.Files)
+                foreach (var representative in visibleFiles)
                 {
                     token.ThrowIfCancellationRequested();
-                    if (!seen.Add(file.Path)) continue;
-                    var duplicate = isDuplicateGroup ? null : DuplicateFor(file.Path);
-                    var siblings = duplicate?.Files.Where(copy => card.Files.Any(member => StringComparer.OrdinalIgnoreCase.Equals(member.Path, copy.Path))).ToArray() ?? [];
-                    var visibleSiblings = siblings.Where(copy => !IsFileIgnored(copy.Path)).ToArray();
-                    var representative = visibleSiblings.FirstOrDefault(copy => StringComparer.OrdinalIgnoreCase.Equals(copy.Path, duplicate!.Duplicate!.SuggestedKeepPath))
-                        ?? visibleSiblings.FirstOrDefault()
-                        ?? siblings.FirstOrDefault(copy => StringComparer.OrdinalIgnoreCase.Equals(copy.Path, duplicate!.Duplicate!.SuggestedKeepPath))
-                        ?? siblings.FirstOrDefault() ?? file;
-                    seen.UnionWith(siblings.Select(copy => copy.Path));
+                    var duplicate = isDuplicateGroup ? null : DuplicateFor(representative.Path);
                     var key = FileKey(card.Key, representative.Path);
                     var fileIgnored = IsFileIgnored(representative.Path);
-                    if (!showIgnored && fileIgnored) continue;
                     var member = card.Package?.Members.First(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, representative.Path));
                     var sharedResources = annotationPairs?.Where(pair =>
                             StringComparer.OrdinalIgnoreCase.Equals(pair.FirstPath, representative.Path)

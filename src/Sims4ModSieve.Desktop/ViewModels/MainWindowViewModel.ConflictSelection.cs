@@ -51,14 +51,15 @@ public sealed partial class MainWindowViewModel
         RefreshConflictSelection();
     }
 
-    // 组复选框只作用于当前看得见的文件行；部分勾选时再点一次即全选。
+    // 组复选框按筛选和副本折叠后的文件计算，不受展开状态影响。
     public void ToggleConflictGroupSelection(ConflictResultRow header)
     {
         if (!IsConflictMultiSelect) return;
-        var files = SelectableFiles(header.Key);
-        if (files.Length == 0) return;
-        var select = !files.All(IsRowSelected);
-        foreach (var row in files) SetRowSelected(row, select);
+        var files = header.SelectionFiles;
+        if (files.Count == 0) return;
+        var select = !files.All(file => conflictSelectedPaths.Contains(file.Path));
+        foreach (var file in files)
+            if (select) conflictSelectedPaths.Add(file.Path); else conflictSelectedPaths.Remove(file.Path);
         SyncConflictSelectionRows();
         RefreshConflictSelection();
     }
@@ -80,9 +81,11 @@ public sealed partial class MainWindowViewModel
         DisableSelectedConflictFilesCommand?.RaiseCanExecuteChanged();
     }
 
-    private ConflictResultRow[] SelectableFiles(string ownerKey) => conflictRows
-        .Where(row => row.Kind == ConflictRowKind.File && row.IsSelectableFile
-            && string.Equals(row.OwnerKey, ownerKey, StringComparison.Ordinal)).ToArray();
+    private bool? ConflictGroupSelection(ConflictResultRow header)
+    {
+        var selected = header.SelectionFiles.Count(file => conflictSelectedPaths.Contains(file.Path));
+        return selected == 0 ? false : selected == header.SelectionFiles.Count ? true : null;
+    }
 
     private bool IsRowSelected(ConflictResultRow row) => row.File is { } file && conflictSelectedPaths.Contains(file.Path);
 
@@ -97,15 +100,8 @@ public sealed partial class MainWindowViewModel
     {
         foreach (var row in conflictRows.Where(row => row.Kind == ConflictRowKind.File))
             row.Selection.IsSelected = row.IsSelectableFile && IsRowSelected(row);
-        var filesByOwner = conflictRows.Where(row => row.IsSelectableFile)
-            .ToLookup(row => row.OwnerKey, StringComparer.Ordinal);
         foreach (var header in conflictRows.Where(row => row.IsCardStart))
-        {
-            var files = filesByOwner[header.Key];
-            header.Selection.IsSelected = !files.Any() ? false
-                : files.All(IsRowSelected) ? true
-                : files.Any(IsRowSelected) ? null : false;
-        }
+            header.Selection.IsSelected = ConflictGroupSelection(header);
     }
 
     // 已勾选的文件按会话里的卡片解析；被筛选隐藏的文件仍参与操作，数量提示保持同一口径。

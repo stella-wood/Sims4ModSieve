@@ -43,6 +43,7 @@ public sealed record ConflictResultRow(
     public bool ShowScanLinkTarget { get; init; }
     // 勾选状态独立于行记录：记录本身保持不可变，避免绑定订阅改变行的相等值。
     public ConflictSelectionCell Selection { get; init; } = new();
+    public IReadOnlyList<ConflictFile> SelectionFiles { get; init; } = [];
     public bool IsSelectableFile => Kind == ConflictRowKind.File && File is { Stamp: not null };
     public bool IsDisabled { get; init; }
     public bool IsFileIgnored { get; init; }

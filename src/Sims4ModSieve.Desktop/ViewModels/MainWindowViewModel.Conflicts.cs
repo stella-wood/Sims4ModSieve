@@ -287,18 +287,6 @@ public sealed partial class MainWindowViewModel
                 var ignored = item.Card.Files.Count(file => conflictSession.IsFileIgnored(file.Path));
                 return $"{item.Card.Files.Count} 文件 · {item.Disabled} 禁用" + (ignored > 0 ? $" · {ignored} 已忽略" : "");
             });
-        var groupSelections = rows
-            .Where(row => row.Kind == ConflictRowKind.File && row.File is { Stamp: not null } file && conflictSelectedPaths.Contains(file.Path))
-            .GroupBy(row => row.OwnerKey, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
-        var groupTotals = rows
-            .Where(row => row.Kind == ConflictRowKind.File && row.File is { Stamp: not null })
-            .GroupBy(row => row.OwnerKey, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
-        bool? GroupSelection(string key) => groupTotals.TryGetValue(key, out var total) && total > 0
-            ? groupSelections.GetValueOrDefault(key) == total ? true
-                : groupSelections.GetValueOrDefault(key) == 0 ? false : null
-            : false;
         var publishedRows = rows.Select(row => row with
         {
             ShowScanLinkTarget = row.LinkTarget is { } target && CanAddLinkTarget(target, ConflictSources),
@@ -308,7 +296,7 @@ public sealed partial class MainWindowViewModel
             {
                 IsSelected = row.Kind == ConflictRowKind.File && row.File is { Stamp: not null } file
                     ? conflictSelectedPaths.Contains(file.Path)
-                    : row.IsCardStart && row.Kind != ConflictRowKind.Problem ? GroupSelection(row.Key) : row.Selection.IsSelected,
+                    : row.IsCardStart && row.Kind != ConflictRowKind.Problem ? ConflictGroupSelection(row) : row.Selection.IsSelected,
             },
         }).ToArray();
         restoreViewport?.Invoke(publishedRows);

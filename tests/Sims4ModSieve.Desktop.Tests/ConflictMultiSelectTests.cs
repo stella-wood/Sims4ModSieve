@@ -154,6 +154,146 @@ public sealed class ConflictMultiSelectTests
     });
 
     [TestMethod]
+    [DataRow("override")]
+    [DataRow("collection")]
+    [DataRow("suspected")]
+    [DataRow("duplicates")]
+    [DataRow("script-conflict")]
+    [DataRow("script-duplicate")]
+    public Task CollapsedGroupKeepsSelectionStateAndSupportsGroupClicks(string type) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var session = type switch
+        {
+            "override" or "collection" => ConflictV2SessionTests.ContainmentSession(),
+            "suspected" => ConflictV2SessionTests.VersionSession(),
+            "duplicates" => ConflictV2SessionTests.V2([], [], ConflictV2SessionTests.Duplicates(files.A, files.B, files.C)),
+            "script-conflict" or "script-duplicate" => ConflictV2SessionTests.V2([], [], scripts: Scripts([
+                Collision("pkg.a", (files.A, "a"), (files.B, type == "script-conflict" ? "b" : "a"), (files.C, "a")),
+            ])),
+            _ => Session(files.A, files.B, files.C),
+        };
+        var card = session.Cards.First(card => card.Type == type);
+        if (!session.GetExpandedKeysSnapshot().Contains(card.Key)) session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        WpfTestHost.PlaceOnScreen(window);
+        await SetSessionAsync(model, session, "all");
+        model.IsConflictMultiSelect = true;
+        await WpfTestHost.LayoutAsync(window);
+        var members = model.ConflictRows.Where(row => row.OwnerKey == card.Key && row.IsSelectableFile).ToArray();
+        Assert.IsTrue(members.Length >= 2);
+        var first = Descendants<CheckBox>(window).Single(box => box.Name == "FileSelection" && ReferenceEquals(box.DataContext, members[0]));
+        await WpfTestHost.ClickAsync(first);
+
+        async Task ToggleExpanded()
+        {
+            var button = Descendants<Button>(window).Single(button => button.Name == "ExpandButton"
+                && button.DataContext is ConflictResultRow row && row.Key == card.Key);
+            await WpfTestHost.ClickAsync(button);
+            await model.ConflictRowsRefreshTask;
+            await WpfTestHost.LayoutAsync(window);
+        }
+        CheckBox Group() => Descendants<CheckBox>(window).Single(box => box.Name == "GroupSelection"
+            && box.DataContext is ConflictResultRow row && row.Key == card.Key);
+        void AssertState(bool? selected)
+        {
+            var group = Group();
+            Assert.IsTrue(group.IsVisible);
+            Assert.AreEqual(selected, model.ConflictRows.Single(row => row.Key == card.Key).Selection.IsSelected);
+            Assert.AreEqual(selected, group.IsChecked);
+            Assert.AreEqual(selected is null ? Visibility.Visible : Visibility.Collapsed,
+                ((FrameworkElement)group.Template.FindName("Partial", group)!).Visibility);
+            Assert.AreEqual(selected == true ? Visibility.Visible : Visibility.Collapsed,
+                ((FrameworkElement)group.Template.FindName("Check", group)!).Visibility);
+        }
+
+        await ToggleExpanded();
+        Assert.IsFalse(model.ConflictRows.Single(row => row.Key == card.Key).IsExpanded);
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        AssertState(null);
+        Save(window, $"multi-select-{type}-collapsed-partial.png");
+        await WpfTestHost.ClickAsync(Group());
+        Assert.AreEqual(members.Length, model.ConflictSelectedCount);
+        AssertState(true);
+        await ToggleExpanded();
+        AssertState(true);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.OwnerKey == card.Key && row.IsSelectableFile)
+            .All(row => row.Selection.IsSelected == true));
+        await ToggleExpanded();
+        AssertState(true);
+        await WpfTestHost.ClickAsync(Group());
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+        AssertState(false);
+        await ToggleExpanded();
+        AssertState(false);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.OwnerKey == card.Key && row.IsSelectableFile)
+            .All(row => row.Selection.IsSelected == false));
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task CollapsedGroupSelectionRespectsIgnoredFilesAndFoldedCopies(bool showIgnored) => WpfTestHost.RunAsync(async () =>
+    {
+        var a = @"C:\Mods\a.ts4script";
+        var b = @"C:\Mods\b.ts4script";
+        var c = @"C:\Mods\c.ts4script";
+        var d = @"C:\Mods\d.ts4script";
+        var session = ConflictV2SessionTests.V2([], [], ConflictV2SessionTests.Duplicates(a, b), Scripts([
+            Collision("pkg.a", (a, "same"), (b, "same"), (c, "same"), (d, "other")),
+        ]));
+        session.SetIgnoredFiles([a, c]);
+        var model = CreateModel();
+        await SetSessionAsync(model, session, "all");
+        model.ShowIgnoredConflicts = showIgnored;
+        await model.ConflictRowsRefreshTask;
+        model.IsConflictMultiSelect = true;
+        var header = model.ConflictRows.Single(row => row.IsCardStart && row.Kind == ConflictRowKind.Module);
+        Assert.IsFalse(header.IsExpanded);
+        model.ToggleConflictGroupSelection(header);
+        var expected = showIgnored ? new[] { b, c, d } : new[] { b, d };
+        Assert.AreEqual(expected.Length, model.ConflictSelectedCount);
+        Assert.IsTrue(header.Selection.IsSelected);
+        model.ToggleConflictExpandedCommand.Execute(header);
+        await model.ConflictRowsRefreshTask;
+        var rows = model.ConflictRows.Where(row => row.OwnerKey == header.Key && row.IsSelectableFile).ToArray();
+        CollectionAssert.AreEquivalent(expected, rows.Select(row => row.File!.Path).ToArray());
+        Assert.IsTrue(rows.All(row => row.Selection.IsSelected == true));
+        model.ToggleConflictGroupSelection(model.ConflictRows.Single(row => row.Key == header.Key));
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+    });
+
+    [TestMethod]
+    public Task CollapsedGroupUpdatesWhenSharedFileIsSelectedElsewhere() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var session = ConflictV2SessionTests.V2([], [], scripts: Scripts([
+            Collision("pkg.a", (files.A, "x"), (files.B, "y"), (files.C, "x")),
+            Collision("pkg.b", (files.A, "x"), (files.B, "x")),
+        ]));
+        var smaller = session.Cards.Single(card => card.Files.Count == 2);
+        var larger = session.Cards.Single(card => card.Files.Count == 3);
+        session.ToggleExpanded(smaller.Key);
+        var model = CreateModel();
+        await SetSessionAsync(model, session, "all");
+        model.IsConflictMultiSelect = true;
+        var header = model.ConflictRows.Single(row => row.Key == larger.Key);
+        Assert.IsFalse(header.IsExpanded);
+        model.SetConflictFileSelected(model.ConflictRows.Single(row => row.IsSelectableFile && row.File?.Path == files.A), true);
+        Assert.IsNull(header.Selection.IsSelected);
+        model.ToggleConflictGroupSelection(model.ConflictRows.Single(row => row.Key == smaller.Key));
+        Assert.IsNull(header.Selection.IsSelected);
+        model.ToggleConflictGroupSelection(header);
+        Assert.AreEqual(3, model.ConflictSelectedCount);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.IsCardStart).All(row => row.Selection.IsSelected == true));
+        model.ClearConflictSelection();
+        Assert.IsTrue(model.ConflictRows.Where(row => row.IsCardStart).All(row => row.Selection.IsSelected == false));
+    });
+
+    [TestMethod]
     public Task SamePathSelectionSynchronizesRowsAndGroups() => WpfTestHost.RunAsync(async () =>
     {
         using var files = new TemporaryFiles();
