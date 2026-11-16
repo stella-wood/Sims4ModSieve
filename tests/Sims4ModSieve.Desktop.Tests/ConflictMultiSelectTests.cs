@@ -78,6 +78,128 @@ public sealed class ConflictMultiSelectTests
     });
 
     [TestMethod]
+    [DataRow("suspected")]
+    [DataRow("collection")]
+    [DataRow("duplicates")]
+    [DataRow("problem")]
+    public Task MultiSelectFileRowClicksToggleSelectionWithoutOpeningRelationships(string type) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var session = type switch
+        {
+            "collection" => ConflictV2SessionTests.ContainmentSession(),
+            "duplicates" => ConflictV2SessionTests.V2([], [], ConflictV2SessionTests.Duplicates(files.A, files.B, files.C)),
+            "problem" => new ConflictResultSession(),
+            _ => Session(files.A, files.B, files.C),
+        };
+        if (type == "problem")
+            session.Replace(ConflictResultSessionTests.Packages(paths: [files.A], issues: [
+                new("unsupported-version", PackageConflictScanIssueStage.IndexRead, files.A, "unsupported"),
+            ]), Contents(), Scripts());
+        foreach (var card in session.Cards)
+            if (!session.GetExpandedKeysSnapshot().Contains(card.Key)) session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, session, "all");
+        var window = OpenWindow(model);
+        WpfTestHost.PlaceOnScreen(window);
+        model.IsConflictMultiSelect = true;
+        var row = model.ConflictRows.First(row => row.IsSelectableFile && (type != "collection" || row.IsBundle));
+        Descendants<ListBox>(window).Single(list => list.Name == "ConflictRowsList").ScrollIntoView(row);
+        await WpfTestHost.LayoutAsync(window);
+        var surface = Descendants<Border>(window).Single(border => border.Name == "FileSurface" && ReferenceEquals(border.DataContext, row));
+        var box = Descendants<CheckBox>(surface).Single(box => box.Name == "FileSelection");
+        var points = Descendants<TextBlock>(surface).Where(text => text.IsVisible && !string.IsNullOrEmpty(text.Text))
+            .Select(text => text.TranslatePoint(new Point(text.ActualWidth / 2, text.ActualHeight / 2), surface))
+            .Concat(new[] { new Point(2, 2), new Point(surface.ActualWidth - 2, surface.ActualHeight - 2) }).ToArray();
+        foreach (var point in points)
+        {
+            await WpfTestHost.ClickAsync(surface, point);
+            var cursorQuery = new System.Windows.Input.QueryCursorEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount)
+            {
+                RoutedEvent = System.Windows.Input.Mouse.QueryCursorEvent,
+            };
+            ((UIElement)System.Windows.Input.Mouse.DirectlyOver).RaiseEvent(cursorQuery);
+            Assert.AreEqual(System.Windows.Input.Cursors.Arrow, cursorQuery.Cursor);
+            Assert.AreEqual(1, model.ConflictSelectedCount);
+            Assert.IsTrue(row.Selection.IsSelected);
+            Assert.IsTrue(box.IsChecked);
+            Assert.IsNull(model.ConflictRelationships);
+            await WpfTestHost.ClickAsync(surface, point);
+            Assert.AreEqual(0, model.ConflictSelectedCount);
+            Assert.IsFalse(row.Selection.IsSelected);
+            Assert.IsFalse(box.IsChecked);
+            Assert.IsNull(model.ConflictRelationships);
+        }
+        await WpfTestHost.ClickAsync(box);
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        await WpfTestHost.ClickAsync(box);
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+        SetField(model, "isBusy", true);
+        try
+        {
+            await WpfTestHost.ClickAsync(surface, new Point(2, 2));
+            Assert.AreEqual(0, model.ConflictSelectedCount);
+        }
+        finally { SetField(model, "isBusy", false); }
+        if (type == "suspected")
+        {
+            model.IsConflictMultiSelect = false;
+            await WpfTestHost.LayoutAsync(window);
+            var details = Descendants<Button>(surface).Single(button => button.Name == "FileDetailsButton");
+            await WpfTestHost.ClickAsync(details);
+            Assert.IsNotNull(model.ConflictRelationships);
+            Assert.AreEqual(row.File!.Path, model.ConflictRelationships.File.Path);
+        }
+    });
+
+    [TestMethod]
+    public Task MultiSelectFileRowKeepsExplicitActionsAndContextMenuIndependent() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out var adapter, out var dialogs);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        var window = OpenWindow(model);
+        WpfTestHost.PlaceOnScreen(window);
+        model.IsConflictMultiSelect = true;
+        model.ShowIgnoredConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        model.SetConflictFileSelected(model.ConflictRows.Single(row => row.IsSelectableFile && row.File?.Path == files.A), true);
+        var row = model.ConflictRows.Single(row => row.IsSelectableFile && row.File?.Path == files.B);
+        await WpfTestHost.LayoutAsync(window);
+        var surface = Descendants<Border>(window).Single(border => border.Name == "FileSurface" && ReferenceEquals(border.DataContext, row));
+        dialogs.Confirm = false;
+        var selectedSurface = Descendants<Border>(window).Single(border => border.Name == "FileSurface"
+            && border.DataContext is ConflictResultRow selected && selected.File?.Path == files.A);
+        await WpfTestHost.ClickAsync(Descendants<Button>(selectedSurface).Single(button => button.Command == model.DeleteConflictFileCommand));
+        await model.ConflictFileActionTask;
+        Assert.AreEqual(1, dialogs.Confirmations.Count);
+        Assert.AreEqual(0, adapter.Deleted.Count);
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        Assert.IsFalse(row.Selection.IsSelected);
+        await WpfTestHost.ClickAsync(Descendants<Button>(surface).Single(button => button.Name == "FileIgnoreButton"));
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(model.IgnoredFiles.Files.Any(file => file.Path == files.B));
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        row = model.ConflictRows.Single(row => row.IsSelectableFile && row.File?.Path == files.B);
+        Assert.IsFalse(row.Selection.IsSelected);
+        surface = Descendants<Border>(window).Single(border => border.Name == "FileSurface" && ReferenceEquals(border.DataContext, row));
+        await WpfTestHost.MoveMouseAsync(surface);
+        RightClick();
+        await Task.Delay(200);
+        Assert.IsTrue(surface.ContextMenu.IsOpen);
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        await WpfTestHost.ClickAsync(surface.ContextMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "查看文件关系")));
+        Assert.IsNotNull(model.ConflictRelationships);
+        Assert.AreEqual(files.B, model.ConflictRelationships.File.Path);
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+    });
+
+    [TestMethod]
     public Task GroupCheckboxSelectsAllFilesAndSyncsPartialState() => WpfTestHost.RunAsync(async () =>
     {
         using var files = new TemporaryFiles();

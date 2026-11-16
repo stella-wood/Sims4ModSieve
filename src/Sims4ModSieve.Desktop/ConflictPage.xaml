@@ -318,7 +318,7 @@
             </ControlTemplate></Setter.Value></Setter>
         </Style>
         <DataTemplate x:Key="ConflictFileTemplate">
-            <Border x:Name="FileSurface" Background="#F3F1ED" Margin="20,0,0,0" Padding="38,10,10,10" ToolTip="{Binding FilePath}" ContextMenuOpening="FileContextMenu_Opening">
+            <Border x:Name="FileSurface" Background="#F3F1ED" Margin="20,0,0,0" Padding="38,10,10,10" ToolTip="{Binding FilePath}" ContextMenuOpening="FileContextMenu_Opening" MouseLeftButtonUp="ConflictFileSurface_MouseLeftButtonUp">
                 <Border.ContextMenu><ContextMenu Style="{StaticResource FileContextMenuStyle}" /></Border.ContextMenu>
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -369,6 +369,8 @@
                 <DataTrigger Binding="{Binding DataContext.IsConflictMultiSelect, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
                     <Setter TargetName="FileSelection" Property="Visibility" Value="Visible" />
                     <Setter TargetName="FileSurface" Property="Padding" Value="12,10,10,10" />
+                    <Setter TargetName="FileSurface" Property="Cursor" Value="Arrow" />
+                    <Setter TargetName="FileDetailsButton" Property="IsHitTestVisible" Value="False" />
                 </DataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
@@ -764,13 +766,21 @@
                         </Canvas>
                         <TextBlock Text="{Binding EmptyConflictText}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowEmptyConflictRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </Grid>
-                    <Border Grid.Row="3" Padding="20,11,20,11" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
-                        <StackPanel>
+                    <Border Grid.Row="3" Padding="20,10,20,10" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Height" Value="48" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsConflictMultiSelect}" Value="True"><Setter Property="Height" Value="54" /></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel VerticalAlignment="Center">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <Button x:Name="ToggleAllConflictGroupsButton" Width="24" Height="24" Cursor="Hand" Command="{Binding ToggleAllConflictGroupsCommand}" ToolTip="{Binding ConflictExpandCollapseToolTip}" Style="{StaticResource BareIconButtonStyle}">
-                                        <Viewbox Width="22" Height="20" Stretch="Fill" IsHitTestVisible="False">
+                                    <Button x:Name="ToggleAllConflictGroupsButton" Width="26" Height="24" Cursor="Hand" Command="{Binding ToggleAllConflictGroupsCommand}" ToolTip="{Binding ConflictExpandCollapseToolTip}" Style="{StaticResource BareIconButtonStyle}">
+                                        <Viewbox Width="24" Height="20" Stretch="Fill" IsHitTestVisible="False">
                                             <Grid Width="16" Height="16">
                                                 <Path Data="M 7,8 L 1,8 M 4,5 L 1,8 L 4,11 M 9,8 L 15,8 M 12,5 L 15,8 L 12,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="{Binding ShowCollapseAllConflictIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <Path Data="M 1,8 L 6,8 M 3,5 L 6,8 L 3,11 M 15,8 L 10,8 M 13,5 L 10,8 L 13,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="{Binding ShowExpandAllConflictIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -789,8 +799,8 @@
                                 </WrapPanel>
                                 <StackPanel Grid.Column="1" Margin="12,0,0,0" Orientation="Horizontal" VerticalAlignment="Center"
                                             Visibility="{Binding IsConflictMultiSelect, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                    <Button x:Name="DeleteSelectedConflictFilesButton" Content="删除" Command="{Binding DeleteSelectedConflictFilesCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="16,8" Margin="0,0,8,0" />
-                                    <Button x:Name="DisableSelectedConflictFilesButton" Content="禁用" Command="{Binding DisableSelectedConflictFilesCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="16,8" />
+                                    <Button x:Name="DeleteSelectedConflictFilesButton" Height="32" Content="删除" Command="{Binding DeleteSelectedConflictFilesCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="16,8" Margin="0,0,8,0" />
+                                    <Button x:Name="DisableSelectedConflictFilesButton" Height="32" Content="禁用" Command="{Binding DisableSelectedConflictFilesCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="16,8" />
                                 </StackPanel>
                             </Grid>
                             <TextBlock Text="没查出冲突不代表没有冲突" Visibility="{Binding ShowConflictWarning, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#9A6A32" FontSize="11" />

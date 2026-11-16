@@ -84,6 +84,14 @@ public partial class ConflictPage : UserControl
         model.SetConflictFileSelected(row, box.IsChecked == true);
     }
 
+    private void ConflictFileSurface_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel { IsConflictMultiSelect: true, IsBusy: false } model
+            || sender is not Border { DataContext: ConflictResultRow { IsSelectableFile: true } row }) return;
+        model.SetConflictFileSelected(row, row.Selection.IsSelected != true);
+        e.Handled = true;
+    }
+
     private void ConflictGroupSelection_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel model || sender is not CheckBox { DataContext: ConflictResultRow row }) return;
