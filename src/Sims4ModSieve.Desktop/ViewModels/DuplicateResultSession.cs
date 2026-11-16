@@ -39,8 +39,8 @@ public sealed class DuplicateResultSession : ObservableObject
     public bool ShowCollapseAllIcon => Groups.Count > 0 && Groups.All(group => group.IsExpanded);
 
     public string ExpandCollapseToolTip => Groups.Count > 0 && Groups.All(group => group.IsExpanded)
-        ? "收起全部"
-        : "展开全部";
+        ? "一键收起"
+        : "一键展开";
 
     public IReadOnlyList<DuplicateGroupViewModel> PrepareGroups(
         IReadOnlyList<DuplicateGroup> reportGroups,

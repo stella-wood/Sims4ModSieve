@@ -122,7 +122,7 @@ public sealed partial class MainWindowViewModel
     public bool ShowCollapseAllConflictIcon => conflictRows.Any(row => row.IsCardStart && row.IsExpandable)
         && conflictRows.Where(row => row.IsCardStart && row.IsExpandable).All(row => row.IsExpanded);
     public bool ShowExpandAllConflictIcon => !ShowCollapseAllConflictIcon;
-    public string ConflictExpandCollapseToolTip => ShowCollapseAllConflictIcon ? "全部收起" : "全部展开";
+    public string ConflictExpandCollapseToolTip => ShowCollapseAllConflictIcon ? "一键收起" : "一键展开";
     public bool ShowEmptyConflictRows => IsConflictBasic && IsConflictComplete && visibleConflictParentCount == 0;
     private bool NoConflictModFiles => IsConflictComplete && !HasConflictMatches && !HasConflictProblems
         && conflictSession.PackageReport?.DiscoveredPackageCount == 0 && conflictSession.ScriptReport?.DiscoveredArchiveCount == 0;

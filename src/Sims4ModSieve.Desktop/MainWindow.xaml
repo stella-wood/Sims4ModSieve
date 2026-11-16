@@ -561,20 +561,22 @@
                                         Command="{Binding ToggleAllGroupsCommand}"
                                         ToolTip="{Binding ExpandCollapseToolTip}"
                                         Style="{StaticResource BareIconButtonStyle}">
-                                    <Grid Width="16" Height="16">
-                                        <Path Data="M 1,2 L 15,2 M 1,8 L 15,8 M 1,14 L 15,14"
-                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                              StrokeThickness="1.35"
-                                              StrokeStartLineCap="Round"
-                                              StrokeEndLineCap="Round"
-                                              Visibility="{Binding ShowCollapseAllIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                        <Path Data="M 1,5 L 15,5 M 1,8 L 15,8 M 1,11 L 15,11"
-                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                              StrokeThickness="1.35"
-                                              StrokeStartLineCap="Round"
-                                              StrokeEndLineCap="Round"
-                                              Visibility="{Binding ShowExpandAllIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    </Grid>
+                                    <Viewbox Width="22" Height="20" Stretch="Fill" IsHitTestVisible="False">
+                                        <Grid Width="16" Height="16">
+                                            <Path Data="M 7,8 L 1,8 M 4,5 L 1,8 L 4,11 M 9,8 L 15,8 M 12,5 L 15,8 L 12,11"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  StrokeThickness="1.35"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  Visibility="{Binding ShowCollapseAllIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                            <Path Data="M 1,8 L 6,8 M 3,5 L 6,8 L 3,11 M 15,8 L 10,8 M 13,5 L 10,8 L 13,11"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  StrokeThickness="1.35"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  Visibility="{Binding ShowExpandAllIcon, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </Grid>
+                                    </Viewbox>
                                 </Button>
                                 <TextBlock Grid.Column="1"
                                            Margin="10,0,0,0"
