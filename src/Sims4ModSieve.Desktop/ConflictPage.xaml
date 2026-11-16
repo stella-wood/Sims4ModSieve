@@ -714,7 +714,10 @@
                                         <CheckBox Grid.Row="2" Grid.ColumnSpan="3" Content="重复模块（脚本）" IsChecked="{Binding IncludeConflictScriptDuplicates}" Margin="0,4,0,4" HorizontalAlignment="Left" />
                                     </Grid>
                                     <Border x:Name="ConflictIgnoredSeparator" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,8,0,4" />
-                                    <CheckBox Content="显示已忽略" IsChecked="{Binding ShowIgnoredConflicts}" Margin="0,4,0,4" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <CheckBox Content="显示已忽略" IsChecked="{Binding ShowIgnoredConflicts}" Margin="0,4,16,4" />
+                                        <CheckBox x:Name="ShowSelectedConflictsChoice" Content="显示已勾选" IsChecked="{Binding ShowSelectedConflicts}" Margin="0,4,0,4" />
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </Popup>

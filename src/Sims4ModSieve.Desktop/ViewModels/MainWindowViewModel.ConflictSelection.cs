@@ -19,7 +19,11 @@ public sealed partial class MainWindowViewModel
         set
         {
             if (!SetProperty(ref isConflictMultiSelect, value)) return;
-            if (!value) ClearConflictSelection();
+            if (!value)
+            {
+                ShowSelectedConflicts = false;
+                ClearConflictSelection();
+            }
             OnPropertyChanged(nameof(ConflictMultiSelectText));
             RefreshConflictSelection();
         }
@@ -79,6 +83,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(CanRunConflictSelectionAction));
         DeleteSelectedConflictFilesCommand?.RaiseCanExecuteChanged();
         DisableSelectedConflictFilesCommand?.RaiseCanExecuteChanged();
+        if (showSelectedConflicts && IsConflictComplete) QueueConflictRowsRefresh();
     }
 
     private bool? ConflictGroupSelection(ConflictResultRow header)

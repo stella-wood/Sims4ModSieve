@@ -294,6 +294,212 @@ public sealed class ConflictMultiSelectTests
     });
 
     [TestMethod]
+    public Task SelectedFilterCheckboxKeepsWholeGroupsAndTracksSelectionChanges() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var session = ConflictV2SessionTests.V2([], [], scripts: Scripts([
+            Collision("pkg.a", (files.A, "x"), (files.B, "y"), (files.C, "x")),
+            Collision("pkg.b", (files.A, "x"), (files.B, "x")),
+            Collision("other.a", (files.C + ".other", "x"), (files.B + ".other", "y")),
+        ]));
+        foreach (var card in session.Cards) session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await SetSessionAsync(model, session, "all");
+        var window = OpenWindow(model);
+        WpfTestHost.PlaceOnScreen(window);
+        model.IsConflictMultiSelect = true;
+        foreach (var path in new[] { files.A, files.B })
+            model.SetConflictFileSelected(model.ConflictRows.First(row => row.IsSelectableFile && row.File?.Path == path), true);
+        var expected = model.ConflictRows.Where(row => row.IsCardStart && row.Selection.IsSelected != false)
+            .Select(row => (row.Key, row.GroupIndex)).ToArray();
+        Assert.AreEqual(2, expected.Length);
+        Assert.IsTrue(model.ConflictRows.Any(row => row.IsCardStart && row.Selection.IsSelected is null));
+        Assert.IsTrue(model.ConflictRows.Any(row => row.IsCardStart && row.Selection.IsSelected == true));
+        await WpfTestHost.LayoutAsync(window);
+        var popup = Descendants<Popup>(window).Single(item => item.Name == "ConflictFilterPopup");
+        await WpfTestHost.ClickAsync(Descendants<ToggleButton>(window).Single(item => item.Name == "ConflictFilterButton"));
+        await WpfTestHost.LayoutAsync(window);
+        var choice = Descendants<CheckBox>(popup.Child).Single(item => item.Name == "ShowSelectedConflictsChoice");
+        Assert.AreEqual("显示已勾选", choice.Content);
+        Assert.IsFalse(choice.IsChecked);
+        Assert.IsFalse(model.ShowSelectedConflicts);
+        await WpfTestHost.ClickAsync(choice);
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsTrue(popup.IsOpen);
+        Assert.IsTrue(model.HasActiveConflictFilter);
+        CollectionAssert.AreEqual(expected, model.ConflictRows.Where(row => row.IsCardStart).Select(row => (row.Key, row.GroupIndex)).ToArray());
+        Assert.AreEqual(5, model.ConflictRows.Count(row => row.IsSelectableFile));
+        Assert.IsFalse(model.ConflictRows.Single(row => row.File?.Path == files.C).Selection.IsSelected);
+        Save(window, "selected-filter-popup.png", (FrameworkElement)popup.Child);
+        popup.IsOpen = false;
+        Save(window, "selected-filter-results.png");
+        await WpfTestHost.ClickAsync(Descendants<Button>(window).Single(item => item.Name == "ToggleAllConflictGroupsButton"));
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(2, model.VisibleConflictParentCount);
+        Assert.IsTrue(model.ConflictRows.Where(row => row.IsCardStart).All(row => !row.IsExpanded));
+        var group = Descendants<CheckBox>(window).Single(item => item.Name == "GroupSelection" && item.IsChecked == true);
+        await WpfTestHost.ClickAsync(group);
+        await model.ConflictRowsRefreshTask;
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(0, model.ConflictSelectedCount);
+        Assert.AreEqual(0, model.ConflictRows.Count);
+        Assert.IsTrue(model.ShowEmptyConflictRows);
+        Assert.AreEqual("没有符合筛选条件的结果", model.EmptyConflictText);
+        model.ShowSelectedConflicts = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(3, model.VisibleConflictParentCount);
+        Assert.IsFalse(model.HasActiveConflictFilter);
+    });
+
+    [TestMethod]
+    public Task SelectedFilterIntersectsStateTypeAndIgnoredChoicesWithoutClearingSelection() => WpfTestHost.RunAsync(async () =>
+    {
+        var session = ConflictV2SessionTests.ContainmentSession();
+        foreach (var card in session.Cards) session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        await SetSessionAsync(model, session, "all");
+        model.IsConflictMultiSelect = true;
+        foreach (var path in new[] { A, B })
+            model.SetConflictFileSelected(model.ConflictRows.First(row => row.IsSelectableFile && row.File?.Path == path), true);
+        model.ShowSelectedConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(2, model.VisibleConflictParentCount);
+        model.IncludeAllConflictStates = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.VisibleConflictParentCount);
+        model.IncludeConflictCanOrganize = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual("合集包含", model.ConflictRows.Single(row => row.IsCardStart).Title);
+        model.IncludeAllConflictTypes = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.VisibleConflictParentCount);
+        model.IncludeConflictOverrides = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.VisibleConflictParentCount);
+        model.IncludeConflictNeedsReview = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual("资源覆盖冲突", model.ConflictRows.Single(row => row.IsCardStart).Title);
+        model.IncludeAllConflictStates = true;
+        model.IncludeAllConflictTypes = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.IsTrue(model.ShowSelectedConflicts);
+        Assert.AreEqual(2, model.VisibleConflictParentCount);
+        session.SetIgnoredFiles([A, B]);
+        model.ShowIgnoredConflicts = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.VisibleConflictParentCount);
+        Assert.AreEqual(2, model.ConflictSelectedCount);
+        model.ShowIgnoredConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(2, model.VisibleConflictParentCount);
+        var header = model.ConflictRows.First(row => row.IsCardStart);
+        session.ToggleIgnored(header);
+        model.ShowIgnoredConflicts = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.VisibleConflictParentCount);
+        model.ShowIgnoredConflicts = true;
+        model.IncludeAllConflictStates = false;
+        model.IncludeAllConflictTypes = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(0, model.VisibleConflictParentCount);
+        Assert.IsTrue(model.ShowIgnoredConflicts && model.ShowSelectedConflicts);
+        Assert.AreEqual(2, model.ConflictSelectedCount);
+    });
+
+    [TestMethod]
+    [DataRow("exit")]
+    [DataRow("sources")]
+    [DataRow("scan")]
+    [DataRow("jump")]
+    public Task SelectedFilterFollowsSessionAndNavigationLifecycle(string action) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out _, out _);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var session = Session(files.A, files.B, files.C);
+        await SetSessionAsync(model, session, "all");
+        model.IsConflictMultiSelect = true;
+        model.SetConflictFileSelected(model.ConflictRows.First(row => row.IsSelectableFile), true);
+        model.ShowSelectedConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        model.GoHomeCommand.Execute(null);
+        model.OpenConflictCommand.Execute(null);
+        Assert.IsTrue(model.ShowSelectedConflicts);
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        switch (action)
+        {
+            case "exit": model.IsConflictMultiSelect = false; break;
+            case "sources": model.ConflictSources.Clear(); break;
+            case "scan": await model.StartConflictScanCommand.ExecuteAsync(); break;
+            case "jump":
+                var target = session.Cards.Single();
+                model.JumpToConflictGroupCommand.Execute(new ConflictGroupLink(target.Key, target.GroupIndex));
+                break;
+        }
+        await model.ConflictRowsRefreshTask;
+        Assert.IsFalse(model.ShowSelectedConflicts);
+        Assert.AreEqual(action == "jump" ? 1 : 0, model.ConflictSelectedCount);
+        if (action is "exit" or "jump") Assert.AreEqual(1, model.VisibleConflictParentCount);
+        if (action == "sources") Assert.AreEqual(0, model.ConflictRows.Count);
+    });
+
+    [TestMethod]
+    public Task SelectedFilterHandlesUnanalyzedFilesAndFoldedCopies() => WpfTestHost.RunAsync(async () =>
+    {
+        var problems = new ConflictResultSession();
+        problems.Replace(ConflictResultSessionTests.Packages([(A, 1)], paths: [A], issues: [
+            new("unsupported-version", PackageConflictScanIssueStage.IndexRead, A, "unsupported"),
+            new("source-unavailable", PackageConflictScanIssueStage.SourceValidation, @"C:\Offline", "unavailable"),
+        ]), Contents(), Scripts());
+        var problemPath = problems.Problems.First(problem => problem.Stamp is not null).Path;
+        var rows = problems.BuildVisibleRows("all", "all", Closed,
+            selectedPaths: new HashSet<string>([problemPath], StringComparer.OrdinalIgnoreCase));
+        Assert.AreEqual(1, rows.Count(row => row.IsCardStart));
+        Assert.AreEqual(problemPath, rows.Single(row => row.IsSelectableFile).File!.Path);
+        Assert.IsFalse(rows.Any(row => row.Kind == ConflictRowKind.RangeProblem));
+        var session = ConflictV2SessionTests.V2([], [], ConflictV2SessionTests.Duplicates(A, B), Scripts([
+            Collision("pkg.a", (A, "same"), (B, "same"), (C, "other")),
+        ]));
+        var copies = session.Cards.Single(card => card.Duplicate is not null);
+        var hiddenCopy = copies.Files.Single(file => file.Path != copies.Duplicate!.SuggestedKeepPath).Path;
+        rows = session.BuildVisibleRows("all", "all", Closed,
+            selectedPaths: new HashSet<string>([hiddenCopy], StringComparer.OrdinalIgnoreCase));
+        Assert.AreEqual(copies.Key, rows.Single().Key);
+        Assert.IsTrue(rows.Single().SelectionFiles.Any(file => file.Path == hiddenCopy));
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task SelectedFilterRefreshesAfterDeletionAndUndo(bool partialFailure) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var model = Model(files.Root, out var adapter, out _);
+        await SetSessionAsync(model, Session(files.A, files.B, files.C), "all");
+        model.IsConflictMultiSelect = true;
+        model.ToggleConflictGroupSelection(model.ConflictRows.Single(row => row.IsCardStart));
+        model.ShowSelectedConflicts = true;
+        await model.ConflictRowsRefreshTask;
+        if (partialFailure) adapter.FailDeletePath = files.B;
+        await model.DeleteSelectedConflictFilesCommand.ExecuteAsync();
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(partialFailure ? 1 : 0, model.ConflictSelectedCount);
+        Assert.AreEqual(partialFailure ? 1 : 0, model.VisibleConflictParentCount);
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(partialFailure ? 1 : 0, model.ConflictSelectedCount);
+        Assert.AreEqual(partialFailure ? 1 : 0, model.VisibleConflictParentCount);
+        model.ShowSelectedConflicts = false;
+        await model.ConflictRowsRefreshTask;
+        Assert.AreEqual(3, model.ConflictRows.Count(row => row.IsSelectableFile));
+    });
+
+    [TestMethod]
     public Task SamePathSelectionSynchronizesRowsAndGroups() => WpfTestHost.RunAsync(async () =>
     {
         using var files = new TemporaryFiles();

@@ -27,7 +27,18 @@ public sealed partial class MainWindowViewModel
     private string conflictFilter = "all";
     private readonly HashSet<string> conflictTypes = new(["override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate"], StringComparer.Ordinal);
     private bool showIgnoredConflicts;
+    private bool showSelectedConflicts;
     public bool ShowIgnoredConflicts { get => showIgnoredConflicts; set { showIgnoredConflicts = value; OnPropertyChanged(); RefreshConflictFilterChoices(); if (IsConflictComplete) QueueConflictRowsRefresh(); } }
+    public bool ShowSelectedConflicts
+    {
+        get => showSelectedConflicts;
+        set
+        {
+            if (!SetProperty(ref showSelectedConflicts, value)) return;
+            RefreshConflictFilterChoices();
+            if (IsConflictComplete) QueueConflictRowsRefresh();
+        }
+    }
     public bool IncludeConflictOverrides { get => conflictTypes.Contains("override"); set => SetConflictType("override", value); }
     public bool IncludeConflictCollections { get => conflictTypes.Contains("collection"); set => SetConflictType("collection", value); }
     public bool IncludeConflictSuspected { get => conflictTypes.Contains("suspected"); set => SetConflictType("suspected", value); }
@@ -93,7 +104,7 @@ public sealed partial class MainWindowViewModel
     public bool IncludeConflictNeedsReview { get => HasConflictFilter("different"); set => SetConflictFilterChoice("different", value); }
     public bool IncludeConflictCanOrganize { get => HasConflictFilter("same"); set => SetConflictFilterChoice("same", value); }
     public bool IncludeConflictIncomplete { get => HasConflictFilter("incomplete"); set => SetConflictFilterChoice("incomplete", value); }
-    public bool HasActiveConflictFilter => conflictView != "all" || conflictFilter != "all" || conflictTypes.Count != 6 || showIgnoredConflicts;
+    public bool HasActiveConflictFilter => conflictView != "all" || conflictFilter != "all" || conflictTypes.Count != 6 || showIgnoredConflicts || showSelectedConflicts;
     public bool IsResourceViewSelected => conflictView == "resources";
     public bool IsScriptViewSelected => conflictView == "scripts";
     public bool IsProblemViewSelected => conflictView == "problems";
@@ -232,7 +243,7 @@ public sealed partial class MainWindowViewModel
             nameof(IncludeConflictNeedsReview), nameof(IncludeConflictCanOrganize), nameof(IncludeConflictIncomplete),
             nameof(IncludeAllConflictStates), nameof(IncludeAllConflictTypes),
             nameof(IncludeConflictOverrides), nameof(IncludeConflictCollections), nameof(IncludeConflictSuspected),
-            nameof(IncludeConflictDuplicates), nameof(IncludeConflictScriptConflicts), nameof(IncludeConflictScriptDuplicates), nameof(ShowIgnoredConflicts), nameof(HasActiveConflictFilter) }) OnPropertyChanged(name);
+            nameof(IncludeConflictDuplicates), nameof(IncludeConflictScriptConflicts), nameof(IncludeConflictScriptDuplicates), nameof(ShowIgnoredConflicts), nameof(ShowSelectedConflicts), nameof(HasActiveConflictFilter) }) OnPropertyChanged(name);
         OnPropertyChanged(nameof(EmptyConflictText));
     }
 
@@ -251,11 +262,12 @@ public sealed partial class MainWindowViewModel
         var snapshot = session.ProjectionSnapshot();
         var types = new HashSet<string>(conflictTypes, StringComparer.Ordinal);
         var showIgnored = showIgnoredConflicts;
+        var selectedPaths = showSelectedConflicts ? new HashSet<string>(conflictSelectedPaths, StringComparer.OrdinalIgnoreCase) : null;
         try
         {
             var projection = await Task.Run(() =>
             {
-                var rows = snapshot.BuildVisibleRows(view, filter, expanded, cancellation.Token, showIgnored, types);
+                var rows = snapshot.BuildVisibleRows(view, filter, expanded, cancellation.Token, showIgnored, types, selectedPaths);
                 return (Rows: rows, ParentCount: rows.Count(row => row.Depth == 0));
             }, cancellation.Token);
             if (!ReferenceEquals(session, conflictSession) || request != conflictRowsRequest || !IsConflictComplete) return;
@@ -319,6 +331,7 @@ public sealed partial class MainWindowViewModel
         conflictTypes.Clear();
         conflictTypes.UnionWith(["override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate"]);
         showIgnoredConflicts = false;
+        showSelectedConflicts = false;
         conflictGeneration++;
         conflictCancellation?.Cancel();
         conflictRowsRequest++;

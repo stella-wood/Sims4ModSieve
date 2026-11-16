@@ -283,7 +283,7 @@ public sealed partial class ConflictResultSession
 
     public IReadOnlyList<ConflictResultRow> BuildVisibleRows(string view, string filter,
         IReadOnlySet<string> expanded, CancellationToken cancellationToken = default,
-        bool showIgnored = false, IReadOnlySet<string>? types = null)
+        bool showIgnored = false, IReadOnlySet<string>? types = null, IReadOnlySet<string>? selectedPaths = null)
     {
         var rows = new List<ConflictResultRow>();
         var includeUngroupedProblems = types is null
@@ -382,6 +382,13 @@ public sealed partial class ConflictResultSession
             var firstRow = rows.Count;
             currentOwnerKey = card.Key;
             card.Build();
+            if (selectedPaths is not null && !rows.Skip(firstRow).Any(row =>
+                row.SelectionFiles.Any(file => selectedPaths.Contains(file.Path))
+                || row.IsSelectableFile && selectedPaths.Contains(row.File!.Path)))
+            {
+                rows.RemoveRange(firstRow, rows.Count - firstRow);
+                continue;
+            }
             rows[firstRow] = rows[firstRow] with { GroupIndex = groupNumbers.GetValueOrDefault(card.Key, groupIndex) };
             rows[^1] = rows[^1] with { IsCardEnd = true };
         }
