@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Benchmarks;
@@ -17,6 +16,7 @@ internal static class Program
             Console.WriteLine("run --source <directory> [--source <directory> ...] --output <new-directory>");
             Console.WriteLine("    --sample-id <id> [--runs 3] [--mods-root <directory>] [--baseline <previous-output>]");
             Console.WriteLine("    [--cancel-after-ms <milliseconds>] [--revision <commit>] [--storage <description>]");
+            Console.WriteLine("    [--scope all|duplicates] (default: all)");
             return 0;
         }
         try
@@ -49,19 +49,21 @@ internal static class Program
         var runs = PositiveInt(options, "--runs") ?? 3;
         if (runs > 100) throw new ArgumentException("--runs must be at most 100.");
         var cancelAfter = PositiveInt(options, "--cancel-after-ms");
+        var scope = One(options, "--scope") ?? "all";
+        if (scope is not ("all" or "duplicates")) throw new ArgumentException("--scope must be all or duplicates.");
         BenchmarkInputs.ValidateOutput(output, sources.Select(source => source.Path));
         var before = InputManifest.Capture(sources.Select(source => source.Path));
-        JsonNode? expected = null;
+        string? expected = null;
         if (One(options, "--baseline") is { } baseline)
         {
-            expected = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(baseline, "snapshot.json"))) as JsonObject
-                ?? throw new JsonException("Baseline snapshot must be an object.");
+            expected = Path.GetFullPath(Path.Combine(baseline, "snapshot.json"));
             var previous = JsonSerializer.Deserialize<BaselineHeader>(
                 await File.ReadAllTextAsync(Path.Combine(baseline, "summary.json")), ResultSnapshot.JsonOptions);
             if (previous is null || !previous.Valid || previous.CancelledRuns != 0
                 || previous.SchemaVersion != 1 || previous.SampleId != sampleId
-                || previous.ManifestFingerprint != before.Fingerprint)
-                throw new ArgumentException("Baseline sample ID or manifest differs; freeze the same corpus and sources.");
+                || previous.ManifestFingerprint != before.Fingerprint || (previous.Scope ?? "all") != scope)
+                throw new ArgumentException("Baseline scope, sample ID or manifest differs; freeze the same corpus and sources.");
+            ResultSnapshot.Validate(expected);
         }
         Directory.CreateDirectory(output);
         await WriteJsonAsync(Path.Combine(output, "manifest.json"), before);
@@ -75,18 +77,19 @@ internal static class Program
         {
             for (var iteration = 1; iteration <= runs; iteration++)
             {
+                var snapshotPath = Path.Combine(output, $"snapshot-{iteration:D2}.json");
                 var measurement = await BenchmarkRunner.MeasureAsync(
-                    token => BenchmarkRunner.CaptureAsync(sources, One(options, "--mods-root"), token),
+                    token => BenchmarkRunner.CaptureAsync(sources, One(options, "--mods-root"), token, snapshotPath, scope),
                     cancelAfter, lifetime.Token);
                 measurements.Add(measurement);
                 await File.WriteAllTextAsync(Path.Combine(output, $"run-{iteration:D2}.log"), measurement.TimingLog);
                 await WriteJsonAsync(Path.Combine(output, $"run-{iteration:D2}.json"), measurement);
                 if (measurement.Snapshot is { } actual)
                 {
-                    expected ??= actual.DeepClone();
+                    expected ??= actual;
                     difference ??= ResultSnapshot.FirstDifference(expected, actual);
-                    await WriteJsonAsync(Path.Combine(output, $"snapshot-{iteration:D2}.json"), actual);
                 }
+                else if (File.Exists(snapshotPath)) File.Delete(snapshotPath);
                 stable &= before.Fingerprint == InputManifest.Capture(sources.Select(source => source.Path)).Fingerprint;
                 Console.WriteLine($"Run {iteration}: {measurement.Outcome}, {measurement.Milliseconds:F3} ms");
                 if (measurement.Error is not null) Console.Error.WriteLine(measurement.Error);
@@ -97,12 +100,12 @@ internal static class Program
         finally { Console.CancelKeyPress -= cancel; }
         var completed = measurements.Where(run => run.Outcome == "completed").ToArray();
         if (!cancelAfter.HasValue && stable && difference is null && completed.Length == runs && expected is not null)
-            await WriteJsonAsync(Path.Combine(output, "snapshot.json"), expected);
+            File.Copy(expected, Path.Combine(output, "snapshot.json"));
         var valid = stable && difference is null && measurements.Count == runs
             && (cancelAfter.HasValue ? measurements.All(run => run.Outcome == "cancelled") : completed.Length == runs);
         await WriteJsonAsync(Path.Combine(output, "summary.json"), new
         {
-            SchemaVersion = 1, SampleId = sampleId, ManifestFingerprint = before.Fingerprint,
+            SchemaVersion = 1, Scope = scope, SampleId = sampleId, ManifestFingerprint = before.Fingerprint,
             FileCount = before.Files.Count, TotalBytes = before.Files.Sum(file => file.Stamp.Length),
             Revision = One(options, "--revision") ?? "unspecified",
             Storage = One(options, "--storage") ?? "unknown",
@@ -123,7 +126,7 @@ internal static class Program
                 : null,
             Cache = "disabled", OsPageCache = "uncontrolled",
             UiAndTrueDiskBaseline = "not measured; collect on Windows",
-            MetricNotes = "Total includes snapshot projection; working set is process lifetime peak; handles are start/end observations, not a peak.",
+            MetricNotes = "Total includes streaming snapshot serialization and its file write; working set is process lifetime peak; handles are start/end observations, not a peak.",
         });
         if (difference is not null) Console.Error.WriteLine(difference);
         if (!stable) Console.Error.WriteLine("Input manifest changed; measurements are invalid.");
@@ -132,13 +135,31 @@ internal static class Program
         return valid ? 0 : 1;
     }
 
-    private static async Task WriteJsonAsync(string path, object value) =>
-        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(value, ResultSnapshot.JsonOptions));
+    private static async Task WriteJsonAsync(string path, object value)
+    {
+        await using var stream = File.Create(path);
+        if (value is not RunMeasurement measurement)
+        {
+            await JsonSerializer.SerializeAsync(stream, value, ResultSnapshot.JsonOptions);
+            return;
+        }
+        // Keep the existing embedded snapshot without parsing or buffering the whole file again.
+        var header = JsonSerializer.SerializeToUtf8Bytes(measurement, ResultSnapshot.JsonOptions);
+        await stream.WriteAsync(header.AsMemory(0, header.Length - 1));
+        await stream.WriteAsync(",\n  \"snapshot\": "u8.ToArray());
+        if (measurement.Snapshot is { } snapshotPath)
+        {
+            await using var snapshot = File.OpenRead(snapshotPath);
+            await snapshot.CopyToAsync(stream);
+        }
+        else await stream.WriteAsync("null"u8.ToArray());
+        await stream.WriteAsync("\n}"u8.ToArray());
+    }
 
     private static Dictionary<string, List<string>> Parse(string[] args)
     {
         string[] allowed = ["--source", "--output", "--sample-id", "--runs", "--mods-root", "--baseline",
-            "--cancel-after-ms", "--revision", "--storage"];
+            "--cancel-after-ms", "--revision", "--storage", "--scope"];
         var options = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (var index = 1; index < args.Length; index += 2)
         {
@@ -164,5 +185,5 @@ internal static class Program
     }
 
     private sealed record BaselineHeader(bool Valid, int CancelledRuns, int SchemaVersion,
-        string? SampleId, string? ManifestFingerprint);
+        string? SampleId, string? ManifestFingerprint, string? Scope);
 }

@@ -1,12 +1,11 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Scripts;
 
 namespace Sims4ModSieve.Benchmarks;
 
-internal static class ResultSnapshot
+internal static partial class ResultSnapshot
 {
     internal static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -14,19 +13,15 @@ internal static class ResultSnapshot
         WriteIndented = true,
     };
 
-    internal static JsonObject Create(DuplicateReport duplicates, PackageConflictScanReport packages,
+    internal static object Create(DuplicateReport duplicates, PackageConflictScanReport packages,
         ResourceContentComparisonReport contents, ScriptModuleScanReport scripts,
         PackageConflictGroupingResult grouping)
     {
         var builder = new ConflictPairSummaryBuilder();
-        return (JsonObject)JsonSerializer.SerializeToNode(new
+        return new
         {
             SchemaVersion = 1,
-            Duplicates = new
-            {
-                duplicates.Sources, duplicates.DiscoveredFileCount, duplicates.HashedFileCount,
-                duplicates.Groups, duplicates.Issues,
-            },
+            Duplicates = DuplicateFacts(duplicates),
             Packages = new
             {
                 packages.Sources, packages.DiscoveredPackageCount, packages.AnalyzedPackageCount,
@@ -61,34 +56,20 @@ internal static class ResultSnapshot
                 }),
                 grouping.ExcludedFiles,
             },
-        }, JsonOptions)!;
+        };
     }
 
-    // Arrays are business order; object member order is serialization detail.
-    internal static string? FirstDifference(JsonNode? expected, JsonNode? actual, string path = "$")
+    internal static object CreateDuplicates(DuplicateReport duplicates) => new
     {
-        if (expected is JsonObject left && actual is JsonObject right)
-        {
-            foreach (var key in left.Select(pair => pair.Key).Union(right.Select(pair => pair.Key)).Order(StringComparer.Ordinal))
-            {
-                if (!left.ContainsKey(key) || !right.ContainsKey(key)) return $"{path}.{key}: missing property";
-                var difference = FirstDifference(left[key], right[key], $"{path}.{key}");
-                if (difference is not null) return difference;
-            }
-            return null;
-        }
-        if (expected is JsonArray a && actual is JsonArray b)
-        {
-            if (a.Count != b.Count) return $"{path}: count {a.Count} != {b.Count}";
-            for (var index = 0; index < a.Count; index++)
-            {
-                var difference = FirstDifference(a[index], b[index], $"{path}[{index}]");
-                if (difference is not null) return difference;
-            }
-            return null;
-        }
-        return JsonNode.DeepEquals(expected, actual) ? null : $"{path}: value differs";
-    }
+        SchemaVersion = 1,
+        Duplicates = DuplicateFacts(duplicates),
+    };
+
+    private static object DuplicateFacts(DuplicateReport duplicates) => new
+    {
+        duplicates.Sources, duplicates.DiscoveredFileCount, duplicates.HashedFileCount,
+        duplicates.Groups, duplicates.Issues,
+    };
 
     private static object Pair(PackageConflictPairSummary pair) => new
     {

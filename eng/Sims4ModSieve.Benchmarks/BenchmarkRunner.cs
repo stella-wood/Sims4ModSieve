@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
@@ -14,13 +14,21 @@ internal sealed record StageMeasurement(string Name, double Milliseconds, int Pa
 
 internal sealed record RunMeasurement(string Outcome, string? Error, double Milliseconds, double? CancellationLatencyMs,
     long AllocatedBytes, long ProcessLifetimePeakWorkingSetBytes, int? HandlesBefore, int? HandlesAfter,
-    IReadOnlyList<StageMeasurement> Stages, string TimingLog, JsonObject? Snapshot);
+    IReadOnlyList<StageMeasurement> Stages, string TimingLog, [property: JsonIgnore] string? Snapshot);
 
 internal static class BenchmarkRunner
 {
-    internal static async Task<JsonObject> CaptureAsync(IReadOnlyList<ScanSource> sources, string? modsRoot,
-        CancellationToken cancellationToken)
+    internal static async Task<string> CaptureAsync(IReadOnlyList<ScanSource> sources, string? modsRoot,
+        CancellationToken cancellationToken, string snapshotPath, string scope = "all")
     {
+        if (scope == "duplicates")
+        {
+            var duplicateReport = await DuplicateScanner.CreateDefault().ScanAsync(
+                new(sources, modsRoot, [".package", ".ts4script"]), cancellationToken);
+            using (ScanPerformance.Measure("基准 · 生成一致性快照"))
+                await ResultSnapshot.WriteAsync(snapshotPath, ResultSnapshot.CreateDuplicates(duplicateReport), cancellationToken);
+            return snapshotPath;
+        }
         var packages = await new PackageConflictScanner(new PhysicalFileSystemAccess(),
             LlamaLogicPackageIndexReader.CreateDefault()).ScanAsync(new(sources), cancellationToken);
         var contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault())
@@ -38,11 +46,12 @@ internal static class BenchmarkRunner
         }
         cancellationToken.ThrowIfCancellationRequested();
         using (ScanPerformance.Measure("基准 · 生成一致性快照"))
-            return ResultSnapshot.Create(duplicates, packages, contents, scripts, grouping);
+            await ResultSnapshot.WriteAsync(snapshotPath, ResultSnapshot.Create(duplicates, packages, contents, scripts, grouping), cancellationToken);
+        return snapshotPath;
     }
 
     internal static async Task<RunMeasurement> MeasureAsync(
-        Func<CancellationToken, Task<JsonObject>> capture, int? cancelAfterMs = null,
+        Func<CancellationToken, Task<string>> capture, int? cancelAfterMs = null,
         CancellationToken cancellationToken = default)
     {
         using var linked = new CancellationTokenSource();
@@ -61,7 +70,7 @@ internal static class BenchmarkRunner
         var allocatedBefore = GC.GetTotalAllocatedBytes();
         var started = Stopwatch.GetTimestamp();
         using var performance = ScanPerformance.Start("后台基准（不含 WPF）");
-        JsonObject? snapshot = null;
+        string? snapshot = null;
         var outcome = "completed";
         string? error = null;
         try
