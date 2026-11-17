@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="MSTest" Version="4.3.3" />
+    <ProjectReference Include="..\..\eng\Sims4ModSieve.Benchmarks\Sims4ModSieve.Benchmarks.csproj" />
+    <Compile Include="..\Sims4ModSieve.Core.Tests\TempDirectory.cs" Link="Shared\TempDirectory.cs" />
+  </ItemGroup>
+</Project>

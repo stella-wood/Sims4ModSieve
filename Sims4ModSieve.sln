@@ -16,6 +16,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sims4ModSieve.Packages", "s
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sims4ModSieve.Packages.Tests", "tests\Sims4ModSieve.Packages.Tests\Sims4ModSieve.Packages.Tests.csproj", "{5E4A8B92-1C7D-4F06-A3B5-8D91E7C24F30}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sims4ModSieve.Benchmarks", "eng\Sims4ModSieve.Benchmarks\Sims4ModSieve.Benchmarks.csproj", "{52DB7C1A-EC44-4736-948A-661D974BC85E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sims4ModSieve.Benchmarks.Tests", "tests\Sims4ModSieve.Benchmarks.Tests\Sims4ModSieve.Benchmarks.Tests.csproj", "{44640CF9-9C28-4A4E-817F-F88828CF3D30}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -50,5 +54,13 @@ Global
 		{5E4A8B92-1C7D-4F06-A3B5-8D91E7C24F30}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5E4A8B92-1C7D-4F06-A3B5-8D91E7C24F30}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5E4A8B92-1C7D-4F06-A3B5-8D91E7C24F30}.Release|Any CPU.Build.0 = Release|Any CPU
+		{52DB7C1A-EC44-4736-948A-661D974BC85E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{52DB7C1A-EC44-4736-948A-661D974BC85E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{52DB7C1A-EC44-4736-948A-661D974BC85E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{52DB7C1A-EC44-4736-948A-661D974BC85E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{44640CF9-9C28-4A4E-817F-F88828CF3D30}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44640CF9-9C28-4A4E-817F-F88828CF3D30}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44640CF9-9C28-4A4E-817F-F88828CF3D30}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44640CF9-9C28-4A4E-817F-F88828CF3D30}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
