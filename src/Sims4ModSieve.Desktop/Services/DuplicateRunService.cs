@@ -6,7 +6,11 @@ public sealed record DuplicateRunSource(string Path, string Label);
 
 public sealed record DuplicateRunInput(
     IReadOnlyList<DuplicateRunSource> Sources,
-    string? ModsRoot = null);
+    string? ModsRoot = null)
+{
+    public DuplicateHashConcurrency HashConcurrency { get; init; }
+    internal WindowsStorageProfile? StorageProfile { get; init; }
+}
 
 public interface IDuplicateRunService
 {
@@ -37,7 +41,11 @@ public sealed class DuplicateRunService(DuplicateScanner scanner) : IDuplicateRu
             .ToArray();
 
         return scanner.ScanAsync(
-            new DuplicateScanRequest(sources, input.ModsRoot, IncludedExtensions),
+            new DuplicateScanRequest(sources, input.ModsRoot, IncludedExtensions)
+            {
+                HashConcurrency = input.HashConcurrency,
+                StorageProfile = input.StorageProfile ?? new WindowsStorageProfile(),
+            },
             progress,
             cancellationToken);
     }

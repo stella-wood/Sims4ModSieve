@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Services;
 using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
 using static Sims4ModSieve.Desktop.Tests.SettingsViewModelTests;
@@ -17,6 +18,51 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class SettingsPageTests
 {
+    [TestMethod]
+    public Task HashConcurrencyPickerSavesSelectionAndRestoresItAfterWriteFailure() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        files.Store.Save(new(files.Folder("Mods"), []));
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        WpfTestHost.ShowOffScreen(window);
+        try
+        {
+            model.OpenSettingsCommand.Execute(null);
+            await WpfTestHost.LayoutAsync(window);
+            var picker = (ComboBox)Descendants<SettingsPage>(window).Single().FindName("HashConcurrencyPicker");
+            Assert.IsTrue(picker.IsVisible && picker.IsEnabled);
+            Assert.AreEqual(DuplicateHashConcurrency.Auto, picker.SelectedValue);
+            var toggle = (ToggleButton)picker.Template.FindName("DropDownToggle", picker);
+            AssertHitRectangle(toggle);
+            var popup = (Popup)picker.Template.FindName("PART_Popup", picker);
+            var expandCollapse = (IExpandCollapseProvider)new ComboBoxAutomationPeer(picker).GetPattern(PatternInterface.ExpandCollapse)!;
+            expandCollapse.Expand();
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsTrue(popup.IsOpen);
+            Assert.AreEqual(5, picker.Items.Count);
+            picker.SetCurrentValue(Selector.SelectedValueProperty, DuplicateHashConcurrency.Four);
+            expandCollapse.Collapse();
+            Assert.IsFalse(popup.IsOpen);
+            Assert.AreEqual(DuplicateHashConcurrency.Four, files.Store.Load()!.HashConcurrency);
+            SaveReview(window, "hash-concurrency.png");
+
+            var path = Path.Combine(files.Root, "Sims4ModSieve", "duplicate-settings.json");
+            using (File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                picker.SetCurrentValue(Selector.SelectedValueProperty, DuplicateHashConcurrency.Eight);
+                await WpfTestHost.LayoutAsync(window);
+                Assert.AreEqual(DuplicateHashConcurrency.Four, picker.SelectedValue);
+                Assert.AreEqual(DuplicateHashConcurrency.Four, model.DuplicateHashConcurrency);
+                StringAssert.Contains(model.SettingsFeedback, "未保存");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
     [TestMethod]
     public Task OuterScrollBarShowsOnPageScrollAndHidesAfterIdle() => WpfTestHost.RunAsync(async () =>
     {

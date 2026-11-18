@@ -4,6 +4,7 @@ using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Scripts;
+using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Packages;
 
 namespace Sims4ModSieve.Benchmarks;
@@ -19,12 +20,17 @@ internal sealed record RunMeasurement(string Outcome, string? Error, double Mill
 internal static class BenchmarkRunner
 {
     internal static async Task<string> CaptureAsync(IReadOnlyList<ScanSource> sources, string? modsRoot,
-        CancellationToken cancellationToken, string snapshotPath, string scope = "all")
+        CancellationToken cancellationToken, string snapshotPath, string scope = "all",
+        DuplicateHashConcurrency hashConcurrency = DuplicateHashConcurrency.Auto, IStorageProfile? storage = null)
     {
+        var duplicateRequest = new DuplicateScanRequest(sources, modsRoot, [".package", ".ts4script"])
+        {
+            HashConcurrency = hashConcurrency,
+            StorageProfile = storage,
+        };
         if (scope == "duplicates")
         {
-            var duplicateReport = await DuplicateScanner.CreateDefault().ScanAsync(
-                new(sources, modsRoot, [".package", ".ts4script"]), cancellationToken);
+            var duplicateReport = await DuplicateScanner.CreateDefault().ScanAsync(duplicateRequest, cancellationToken);
             using (ScanPerformance.Measure("基准 · 生成一致性快照"))
                 await ResultSnapshot.WriteAsync(snapshotPath, ResultSnapshot.CreateDuplicates(duplicateReport), cancellationToken);
             return snapshotPath;
@@ -35,8 +41,7 @@ internal static class BenchmarkRunner
             .CompareAsync(new(packages.Candidates), cancellationToken: cancellationToken);
         var scripts = await new ScriptModuleScanner(new PhysicalFileSystemAccess())
             .ScanAsync(new(sources), cancellationToken: cancellationToken);
-        var duplicates = await DuplicateScanner.CreateDefault().ScanAsync(
-            new(sources, modsRoot, [".package", ".ts4script"]), cancellationToken);
+        var duplicates = await DuplicateScanner.CreateDefault().ScanAsync(duplicateRequest, cancellationToken);
         PackageConflictGroupingResult grouping;
         using (ScanPerformance.Measure("基准 · 文件关系构建（无 WPF）"))
         {
@@ -52,7 +57,7 @@ internal static class BenchmarkRunner
 
     internal static async Task<RunMeasurement> MeasureAsync(
         Func<CancellationToken, Task<string>> capture, int? cancelAfterMs = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, WindowsStorageProfile? storage = null)
     {
         using var linked = new CancellationTokenSource();
         long requestedAt = 0;
@@ -96,7 +101,7 @@ internal static class BenchmarkRunner
         }
         var stopped = Stopwatch.GetTimestamp();
         var allocatedBytes = GC.GetTotalAllocatedBytes() - allocatedBefore;
-        var timingLog = performance.Finish(outcome, "未自动探测；由本地基准记录存储介质");
+        var timingLog = performance.Finish(outcome, storage?.Describe() ?? "未自动探测");
         var requested = Interlocked.Read(ref requestedAt);
         var stages = performance.Stages.Select(stage => new StageMeasurement(stage.Name,
             stage.Elapsed.TotalMilliseconds, stage.Parallelism, stage.Files, stage.Bytes, stage.Entries,

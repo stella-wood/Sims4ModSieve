@@ -33,6 +33,7 @@ public sealed class DuplicateScanner(
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Sources);
+        cancellationToken.ThrowIfCancellationRequested();
 
         progress?.Report(new DuplicateScanProgress(
             DuplicateScanPhase.Starting,
@@ -66,14 +67,25 @@ public sealed class DuplicateScanner(
         discoveryTiming?.Dispose();
 
         using var preparationTiming = ScanPerformance.Measure("整文件核对 · 按长度筛选哈希候选");
-        var hashedFiles = 0;
-        var hashedCandidates = new List<HashedCandidate>();
         var hashCandidates = candidates.Values
             .GroupBy(candidate => candidate.DiscoveredStamp.Length)
             .Where(group => group.Count() > 1)
             .OrderBy(group => group.Key)
             .SelectMany(group => group.OrderBy(item => item.Path, PathRules.Comparer))
             .ToArray();
+
+        var volumes = new List<StorageVolumeProfile>();
+        if (request.HashConcurrency == DuplicateHashConcurrency.Auto && request.StorageProfile is { } storage)
+        {
+            // Discovery skips reparse points below each root, so probe the resolved root once.
+            foreach (var root in hashCandidates.Select(candidate => candidate.DiscoveryRoot).Distinct(PathRules.Comparer))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                volumes.Add(storage.GetVolume(root));
+            }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var parallelism = DuplicateHashConcurrencyPolicy.Resolve(request.HashConcurrency, volumes);
 
         if (preparationTiming is not null)
         {
@@ -83,7 +95,7 @@ public sealed class DuplicateScanner(
             preparationTiming.ResultItems = hashCandidates.Length;
         }
         preparationTiming?.Dispose();
-        using var hashingTiming = ScanPerformance.Measure("整文件核对 · 整文件 SHA-256");
+        using var hashingTiming = ScanPerformance.Measure("整文件核对 · 整文件 SHA-256", parallelism);
         if (hashingTiming is not null)
         {
             hashingTiming.Files = hashCandidates.Length;
@@ -97,49 +109,69 @@ public sealed class DuplicateScanner(
             TotalItems: hashCandidates.Length,
             DiscoveredFileCount: candidates.Count));
 
-        foreach (var candidate in hashCandidates)
+        var outcomes = new (StableFileHash? Hash, ScanIssue? Issue)[hashCandidates.Length];
+        var progressGate = new object();
+        var completed = 0;
+        await Parallel.ForEachAsync(Enumerable.Range(0, hashCandidates.Length), new ParallelOptions
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
+            MaxDegreeOfParallelism = parallelism,
+            CancellationToken = cancellationToken,
+        }, async (index, workerToken) =>
+        {
+            var path = hashCandidates[index].Path;
+            workerToken.ThrowIfCancellationRequested();
             try
             {
-                var hash = await fileHasher.HashAsync(candidate.Path, cancellationToken)
-                    .ConfigureAwait(false);
-                hashedFiles++;
-                hashedCandidates.Add(new HashedCandidate(candidate.Path, hash));
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
+                outcomes[index].Hash = await fileHasher.HashAsync(path, workerToken).ConfigureAwait(false);
             }
             catch (FileChangedDuringHashException exception)
             {
-                issues.Add(new ScanIssue(
+                outcomes[index].Issue = new ScanIssue(
                     "file-changed-during-hash",
                     ScanIssueStage.Hashing,
-                    candidate.Path,
-                    exception.Message));
+                    path,
+                    exception.Message);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                issues.Add(new ScanIssue(
+                outcomes[index].Issue = new ScanIssue(
                     "hash-failed",
                     ScanIssueStage.Hashing,
-                    candidate.Path,
-                    exception.Message));
+                    path,
+                    exception.Message);
             }
 
-            progress?.Report(new DuplicateScanProgress(
-                DuplicateScanPhase.Hashing,
-                $"正在核对文件内容（{hashedFiles + issues.Count(issue => issue.Stage == ScanIssueStage.Hashing)}/{hashCandidates.Length}）",
-                hashedFiles + issues.Count(issue => issue.Stage == ScanIssueStage.Hashing),
-                hashCandidates.Length,
-                candidates.Count));
+            if (progress is not null)
+            {
+                lock (progressGate)
+                {
+                    workerToken.ThrowIfCancellationRequested();
+                    completed++;
+                    progress.Report(new DuplicateScanProgress(
+                        DuplicateScanPhase.Hashing,
+                        $"正在核对文件内容（{completed}/{hashCandidates.Length}）",
+                        completed,
+                        hashCandidates.Length,
+                        candidates.Count));
+                }
+            }
+        }).ConfigureAwait(false);
+
+        var hashedCandidates = new List<HashedCandidate>();
+        for (var index = 0; index < outcomes.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (outcomes[index].Hash is { } hash)
+                hashedCandidates.Add(new HashedCandidate(hashCandidates[index].Path, hash));
+            else if (outcomes[index].Issue is { } issue)
+                issues.Add(issue);
         }
+        var hashedFiles = hashedCandidates.Count;
 
         if (hashingTiming is not null)
         {
             hashingTiming.ResultItems = hashedFiles;
+            hashingTiming.FailedEntries = hashCandidates.Length - hashedFiles;
             hashingTiming.ProcessedBytes = hashedCandidates.Sum(candidate => candidate.Hash.Stamp.Length);
         }
         hashingTiming?.Dispose();
@@ -154,6 +186,7 @@ public sealed class DuplicateScanner(
             groups,
             SourceFileDiscovery.OrderIssues(issues));
 
+        cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(new DuplicateScanProgress(
             DuplicateScanPhase.Completed,
             candidates.Count == 0 && issues.Count == 0 ? "这个文件夹里没有找到 mod 文件"

@@ -7,6 +7,7 @@
     <ProjectReference Include="..\..\src\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
     <ProjectReference Include="..\..\src\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
     <InternalsVisibleTo Include="Sims4ModSieve.Benchmarks.Tests" />
+    <Compile Include="..\..\src\Sims4ModSieve.Desktop\Services\WindowsStorageProfile.cs" Link="WindowsStorageProfile.cs" />
     <Compile Include="..\..\tests\Sims4ModSieve.Core.Tests\Packages\DbpfFixtureBuilder.cs" Link="Fixtures\DbpfFixtureBuilder.cs" />
   </ItemGroup>
 </Project>

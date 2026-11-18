@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Services;
 
 namespace Sims4ModSieve.Desktop.Tests;
@@ -20,6 +21,7 @@ public sealed class DuplicateSettingsStoreTests
             var loaded = new DuplicateSettingsStore(files.Root).Load()!;
             Assert.AreEqual(name, loaded.ModsRoot);
             Assert.IsNull(loaded.TrayRoot);
+            Assert.AreEqual(DuplicateHashConcurrency.Auto, loaded.HashConcurrency);
             Assert.AreEqual(json, File.ReadAllText(path));
         }
     }

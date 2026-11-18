@@ -122,6 +122,25 @@ public sealed class ConflictScanFlowTests
     }
 
     [TestMethod]
+    public async Task BothScanEntrypointsUseSavedDuplicateHashConcurrency()
+    {
+        using var files = new SettingsViewModelTests.Scenario();
+        var mods = files.Folder("Mods");
+        WritePackage(mods, "a.package", 1, "same");
+        File.Copy(Path.Combine(mods, "a.package"), Path.Combine(mods, "b.package"));
+        files.Store.Save(new(mods, []) { HashConcurrency = DuplicateHashConcurrency.Eight });
+        var model = files.Model();
+
+        await model.StartScanCommand.ExecuteAsync();
+        Assert.AreEqual(1, model.DuplicateGroupCount);
+        StringAssert.Contains(model.LatestScanTiming.Split('\n').Single(line => line.Contains("SHA-256")), "并发上限=8");
+
+        await model.StartConflictScanCommand.ExecuteAsync();
+        Assert.AreEqual("complete", model.ConflictRunState);
+        StringAssert.Contains(model.LatestScanTiming.Split('\n').Single(line => line.Contains("SHA-256")), "并发上限=8");
+    }
+
+    [TestMethod]
     public async Task RealTemporaryPackagesAndScriptsReachGroupedResultsAndKeepReadFailures()
     {
         using var files = new TemporaryFiles();

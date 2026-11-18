@@ -151,6 +151,21 @@ public sealed class LinkTargetScanTests
         }
     }
 
+    [TestMethod]
+    public void StorageProbeResolvesDirectoryUnderAJunctionAndHandlesMissingPaths()
+    {
+        using var files = new LinkFiles();
+        var target = Directory.CreateDirectory(Path.Combine(files.Target, "Nested")).FullName;
+        var profile = new WindowsStorageProfile();
+        var direct = profile.GetVolume(target);
+        var viaJunction = profile.GetVolume(Path.Combine(files.Link, "Nested"));
+        Assert.IsNotNull(direct.VolumeId);
+        Assert.AreEqual(direct, viaJunction);
+        var missing = profile.GetVolume(Path.Combine(files.Target, "Missing"));
+        Assert.IsNull(missing.IncursSeekPenalty);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(missing.UnknownReason));
+    }
+
     private sealed class LinkFiles : IDisposable
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "s4ms-link-" + Guid.NewGuid().ToString("N"));
