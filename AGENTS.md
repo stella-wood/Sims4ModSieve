@@ -13,7 +13,7 @@ Windows 本地的《模拟人生 4》Mod 整理工具，.NET 10 + WPF。SDK 版�
 3. 本文件
 4. [冲突评级与拆分标准](docs/product/冲突评级与拆分标准.md)
 5. `docs/product/产品需求文档.md`
-6. `docs/architecture/架构方案-v3.md`、`docs/design/UI设计风格规范-v1.md`
+6. [架构概览 v4](docs/architecture/架构概览-v4.md)、`docs/design/UI设计风格规范-v1.md`
 7. `docs/archive/`、`docs/research/`
 
 冲突评级与页面归属的产品规则以《冲突评级与拆分标准》为准；代码与测试用于核实现状，尚未对齐的实现不改变该标准。CLI 字段约定暂待对齐。
@@ -62,6 +62,8 @@ Windows 本地的《模拟人生 4》Mod 整理工具，.NET 10 + WPF。SDK 版�
 首页和导航里灰色的「尚未开放」不是已完成的功能。
 
 ## 6. 项目地图
+
+各块怎么配合、数据怎么流，见[架构概览 v4](docs/architecture/架构概览-v4.md)；全部文档见[文档目录](docs/README.md)。
 
 ```text
 src/
