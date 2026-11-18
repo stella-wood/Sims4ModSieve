@@ -447,7 +447,12 @@ public sealed partial class MainWindowViewModel
         var scriptProgress = new Progress<ScriptModuleScanProgress>(p => Report(2,
             p.Phase == ScriptModuleScanPhase.Discovering ? "正在查找脚本文件…" : "正在比较同名脚本…", p.CompletedItems, p.TotalItems));
 
-        var duplicateInput = new DuplicateRunInput(sources.Select(source => new DuplicateRunSource(source.Path, source.Label ?? source.Path)).ToArray(), ModsRoot);
+        var storage = new WindowsStorageProfile();
+        var duplicateInput = new DuplicateRunInput(sources.Select(source => new DuplicateRunSource(source.Path, source.Label ?? source.Path)).ToArray(), ModsRoot)
+        {
+            HashConcurrency = DuplicateHashConcurrency,
+            StorageProfile = storage,
+        };
         var duplicateProgress = new Progress<DuplicateScanProgress>(p => Report(3, "正在核对文件内容…", p.CompletedItems, p.TotalItems));
         var initialView = conflictView;
         var initialFilter = conflictFilter;
@@ -564,7 +569,7 @@ public sealed partial class MainWindowViewModel
                 IsBusy = false;
                 RefreshConflictResults();
             }
-            await FinishScanTimingAsync(performance, timingOutcome, renderingTiming, sources.Select(source => source.Path));
+            await FinishScanTimingAsync(performance, timingOutcome, renderingTiming, storage);
         }
     }
 

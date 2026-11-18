@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Sims4ModSieve.Core.Diagnostics;
+using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Infrastructure;
 using Sims4ModSieve.Desktop.Services;
 
@@ -13,6 +14,7 @@ public sealed partial class MainWindowViewModel
     private bool isSettingsVisible;
     private string settingsSection = "folders";
     private string? trayRoot;
+    private DuplicateHashConcurrency duplicateHashConcurrency;
     private string settingsFeedback = string.Empty;
     private string modsFolderFeedback = string.Empty;
     private string trayFolderFeedback = string.Empty;
@@ -83,6 +85,17 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(HasApplicationLocationWarning));
     }
     public string SettingsFeedback { get => settingsFeedback; private set => SetProperty(ref settingsFeedback, value); }
+    public DuplicateHashConcurrency DuplicateHashConcurrency
+    {
+        get => duplicateHashConcurrency;
+        set
+        {
+            if (value == duplicateHashConcurrency || IsBusy || !Enum.IsDefined(value)) return;
+            if (TrySaveSettings(new DuplicateSettings(ModsRoot, [], TrayRoot) { HashConcurrency = value }))
+                duplicateHashConcurrency = value;
+            OnPropertyChanged();
+        }
+    }
     public string ModsFolderFeedback { get => modsFolderFeedback; private set => SetProperty(ref modsFolderFeedback, value); }
     public string TrayFolderFeedback { get => trayFolderFeedback; private set => SetProperty(ref trayFolderFeedback, value); }
     public string DiagnosticsFeedback { get => diagnosticsFeedback; private set => SetProperty(ref diagnosticsFeedback, value); }
@@ -224,7 +237,10 @@ public sealed partial class MainWindowViewModel
             SetFolderFeedback(kind, "文件夹路径无效");
             return false;
         }
-        var candidate = new DuplicateSettings(kind == "Mods" ? normalized : ModsRoot, [], kind == "Tray" ? normalized : TrayRoot);
+        var candidate = new DuplicateSettings(kind == "Mods" ? normalized : ModsRoot, [], kind == "Tray" ? normalized : TrayRoot)
+        {
+            HashConcurrency = DuplicateHashConcurrency,
+        };
         if (!TrySaveSettings(candidate)) return false;
         if (kind == "Mods")
         {
@@ -283,13 +299,13 @@ public sealed partial class MainWindowViewModel
         : "界面 · 结果绑定（无可见窗口，未测渲染）");
 
     private async Task FinishScanTimingAsync(ScanPerformance performance, string outcome,
-        ScanPerformance.Stage? renderingTiming, IEnumerable<string> sources)
+        ScanPerformance.Stage? renderingTiming, WindowsStorageProfile storage)
     {
         // Render 优先级先于 ContextIdle；只等待首次可见列表，不遍历虚拟化的全部行。
         if (renderingTiming is not null && HasVisibleResultWindow)
             await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
         renderingTiming?.Dispose();
-        var summary = performance.Finish(outcome, SettingsSupportService.DescribeScanStorage(sources));
+        var summary = performance.Finish(outcome, storage.Describe());
         LatestScanTiming = await settingsSupport.WriteScanTimingAsync(summary);
     }
 

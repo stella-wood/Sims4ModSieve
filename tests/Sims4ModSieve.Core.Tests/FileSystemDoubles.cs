@@ -1,10 +1,11 @@
+using System.Collections.Concurrent;
 using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Core.Tests;
 
 internal sealed class CountingFileSystemAccess(IFileSystemAccess inner) : IFileSystemAccess
 {
-    private readonly Dictionary<string, int> _openCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, int> _openCounts = new(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyDictionary<string, int> OpenCounts => _openCounts;
 
@@ -19,7 +20,7 @@ internal sealed class CountingFileSystemAccess(IFileSystemAccess inner) : IFileS
 
     public Stream OpenRead(string path)
     {
-        _openCounts[path] = _openCounts.GetValueOrDefault(path) + 1;
+        _openCounts.AddOrUpdate(path, 1, (_, count) => count + 1);
         return inner.OpenRead(path);
     }
 }
@@ -80,6 +81,8 @@ internal sealed class SequencedStampFileSystem(
     private int _stampIndex;
 
     public int OpenCount { get; private set; }
+    public Func<Stream>? OpenStream { get; init; }
+    public Action? LastStampRead { get; init; }
 
     public bool DirectoryExists(string path) => true;
 
@@ -91,12 +94,13 @@ internal sealed class SequencedStampFileSystem(
     {
         var index = Math.Min(_stampIndex, stamps.Length - 1);
         _stampIndex++;
+        if (_stampIndex == stamps.Length) LastStampRead?.Invoke();
         return stamps[index];
     }
 
     public Stream OpenRead(string path)
     {
         OpenCount++;
-        return new MemoryStream(content, writable: false);
+        return OpenStream?.Invoke() ?? new MemoryStream(content, writable: false);
     }
 }

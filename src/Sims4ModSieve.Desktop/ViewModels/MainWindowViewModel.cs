@@ -325,6 +325,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void LoadSettings()
     {
         var settings = settingsStore.Load();
+        if (settings is not null && Enum.IsDefined(settings.HashConcurrency))
+            duplicateHashConcurrency = settings.HashConcurrency;
         ModsRoot = NormalizePathOrNull(settings?.ModsRoot);
         TrayRoot = NormalizePathOrNull(settings?.TrayRoot);
         if (!HasModsRoot)
@@ -376,7 +378,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        if (!TrySaveSettings(new DuplicateSettings(normalizedPath, [], TrayRoot)))
+        if (!TrySaveSettings(new DuplicateSettings(normalizedPath, [], TrayRoot) { HashConcurrency = DuplicateHashConcurrency }))
         {
             fileActionDialogs.ShowProblems("设置未保存", [new FileActionFailure(string.Empty, SettingsFeedback)]);
             return;
@@ -429,11 +431,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
+        var storage = new WindowsStorageProfile();
         var input = new DuplicateRunInput(
             enabledSources
                 .Select(source => new DuplicateRunSource(source.Path, source.Name))
                 .ToArray(),
-            ModsRoot);
+            ModsRoot)
+        {
+            HashConcurrency = DuplicateHashConcurrency,
+            StorageProfile = storage,
+        };
 
         using var performance = ScanPerformance.Start("重复检测");
         var timingOutcome = "未完成";
@@ -538,7 +545,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             IsBusy = false;
             IsProgressIndeterminate = false;
             RefreshResultProperties();
-            await FinishScanTimingAsync(performance, timingOutcome, renderingTiming, input.Sources.Select(source => source.Path));
+            await FinishScanTimingAsync(performance, timingOutcome, renderingTiming, storage);
         }
     }
 

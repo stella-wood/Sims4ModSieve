@@ -212,7 +212,7 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
 
                     try
                     {
-                        files.Add(path, new DiscoveredFile(path, fileSystem.GetFileStamp(path)));
+                        files.Add(path, new DiscoveredFile(path, fileSystem.GetFileStamp(path), source.Path));
                         if (files.Count % 100 == 0)
                         {
                             reportProgress?.Invoke($"已找到 {files.Count:N0} 个文件…", files.Count);
@@ -303,4 +303,4 @@ internal sealed record NormalizedSource(
     int Depth,
     int InputIndex);
 
-internal sealed record DiscoveredFile(string Path, FileStamp DiscoveredStamp);
+internal sealed record DiscoveredFile(string Path, FileStamp DiscoveredStamp, string DiscoveryRoot);

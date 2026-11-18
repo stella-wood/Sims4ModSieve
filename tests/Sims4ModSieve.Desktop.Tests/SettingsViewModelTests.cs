@@ -119,6 +119,26 @@ public sealed class SettingsViewModelTests
     }
 
     [TestMethod]
+    public void HashConcurrencySurvivesChangesToModsAndTrayFromBothPages()
+    {
+        using var files = new Scenario();
+        var mods = files.Folder("Mods");
+        var tray = files.Folder("Tray");
+        files.Store.Save(new(files.Folder("Old"), []));
+        var model = files.Model(new Picker(tray, mods, files.Folder("Updated")));
+        model.DuplicateHashConcurrency = DuplicateHashConcurrency.Eight;
+        model.ChangeTrayRootCommand.Execute(null);
+        Assert.AreEqual(DuplicateHashConcurrency.Eight, files.Model().DuplicateHashConcurrency);
+        model.ChangeDefaultModsRootCommand.Execute(null);
+        Assert.AreEqual(DuplicateHashConcurrency.Eight, files.Model().DuplicateHashConcurrency);
+        model.OpenConflictCommand.Execute(null);
+        model.ChangeModsRootCommand.Execute(null);
+        Assert.AreEqual(DuplicateHashConcurrency.Eight, files.Model().DuplicateHashConcurrency);
+        model.ClearTrayRootCommand.Execute(null);
+        Assert.AreEqual(DuplicateHashConcurrency.Eight, files.Model().DuplicateHashConcurrency);
+    }
+
+    [TestMethod]
     public void FailedSettingsSaveKeepsPreviousConfiguration()
     {
         using var files = new Scenario();

@@ -1,11 +1,15 @@
 using System.IO;
 using System.Text.Json;
+using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Desktop.Services;
 
 public sealed record SavedScanSource(string Path, bool Enabled);
 
-public sealed record DuplicateSettings(string? ModsRoot, IReadOnlyList<SavedScanSource> Sources, string? TrayRoot = null);
+public sealed record DuplicateSettings(string? ModsRoot, IReadOnlyList<SavedScanSource> Sources, string? TrayRoot = null)
+{
+    public DuplicateHashConcurrency HashConcurrency { get; init; }
+}
 
 public interface IDuplicateSettingsStore
 {

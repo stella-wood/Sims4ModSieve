@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Desktop.Services;
 
 namespace Sims4ModSieve.Benchmarks;
 
@@ -17,6 +18,7 @@ internal static class Program
             Console.WriteLine("    --sample-id <id> [--runs 3] [--mods-root <directory>] [--baseline <previous-output>]");
             Console.WriteLine("    [--cancel-after-ms <milliseconds>] [--revision <commit>] [--storage <description>]");
             Console.WriteLine("    [--scope all|duplicates] (default: all)");
+            Console.WriteLine("    [--hash-concurrency auto|1|2|4|8] (default: auto)");
             return 0;
         }
         try
@@ -51,6 +53,16 @@ internal static class Program
         var cancelAfter = PositiveInt(options, "--cancel-after-ms");
         var scope = One(options, "--scope") ?? "all";
         if (scope is not ("all" or "duplicates")) throw new ArgumentException("--scope must be all or duplicates.");
+        var concurrencyLabel = One(options, "--hash-concurrency") ?? "auto";
+        var hashConcurrency = concurrencyLabel switch
+        {
+            "auto" => DuplicateHashConcurrency.Auto,
+            "1" => DuplicateHashConcurrency.One,
+            "2" => DuplicateHashConcurrency.Two,
+            "4" => DuplicateHashConcurrency.Four,
+            "8" => DuplicateHashConcurrency.Eight,
+            _ => throw new ArgumentException("--hash-concurrency must be auto, 1, 2, 4 or 8."),
+        };
         BenchmarkInputs.ValidateOutput(output, sources.Select(source => source.Path));
         var before = InputManifest.Capture(sources.Select(source => source.Path));
         string? expected = null;
@@ -78,9 +90,11 @@ internal static class Program
             for (var iteration = 1; iteration <= runs; iteration++)
             {
                 var snapshotPath = Path.Combine(output, $"snapshot-{iteration:D2}.json");
+                var storage = new WindowsStorageProfile();
                 var measurement = await BenchmarkRunner.MeasureAsync(
-                    token => BenchmarkRunner.CaptureAsync(sources, One(options, "--mods-root"), token, snapshotPath, scope),
-                    cancelAfter, lifetime.Token);
+                    token => BenchmarkRunner.CaptureAsync(sources, One(options, "--mods-root"), token, snapshotPath, scope,
+                        hashConcurrency, storage),
+                    cancelAfter, lifetime.Token, storage);
                 measurements.Add(measurement);
                 await File.WriteAllTextAsync(Path.Combine(output, $"run-{iteration:D2}.log"), measurement.TimingLog);
                 await WriteJsonAsync(Path.Combine(output, $"run-{iteration:D2}.json"), measurement);
@@ -109,6 +123,7 @@ internal static class Program
             FileCount = before.Files.Count, TotalBytes = before.Files.Sum(file => file.Stamp.Length),
             Revision = One(options, "--revision") ?? "unspecified",
             Storage = One(options, "--storage") ?? "unknown",
+            HashConcurrency = concurrencyLabel,
             OS = RuntimeInformation.OSDescription, Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
             Runtime = RuntimeInformation.FrameworkDescription, LogicalCpuCount = Environment.ProcessorCount,
             Runs = measurements.Count, RequestedRuns = runs, CompletedRuns = completed.Length,
@@ -159,7 +174,7 @@ internal static class Program
     private static Dictionary<string, List<string>> Parse(string[] args)
     {
         string[] allowed = ["--source", "--output", "--sample-id", "--runs", "--mods-root", "--baseline",
-            "--cancel-after-ms", "--revision", "--storage", "--scope"];
+            "--cancel-after-ms", "--revision", "--storage", "--scope", "--hash-concurrency"];
         var options = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (var index = 1; index < args.Length; index += 2)
         {

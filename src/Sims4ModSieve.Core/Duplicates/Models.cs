@@ -10,7 +10,11 @@ public sealed record ScanSource(
 public sealed record DuplicateScanRequest(
     IReadOnlyList<ScanSource> Sources,
     string? ModsRoot = null,
-    IReadOnlyCollection<string>? IncludedExtensions = null);
+    IReadOnlyCollection<string>? IncludedExtensions = null)
+{
+    public DuplicateHashConcurrency HashConcurrency { get; init; }
+    public IStorageProfile? StorageProfile { get; init; }
+}
 
 public enum DuplicateScanPhase
 {
