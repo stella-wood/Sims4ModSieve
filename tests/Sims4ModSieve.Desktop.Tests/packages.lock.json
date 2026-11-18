@@ -263,8 +263,15 @@
       "Sims4ModSieve": {
         "type": "Project",
         "dependencies": {
-          "Sims4ModSieve.Core": "[1.0.0, )",
-          "Sims4ModSieve.Packages": "[1.0.0, )"
+          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )",
+          "Sims4ModSieve.Packages": "[0.1.0-alpha.1, )"
+        }
+      },
+      "sims4modsieve.cli": {
+        "type": "Project",
+        "dependencies": {
+          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )",
+          "Sims4ModSieve.Packages": "[0.1.0-alpha.1, )"
         }
       },
       "sims4modsieve.core": {
@@ -278,7 +285,7 @@
         "dependencies": {
           "LlamaLogic.Packages": "[4.9.0, )",
           "SharpZipLib": "[1.4.2, )",
-          "Sims4ModSieve.Core": "[1.0.0, )"
+          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )"
         }
       }
     }

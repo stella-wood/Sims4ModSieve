@@ -150,21 +150,8 @@ public sealed partial class ConflictResultSession
         ScriptModuleScanReport scripts, CancellationToken cancellationToken = default,
         DuplicateReport? duplicates = null)
     {
-        var groupingBuilder = new PackageConflictGroupingBuilder();
-        var prepared = groupingBuilder.Prepare(packages, contents, cancellationToken: cancellationToken);
-        var stampMismatches = duplicates?.Groups.SelectMany(group => group.Files)
-            .Where(file => !MatchesScannedStamp(file, packages, scripts))
-            .DistinctBy(file => file.Path, StringComparer.OrdinalIgnoreCase).ToArray() ?? [];
-        var changedPaths = (duplicates?.Issues ?? []).Where(issue => issue.Code == "file-changed-during-hash")
-            .Select(issue => issue.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        changedPaths.UnionWith(stampMismatches.Select(file => file.Path));
-        // 缓存输入也只保留稳定文件，删除和撤回重建不能重新使用旧版本的关系。
-        prepared = prepared with
-        {
-            Files = prepared.Files.Where(file => !changedPaths.Contains(file.Path)).ToArray(),
-            Pairs = prepared.Pairs.Where(pair => !changedPaths.Contains(pair.FirstPath) && !changedPaths.Contains(pair.SecondPath)).ToArray(),
-        };
-        var grouping = groupingBuilder.Build(prepared, new PackageConflictGroupingOptions(), cancellationToken);
+        var (prepared, grouping, changedPaths, stampMismatches) =
+            ConflictResultGrouping.BuildPackages(packages, contents, scripts, duplicates, cancellationToken);
         var builder = new ConflictPairSummaryBuilder();
         var resources = builder.BuildPackagePairs(packages, contents, cancellationToken)
             .Where(pair => !changedPaths.Contains(pair.FirstPath) && !changedPaths.Contains(pair.SecondPath)).ToArray();

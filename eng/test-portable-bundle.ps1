@@ -27,8 +27,10 @@ try {
         ($_.Name -and -not $_.FullName.Replace('\', '/').StartsWith($packageName + '/', [StringComparison]::Ordinal)) }).Count) {
         throw 'ZIP must contain exactly one package folder.'
     }
-    if (-not @($archive.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "$packageName/Sims4ModSieve.exe" }).Count) {
-        throw 'ZIP package folder is missing its executable.'
+    foreach ($name in @('Sims4ModSieve.exe', 'Sims4ModSieve.Cli.exe', 'AI-GUIDE.md')) {
+        if (-not @($archive.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq "$packageName/$name" }).Count) {
+            throw "ZIP package folder is missing $name."
+        }
     }
 } finally { $archive.Dispose() }
 Write-Host 'PASS ZipRetainsPackageFolder'

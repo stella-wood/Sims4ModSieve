@@ -8,7 +8,7 @@ public sealed class ApplicationDirectoryGuard(string? directory = null, Action<s
     };
     private static readonly HashSet<string> OwnedFiles = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Sims4ModSieve.exe", "createdump.exe", "BUILD-INFO.txt", "SHA256SUMS.txt", "LICENSE", "README.md", "THIRD-PARTY-NOTICES.md",
+        "Sims4ModSieve.exe", "Sims4ModSieve.Cli.exe", "AI-GUIDE.md", "createdump.exe", "BUILD-INFO.txt", "SHA256SUMS.txt", "LICENSE", "README.md", "THIRD-PARTY-NOTICES.md",
     };
 
     public string DirectoryPath { get; } = PathRules.Normalize(directory ?? AppContext.BaseDirectory);

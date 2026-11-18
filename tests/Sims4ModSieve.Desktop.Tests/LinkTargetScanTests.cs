@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;

@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;

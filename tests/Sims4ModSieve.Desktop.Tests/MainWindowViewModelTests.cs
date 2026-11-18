@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.Collections.Concurrent;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Duplicates;

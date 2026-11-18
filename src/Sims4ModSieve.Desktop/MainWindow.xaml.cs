@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
@@ -45,6 +46,7 @@ public partial class MainWindow : Window
         UpdateToolTip.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>
             [new CustomPopupPlacement(new Point(targetSize.Width - popupSize.Width, -popupSize.Height - 6), PopupPrimaryAxis.Horizontal)];
         DataContext = viewModel;
+        Activated += (_, _) => viewModel.RefreshSavedFolders();
         viewModel.UpdateRestartRequested += RestartForUpdate;
         Closing += (_, eventArgs) =>
         {

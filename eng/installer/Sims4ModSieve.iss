@@ -60,6 +60,7 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDirectory}\Sims4ModSieve.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDirectory}\Sims4ModSieve.Cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDirectory}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDirectory}\*"; DestDir: "{app}"; Excludes: "*.exe,*.dll"; Flags: ignoreversion recursesubdirs createallsubdirs
 

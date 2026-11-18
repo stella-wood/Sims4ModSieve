@@ -56,6 +56,16 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 
 - Windows 10 或 Windows 11（x64）
 
+### 让 AI 帮你查 Mod
+
+新版安装目录里有 `AI-GUIDE.md` 和 `Sims4ModSieve.Cli.exe`。如果你使用的是自带这两个文件的便携包，在解压目录里找。
+
+1. 打开能在你电脑上执行命令的 AI 助手。
+2. 把 [AI-GUIDE.md](AI-GUIDE.md) 给它，告诉它 Sieve 在哪里。你可以先打开说明看看它会怎么做。
+3. 直接问「帮我看看 Mods 里有没有冲突」或「我是不是重复下载了 Mod」。执行命令前，AI 可能会请你允许。
+
+命令行扫描只读。需要处理文件时，可以让 AI 先列出哪些文件需要处理，再到 Sieve 界面确认禁用或移入回收站。只在云端运行、无法访问这台电脑文件的 AI 助手无法执行本机扫描。
+
 ## 安全与隐私
 
 - 扫描、分析、生成报告全部在本机完成；程序启动时会向 GitHub 查询一次最新版本号，不上传 Mod、路径或报告
@@ -123,7 +133,7 @@ pwsh -NoProfile -File .\eng\package-installer.ps1
 
 ### 命令行（CLI）
 
-CLI 只扫描和导出报告，不会删除或修改文件。
+CLI 提供只读扫描、报告和默认 Mods 目录设置。运行 `Sims4ModSieve.Cli.exe --help` 查看命令，运行 `guide` 查看随程序嵌入的 AI 指南。
 
 ```powershell
 .\eng\dotnet.cmd run --project .\src\Sims4ModSieve.Cli\Sims4ModSieve.Cli.csproj -c Release -- `
@@ -136,7 +146,7 @@ CLI 只扫描和导出报告，不会删除或修改文件。
   --html ".\artifacts\duplicate-report.html"
 ```
 
-省略 `--extension` 时会扫描全部文件。存在未完成的分析时仍会保存报告，退出码为 `1`。
+显式指定 `--source` 时，查重命令省略 `--extension` 会扫描全部文件。省略 `--source` 时，三个命令沿用桌面端重启后的范围，扫描默认 Mods 下支持的 Mod 文件。使用 `--json -` 可把 JSON 打到标准输出。另存报告时请指定尚不存在的文件。有发现或未分析项时仍会输出报告，退出码为 `1`。
 
 ### 项目结构
 

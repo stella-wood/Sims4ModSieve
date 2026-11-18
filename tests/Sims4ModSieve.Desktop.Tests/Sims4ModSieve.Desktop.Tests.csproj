@@ -14,10 +14,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sims4ModSieve.Cli\Sims4ModSieve.Cli.csproj" />
     <ProjectReference Include="..\..\src\Sims4ModSieve.Desktop\Sims4ModSieve.Desktop.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Sims4ModSieve.Core.Tests\Packages\DbpfFixtureBuilder.cs" Link="Shared\DbpfFixtureBuilder.cs" />
+    <Compile Include="..\Sims4ModSieve.Core.Tests\TempDirectory.cs" Link="Shared\TempDirectory.cs" />
+    <Content Include="..\fixtures\duplicates\**\*" Link="Fixtures\Duplicates\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\src\Sims4ModSieve.Desktop\Assets\Sims4ModSieve.ico" Link="Assets\Sims4ModSieve.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

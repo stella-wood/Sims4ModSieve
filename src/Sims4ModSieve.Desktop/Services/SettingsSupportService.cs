@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Settings;
 
 namespace Sims4ModSieve.Desktop.Services;
 
@@ -45,12 +46,7 @@ public sealed partial class SettingsSupportService
         ?? typeof(SettingsSupportService).Assembly.GetName().Version?.ToString() ?? string.Empty;
     public string SystemVersion => Environment.OSVersion.VersionString;
 
-    public string? FindDefaultFolder(string kind)
-    {
-        if (kind is not ("Mods" or "Tray")) throw new ArgumentException("未知的文件夹类型", nameof(kind));
-        var candidate = Path.Combine(documentsDirectory, "Electronic Arts", "The Sims 4", kind);
-        return Directory.Exists(candidate) ? candidate : null;
-    }
+    public string? FindDefaultFolder(string kind) => DuplicateSettingsStore.FindDefaultFolder(kind, documentsDirectory);
 
     public string GetApplicationLocationWarning(string? modsRoot, string? trayRoot, IEnumerable<string>? scanRoots = null)
     {

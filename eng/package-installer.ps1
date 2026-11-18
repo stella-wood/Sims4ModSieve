@@ -13,6 +13,9 @@ $releaseDirectory = Join-Path $root 'artifacts/release'
 $source = Join-Path $releaseDirectory "Sims4ModSieve-$version-win-x64"
 if (-not $UseExistingPublish) { & "$PSScriptRoot/package-portable.ps1" -SkipArchive }
 & "$PSScriptRoot/verify-portable-bundle.ps1" -PackageDirectory $source
+foreach ($name in @('Sims4ModSieve.Cli.exe', 'AI-GUIDE.md')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $source $name) -PathType Leaf)) { throw "Missing installer payload: $name" }
+}
 & "$PSScriptRoot/install-inno-setup.ps1"
 $compiler = Join-Path $root '.tools/inno-setup/compiler/ISCC.exe'
 & $compiler '--quiet' "--define=AppVersion=$version" "--define=FileVersion=$fileVersion" "--define=SourceDirectory=$source" "--define=OutputDirectory=$releaseDirectory" (Join-Path $PSScriptRoot 'installer/Sims4ModSieve.iss')

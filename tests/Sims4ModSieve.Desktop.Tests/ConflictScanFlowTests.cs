@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;

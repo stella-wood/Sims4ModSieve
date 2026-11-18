@@ -91,9 +91,8 @@ public sealed partial class MainWindowViewModel
         set
         {
             if (value == duplicateHashConcurrency || IsBusy || !Enum.IsDefined(value)) return;
-            if (TrySaveSettings(new DuplicateSettings(ModsRoot, [], TrayRoot) { HashConcurrency = value }))
-                duplicateHashConcurrency = value;
-            OnPropertyChanged();
+            if (!TryUpdateSettings(settings => settings with { HashConcurrency = value, Sources = [] }))
+                OnPropertyChanged();
         }
     }
     public string ModsFolderFeedback { get => modsFolderFeedback; private set => SetProperty(ref modsFolderFeedback, value); }
@@ -191,6 +190,7 @@ public sealed partial class MainWindowViewModel
 
     private void ShowSettings()
     {
+        RefreshSavedFolders();
         IsHomeVisible = false;
         IsScannerVisible = false;
         IsConflictVisible = false;
@@ -237,11 +237,7 @@ public sealed partial class MainWindowViewModel
             SetFolderFeedback(kind, "文件夹路径无效");
             return false;
         }
-        var candidate = new DuplicateSettings(kind == "Mods" ? normalized : ModsRoot, [], kind == "Tray" ? normalized : TrayRoot)
-        {
-            HashConcurrency = DuplicateHashConcurrency,
-        };
-        if (!TrySaveSettings(candidate)) return false;
+        if (!TrySaveFolder(kind, normalized)) return false;
         if (kind == "Mods")
         {
             ModsRoot = normalized;
