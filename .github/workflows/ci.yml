@@ -17,6 +17,7 @@ concurrency:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  # Match eng/dotnet.cmd so setup-dotnet caches the packages used by the packaging scripts.
   NUGET_PACKAGES: ${{ github.workspace }}/.tools-state/nuget-packages
 
 jobs:
@@ -60,6 +61,7 @@ jobs:
           DESKTOP_TEST_SHARD: ${{ matrix.shard }}
         run: |
           # These four classes account for half of the Desktop baseline time.
+          # Update this list when any of these classes are renamed or split.
           $classes = @(
             'ConflictPageVirtualizationTests'
             'CreditsTests'
