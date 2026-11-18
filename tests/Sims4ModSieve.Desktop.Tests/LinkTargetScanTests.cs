@@ -166,6 +166,77 @@ public sealed class LinkTargetScanTests
         Assert.IsFalse(string.IsNullOrWhiteSpace(missing.UnknownReason));
     }
 
+    [TestMethod]
+    [TestCategory("WindowsIntegration")]
+    public void StorageProbeReturnsSeekPenaltyOnSupportedVolume()
+    {
+        var profile = new WindowsStorageProfile().GetVolume(GetStorageProbeTestRoot());
+
+        Assert.IsNotNull(profile.VolumeId, profile.UnknownReason);
+        Assert.IsNotNull(profile.IncursSeekPenalty, profile.UnknownReason);
+    }
+
+    [TestMethod]
+    [TestCategory("WindowsIntegration")]
+    public void StorageProbeResolvesCrossVolumeJunctionToTargetVolume()
+    {
+        var targetRoot = GetStorageProbeTestRoot();
+        var profile = new WindowsStorageProfile();
+        var sourceVolume = profile.GetVolume(Path.GetFullPath(Path.GetTempPath()));
+        var targetVolume = profile.GetVolume(targetRoot);
+        Assert.IsNotNull(sourceVolume.VolumeId, sourceVolume.UnknownReason);
+        Assert.IsNotNull(targetVolume.VolumeId, targetVolume.UnknownReason);
+        Assert.AreNotEqual(sourceVolume.VolumeId, targetVolume.VolumeId,
+            "The configured root must be on a different volume from the system temp directory.");
+
+        var source = Directory.CreateTempSubdirectory("s4ms-storage-probe-");
+        var link = Path.Combine(source.FullName, "Junction");
+        var target = Path.Combine(targetRoot, source.Name);
+        var nested = Path.Combine(target, "Nested");
+        try
+        {
+            Directory.CreateDirectory(nested);
+            CreateJunction(link, target);
+
+            var direct = profile.GetVolume(nested);
+            var viaJunction = profile.GetVolume(Path.Combine(link, "Nested"));
+            Assert.AreEqual(targetVolume.VolumeId, direct.VolumeId, direct.UnknownReason);
+            Assert.AreEqual(targetVolume.VolumeId, viaJunction.VolumeId, viaJunction.UnknownReason);
+        }
+        finally
+        {
+            if (Directory.Exists(link)) Directory.Delete(link);
+            if (Directory.Exists(nested)) Directory.Delete(nested);
+            if (Directory.Exists(target)) Directory.Delete(target);
+            source.Delete();
+        }
+    }
+
+    private static string GetStorageProbeTestRoot()
+    {
+        const string variable = "SIMS4_MOD_SIEVE_STORAGE_PROBE_TEST_ROOT";
+        var path = Environment.GetEnvironmentVariable(variable);
+        if (string.IsNullOrWhiteSpace(path))
+            Assert.Inconclusive($"Set {variable} to an existing writable directory on a local test volume.");
+        Assert.IsTrue(Path.IsPathFullyQualified(path) && Directory.Exists(path),
+            $"{variable} must be an existing absolute directory path.");
+        return Path.GetFullPath(path);
+    }
+
+    private static void CreateJunction(string link, string target)
+    {
+        var start = new ProcessStartInfo("powershell.exe")
+        { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.Environment["S4MS_TEST_JUNCTION_LINK"] = link;
+        start.Environment["S4MS_TEST_JUNCTION_TARGET"] = target;
+        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command",
+            "$ErrorActionPreference = 'Stop'; New-Item -ItemType Junction -Path $env:S4MS_TEST_JUNCTION_LINK -Target $env:S4MS_TEST_JUNCTION_TARGET | Out-Null" })
+            start.ArgumentList.Add(argument);
+        using var process = Process.Start(start)!;
+        process.WaitForExit();
+        Assert.AreEqual(0, process.ExitCode, process.StandardError.ReadToEnd());
+    }
+
     private sealed class LinkFiles : IDisposable
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "s4ms-link-" + Guid.NewGuid().ToString("N"));
@@ -175,10 +246,7 @@ public sealed class LinkTargetScanTests
         public LinkFiles()
         {
             Directory.CreateDirectory(Target);
-            using var process = Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{Link}\" \"{Target}\"")
-            { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true })!;
-            process.WaitForExit();
-            Assert.AreEqual(0, process.ExitCode, process.StandardError.ReadToEnd());
+            CreateJunction(Link, Target);
         }
 
         public MainWindowViewModel Model(IDuplicateRunService? run = null)
