@@ -94,7 +94,7 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 .\eng\dotnet.cmd test .\Sims4ModSieve.sln -c Release --no-build --no-restore --nologo -m:1
 ```
 
-每次推送到 `main` 或提交 Pull Request，GitHub Actions 会在 Windows 上执行同样的还原、构建和测试；失败时上传 `test-failure-diagnostics` 工件（测试结果和界面截图，保留 7 天）。
+每次推送到 `main` 或提交 Pull Request，GitHub Actions 会在 Windows 上并行执行还原、构建、测试和安装包验证（`test-desktop (1)`、`test-desktop (2)`、`test-core`、`package`）。失败的 job 有诊断文件时，会上传对应的 `test-failure-diagnostics-*` 工件，其中可包含测试结果和界面截图，保留 7 天。
 
 单实例跨进程测试直接运行 .NET 锁探针，调用与 app 相同的锁实现，不依赖 PowerShell 启动。测试保留 10 秒就绪和退出上限，验证双向互斥、退出后释放及异常退出诊断。
 
