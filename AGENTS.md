@@ -133,6 +133,8 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 - 首页随窗口舒展，字号和图标不放大；不用 Viewbox 整页缩放。
 - 图标自绘矢量，不用 emoji 或 Unicode 方块。图标视觉尺寸和点击热区分开：图标 `IsHitTestVisible=false`，矩形宿主负责命中（批量展开按钮：图标 16×16，热区 24×24）。改命中后运行 `BareIconButtonHitTests`。
 
+界面用到的颜色、字号、间距、圆角和组件样式以 [DESIGN.md](DESIGN.md) 为准：XAML 里只用令牌名，不直接写 `#` 色值和随手的数字；需要新值先加进 DESIGN.md。
+
 ## 9. WPF 已知陷阱
 
 1. 改相似 Style 时补丁要带准确的 `x:Key`。曾经改到了 `HeaderNavButtonStyle`，要改的 `BareIconButtonStyle` 没变。

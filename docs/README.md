@@ -10,6 +10,7 @@
 
 - [CONTEXT.md](../CONTEXT.md)：词汇表，Sieve 的自造词各指什么、代码里叫什么。
 - [CHANGELOG.md](../CHANGELOG.md)：每个版本改了什么。
+- [DESIGN.md](../DESIGN.md)：设计令牌（颜色、字号、间距、圆角）和组件样式，写 XAML 只用这里的名字。
 - [决策记录](decisions/README.md)：选了什么、比过什么、为什么。
 
 每份文档标了类型：
