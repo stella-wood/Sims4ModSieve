@@ -44,6 +44,10 @@ Windows 本地的《模拟人生 4》Mod 整理工具，.NET 10 + WPF。SDK 版�
 - 不写全文摘要、不写给文档自己的验收标准、不写替自己免责的句子。
 - 同一条规则只在一个地方写，其他地方链接过去。
 - 链接用仓库内相对路径，不写本机绝对路径。
+- 文档只写**现在**是什么样。「什么时候改了什么」写进根目录 [CHANGELOG.md](CHANGELOG.md) 的「未发布」，不在文档开头堆状态更新。
+- 用 [CONTEXT.md](CONTEXT.md) 里的叫法。需要新词先加进 CONTEXT.md，不自己另起名字。
+- 改了行为的 PR，在同一个 PR 里顺手更新：[架构概览 v4](docs/architecture/架构概览-v4.md) 里对应的那节、CONTEXT.md（有新词时）、CHANGELOG.md。
+- 做了有取舍的决定（难回滚、比过几个方案），在 [docs/decisions/](docs/decisions/README.md) 加一份。动手前先看有没有已经否掉的方案。
 
 ## 5. 当前状态
 
