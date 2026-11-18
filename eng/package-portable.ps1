@@ -4,6 +4,7 @@ param([switch]$SkipArchive)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $root 'src/Sims4ModSieve.Desktop/Sims4ModSieve.Desktop.csproj'
+$cliProject = Join-Path $root 'src/Sims4ModSieve.Cli/Sims4ModSieve.Cli.csproj'
 $versionOutput = & "$PSScriptRoot/dotnet.cmd" msbuild $project -nologo -getProperty:Version
 if ($LASTEXITCODE -ne 0) { throw 'Could not read the project version.' }
 $Version = ($versionOutput -join "`n").Trim()
@@ -17,11 +18,16 @@ if (Test-Path $out) { Remove-Item -LiteralPath $out -Recurse -Force }
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
 & "$PSScriptRoot/dotnet.cmd" restore $project --locked-mode --nologo -m:1 -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64
 if ($LASTEXITCODE -ne 0) { throw 'Locked RID restore failed.' }
+& "$PSScriptRoot/dotnet.cmd" restore $cliProject --locked-mode --nologo -m:1 -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64
+if ($LASTEXITCODE -ne 0) { throw 'Locked CLI RID restore failed.' }
 & "$PSScriptRoot/check-vulnerabilities.ps1"
 & "$PSScriptRoot/dotnet.cmd" publish $project -c Release --no-restore --nologo -m:1 -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64 -p:Version=$Version -o $out
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
+& "$PSScriptRoot/dotnet.cmd" publish $cliProject -c Release --no-restore --nologo -m:1 -p:RuntimeIdentifier=win-x64 -p:PublishProfile=PortableWinX64 -p:Version=$Version -o $out
+if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed.' }
+Copy-Item -LiteralPath (Join-Path $root 'AI-GUIDE.md') -Destination $out
 $required = @(
-    'Sims4ModSieve.exe', 'PresentationNative_cor3.dll', 'wpfgfx_cor3.dll',
+    'Sims4ModSieve.exe', 'Sims4ModSieve.Cli.exe', 'AI-GUIDE.md', 'PresentationNative_cor3.dll', 'wpfgfx_cor3.dll',
     'PenImc_cor3.dll', 'D3DCompiler_47_cor3.dll', 'vcruntime140_cor3.dll',
     'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'Assets/Fonts/source-han-sans-LICENSE.txt',
     'licenses/LlamaLogic.Packages-4.9.0-LICENSE.txt',

@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.IO;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Infrastructure;

@@ -26,6 +26,8 @@ public sealed class ApplicationDirectoryGuardTests
 
     [TestMethod]
     [DataRow("Sims4ModSieve.exe", true)]
+    [DataRow("Sims4ModSieve.Cli.exe", true)]
+    [DataRow("AI-GUIDE.md", true)]
     [DataRow("coreclr.dll", true)]
     [DataRow("runtime.dll.off", true)]
     [DataRow("Sims4ModSieve.deps.json", true)]

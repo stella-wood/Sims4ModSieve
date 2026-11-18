@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.IO;
 using System.Security.Cryptography;
 using System.Windows;

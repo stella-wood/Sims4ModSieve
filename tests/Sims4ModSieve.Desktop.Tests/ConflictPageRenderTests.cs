@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;

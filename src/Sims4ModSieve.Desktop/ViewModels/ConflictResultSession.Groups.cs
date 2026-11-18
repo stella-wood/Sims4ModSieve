@@ -8,13 +8,15 @@ namespace Sims4ModSieve.Desktop.ViewModels;
 
 public sealed partial class ConflictResultSession
 {
-    private static string ScriptGroupIdentity(string topLevelName, IEnumerable<string> paths) => topLevelName + "/"
-        + string.Concat(paths.Select(path => path.ToUpperInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(Identity));
+
 
     private static ConflictPairPriority ScriptPriority(IReadOnlyList<ScriptModuleCollision> modules) =>
-        modules.Any(module => module.HasConfirmedDifference) ? ConflictPairPriority.NeedsReview
-            : modules.Any(module => !module.IsComplete || module.ContentGroups.Count != 1) ? ConflictPairPriority.Incomplete
-            : ConflictPairPriority.CanOrganize;
+        ConflictResultGrouping.GetScriptVerdict(modules) switch
+        {
+            ScriptModuleVerdict.Different => ConflictPairPriority.NeedsReview,
+            ScriptModuleVerdict.Incomplete => ConflictPairPriority.Incomplete,
+            _ => ConflictPairPriority.CanOrganize,
+        };
 
     private static string ScriptExplanation(IReadOnlyList<ScriptModuleCollision> modules)
     {
@@ -253,7 +255,7 @@ public sealed partial class ConflictResultSession
             };
         }).Where(card => card.Files.Count > 0).ToArray();
         Cards = Cards.Where(card => card.Modules is null).Concat(Cards.Where(card => card.Modules is not null)
-            .GroupBy(card => ScriptGroupIdentity(card.Modules![0].TopLevelName, card.Files.Select(file => file.Path)), StringComparer.Ordinal)
+            .GroupBy(card => ConflictResultGrouping.ScriptGroupIdentity(card.Modules![0].TopLevelName, card.Files.Select(file => file.Path)), StringComparer.Ordinal)
             .Select(group =>
             {
                 var first = group.OrderBy(card => ignoredGroups.Contains(card.Key)).ThenBy(card => card.GroupIndex).First();
@@ -281,41 +283,12 @@ public sealed partial class ConflictResultSession
 
     private void RebuildCards(PackageConflictGroupingResult result, CancellationToken token)
     {
-        var representatives = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var packagePaths = groupingInput!.Files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var duplicate in duplicateReport?.Groups ?? [])
-        {
-            var eligible = duplicate.Files.Where(file => packagePaths.Contains(file.Path) && !hashChangedPaths.Contains(file.Path)
-                && MatchesScannedStamp(file, PackageReport, ScriptReport)).ToArray();
-            if (eligible.Length < 2) continue;
-            var keep = new DuplicateSelectionService().Select(eligible).KeepPath;
-            foreach (var file in eligible) representatives[file.Path] = keep;
-        }
+        var (merged, representatives) = ConflictResultGrouping.MergeDuplicatePackageGroups(groupingInput!, result,
+            duplicateReport, hashChangedPaths, PackageReport, ScriptReport);
         string Representative(string path) => representatives.GetValueOrDefault(path, path);
-        var packageGroups = result.Groups.GroupBy(group => group.Kind + "/"
-            + (group.BundlePath is null ? "" : Identity(Representative(group.BundlePath).ToUpperInvariant()))
-            + string.Concat(group.Members.Select(member => Representative(member.Path).ToUpperInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(Identity))
-            + string.Concat(group.ResourceKeys.Select(key => key.Tgi).Order(StringComparer.Ordinal).Select(Identity)), StringComparer.Ordinal)
-            .Select(groups =>
-            {
-                var selected = groups.OrderByDescending(group => group.Members.Count(member =>
-                    StringComparer.OrdinalIgnoreCase.Equals(member.Path, Representative(member.Path)))).First();
-                return selected with
-                {
-                    Members = selected.Members.Concat(groups.SelectMany(group => group.Members)).DistinctBy(member => member.Path, StringComparer.OrdinalIgnoreCase).ToArray(),
-                    Relations = groups.SelectMany(group => group.Relations).Distinct().ToArray(),
-                };
-            }).ToArray();
-        result = result with
-        {
-            Groups = packageGroups,
-            GroupsByFile = packageGroups.SelectMany(group => group.Members.Select(member => (member.Path, Group: group)))
-                .GroupBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => (IReadOnlyList<PackageConflictGroup>)group.Select(item => item.Group).ToArray(), StringComparer.OrdinalIgnoreCase),
-        };
-        Grouping = result;
+        Grouping = merged;
         var cards = new List<ConflictCard>();
-        foreach (var group in result.Groups)
+        foreach (var group in merged.Groups)
         {
             token.ThrowIfCancellationRequested();
             var (type, title) = group.Kind switch
@@ -341,19 +314,8 @@ public sealed partial class ConflictResultSession
             cards.Add(new(key, type, title, type == "override" ? ConflictPairPriority.NeedsReview : ConflictPairPriority.CanOrganize,
                 files, explanation, Package: group));
         }
-        var modules = (ScriptReport?.Collisions ?? [])
-            .Select(module => module with
-            {
-                ContentGroups = module.ContentGroups.Select(group => group with
-                {
-                    Occurrences = group.Occurrences.Where(item => !removedPaths.Contains(item.ArchivePath)
-                        && !hashChangedPaths.Contains(item.ArchivePath)).ToArray(),
-                }).Where(group => group.Occurrences.Count > 0).ToArray(),
-                Uncompared = module.Uncompared.Where(item => !removedPaths.Contains(item.ArchivePath)
-                    && !hashChangedPaths.Contains(item.ArchivePath)).ToArray(),
-            }).Where(module => module.ArchiveCount >= 2);
-        foreach (var group in modules.GroupBy(module => ScriptGroupIdentity(module.TopLevelName,
-            module.Occurrences.Select(item => item.ArchivePath)), StringComparer.Ordinal))
+        foreach (var group in ConflictResultGrouping.GroupScripts(ScriptReport?.Collisions ?? [],
+            path => removedPaths.Contains(path) || hashChangedPaths.Contains(path)))
         {
             token.ThrowIfCancellationRequested();
             var collisions = group.OrderBy(module => module.ModuleName, StringComparer.Ordinal).ToArray();
@@ -369,7 +331,7 @@ public sealed partial class ConflictResultSession
         {
             token.ThrowIfCancellationRequested();
             var files = source.Files.Where(file => !removedPaths.Contains(file.Path) && !hashChangedPaths.Contains(file.Path)
-                && MatchesScannedStamp(file, PackageReport, ScriptReport)
+                && ConflictResultGrouping.MatchesScannedStamp(file, PackageReport, ScriptReport)
                 && !Problems.Any(problem => StringComparer.OrdinalIgnoreCase.Equals(problem.Path, file.Path))).ToArray();
             if (files.Length < 2) continue;
             var selection = new DuplicateSelectionService().Select(files);
@@ -553,15 +515,7 @@ public sealed partial class ConflictResultSession
         }
     }
 
-    private static bool MatchesScannedStamp(DuplicateFile file, PackageConflictScanReport? packages, ScriptModuleScanReport? scripts)
-    {
-        var stamp = new FileStamp(file.Size, file.LastWriteTimeUtc, file.Identity);
-        var inventory = packages?.ResourceInventories.FirstOrDefault(item => StringComparer.OrdinalIgnoreCase.Equals(item.Path, file.Path));
-        if (inventory is not null && inventory.ScannedStamp != stamp) return false;
-        var occurrences = scripts?.Collisions.SelectMany(collision => collision.Occurrences)
-            .Where(item => StringComparer.OrdinalIgnoreCase.Equals(item.ArchivePath, file.Path));
-        return occurrences is null || occurrences.All(item => item.ArchiveStamp == stamp);
-    }
+
 
     // 会话内路径身份包含卷名，避免不同来源下同名相对路径碰撞。
     private static string RelativeIdentity(string path) => path.Replace(':', '_').TrimStart('\\', '/');

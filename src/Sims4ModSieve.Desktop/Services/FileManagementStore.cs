@@ -1,9 +1,9 @@
 using System.IO;
 using System.Text.Json;
+using Sims4ModSieve.Core.Settings;
 
 namespace Sims4ModSieve.Desktop.Services;
 
-public sealed record IgnoredFileRecord(string Path, long Size, DateTime IgnoredAtUtc);
 public sealed record DeletedFileRecord(string Id, RecycleBinItem Item, long Size, DateTime DeletedAtUtc,
     DateTime? LastWriteTimeUtc = null, DisabledModRecord? DisabledMod = null);
 public sealed record FileManagementData(IReadOnlyList<IgnoredFileRecord> Ignored,
@@ -12,7 +12,7 @@ public sealed record FileManagementData(IReadOnlyList<IgnoredFileRecord> Ignored
 public sealed class FileManagementStore(string? directory = null)
 {
     private readonly object gate = new();
-    private readonly string? path = directory is null ? null : Path.Combine(directory, "file-management.json");
+    private readonly string? path = directory is null ? null : IgnoredFileRecord.GetStorePath(directory);
     private FileManagementData memory = new([], []);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -22,19 +22,22 @@ public sealed class FileManagementStore(string? directory = null)
         {
             if (path is null) return memory;
             string json;
-            try { json = File.ReadAllText(path); }
+            try
+            {
+                using var reader = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete));
+                json = reader.ReadToEnd();
+            }
             catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException) { return memory; }
             var data = JsonSerializer.Deserialize<FileManagementData>(json, JsonOptions)
                 ?? throw new InvalidDataException("删除与忽略配置为空");
-            if (data.Ignored is null || data.Deleted is null
-                || data.Ignored.Any(item => item is null || !Path.IsPathFullyQualified(item.Path) || item.Size < 0)
+            if (data.Deleted is null
                 || data.Deleted.Any(item => item is null || item.Item is null || !Path.IsPathFullyQualified(item.Item.OriginalPath)
                     || item.Item.AbsolutePidl is null || item.Item.AbsolutePidl.Length < 2 || item.Size < 0 || string.IsNullOrWhiteSpace(item.Id)
                     || item.DisabledMod is { } disabled && (!ModDisableService.IsValidRecord(disabled)
                         || !StringComparer.OrdinalIgnoreCase.Equals(disabled.DisabledPath, item.Item.OriginalPath)
                         || disabled.Size != item.Size || disabled.LastWriteTimeUtc != item.LastWriteTimeUtc)))
                 throw new InvalidDataException("删除与忽略配置格式无效");
-            return memory = data with { Ignored = data.Ignored.DistinctBy(item => Path.GetFullPath(item.Path), StringComparer.OrdinalIgnoreCase).ToArray() };
+            return memory = data with { Ignored = IgnoredFileRecord.Validate(data.Ignored) };
         }
     }
 

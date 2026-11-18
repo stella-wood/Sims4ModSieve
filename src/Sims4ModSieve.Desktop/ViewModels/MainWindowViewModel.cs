@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -324,15 +325,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void LoadSettings()
     {
-        var settings = settingsStore.Load();
-        if (settings is not null && Enum.IsDefined(settings.HashConcurrency))
-            duplicateHashConcurrency = settings.HashConcurrency;
-        ModsRoot = NormalizePathOrNull(settings?.ModsRoot);
-        TrayRoot = NormalizePathOrNull(settings?.TrayRoot);
-        if (!HasModsRoot)
-        {
-            ModsRoot = settingsSupport.FindDefaultFolder("Mods");
-        }
+        ReadSavedSettings();
 
         if (HasModsRoot)
         {
@@ -340,6 +333,33 @@ public sealed partial class MainWindowViewModel : ObservableObject
             AddSource(ConflictSources, ModsRoot!);
         }
 
+        RefreshAvailability();
+    }
+
+    public void RefreshSavedFolders()
+    {
+        if (!IsBusy && settingsStore is DuplicateSettingsStore) ReadSavedSettings();
+    }
+
+    private void ReadSavedSettings()
+    {
+        try
+        {
+            ApplySavedSettings(settingsStore.Load());
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            SettingsFeedback = "无法读取已保存的设置";
+        }
+    }
+
+    private void ApplySavedSettings(DuplicateSettings? settings)
+    {
+        var concurrency = settings?.HashConcurrency ?? DuplicateHashConcurrency.Auto;
+        if (!Enum.IsDefined(concurrency)) concurrency = DuplicateHashConcurrency.Auto;
+        SetProperty(ref duplicateHashConcurrency, concurrency, nameof(DuplicateHashConcurrency));
+        ModsRoot = NormalizePathOrNull(settings?.ModsRoot) ?? settingsSupport.FindDefaultFolder("Mods");
+        TrayRoot = NormalizePathOrNull(settings?.TrayRoot);
         RefreshAvailability();
     }
 
@@ -378,7 +398,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        if (!TrySaveSettings(new DuplicateSettings(normalizedPath, [], TrayRoot) { HashConcurrency = DuplicateHashConcurrency }))
+        if (!TrySaveFolder("Mods", normalizedPath))
         {
             fileActionDialogs.ShowProblems("设置未保存", [new FileActionFailure(string.Empty, SettingsFeedback)]);
             return;
@@ -764,17 +784,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsModsRootAvailable = HasModsRoot && Directory.Exists(ModsRoot!);
     }
 
-    private bool TrySaveSettings(DuplicateSettings candidate)
+    private bool TrySaveFolder(string kind, string? path) => TryUpdateSettings(settings =>
+        kind == "Mods" ? settings with { ModsRoot = path, Sources = [] } : settings with { TrayRoot = path, Sources = [] });
+
+    private bool TryUpdateSettings(Func<DuplicateSettings, DuplicateSettings> update)
     {
         try
         {
-            settingsStore.Save(candidate);
+            DuplicateSettings next;
+            if (settingsStore is DuplicateSettingsStore disk)
+                next = disk.Update(update);
+            else
+            {
+                next = update(new DuplicateSettings(ModsRoot, [], TrayRoot) { HashConcurrency = DuplicateHashConcurrency });
+                settingsStore.Save(next);
+            }
+            ApplySavedSettings(next);
             SettingsFeedback = string.Empty;
             return true;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            SettingsFeedback = "设置未保存，请检查配置目录的写入权限";
+            SettingsFeedback = "设置未保存，请检查配置文件和目录权限";
             return false;
         }
     }

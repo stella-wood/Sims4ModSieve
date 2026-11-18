@@ -75,6 +75,10 @@ try {
         $relative = [IO.Path]::GetRelativePath($source, $file.FullName)
         if ((Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path $app $relative)).Hash) { throw "Installed payload differs: $relative" }
     }
+    $cli = Join-Path $app 'Sims4ModSieve.Cli.exe'
+    $helpText = & $cli scan-scripts --help
+    if ($LASTEXITCODE -ne 0 -or -not ($helpText -match 'scan-scripts')) { throw 'Installed CLI help failed.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $app 'AI-GUIDE.md') -PathType Leaf)) { throw 'Installed guide is missing.' }
     $entry = Get-ItemProperty -LiteralPath $registration
     if ($entry.DisplayVersion -ne $version -or $entry.InstallLocation.TrimEnd('\') -ne $app) { throw 'Uninstall registration differs.' }
     if ($entry.UninstallString -ne ('"' + (Join-Path $app 'unins000.exe') + '" /SILENT /SIEVEINTERACTIVE=1') -or $entry.QuietUninstallString -like '*SIEVEINTERACTIVE*') { throw 'Interactive and silent uninstall registration differ.' }

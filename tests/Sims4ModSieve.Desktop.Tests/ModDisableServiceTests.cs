@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Settings;
 using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Desktop.Services;
