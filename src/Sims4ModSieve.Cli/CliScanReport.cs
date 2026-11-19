@@ -13,7 +13,7 @@ using Sims4ModSieve.Packages;
 namespace Sims4ModSieve.Cli;
 
 internal sealed class CliScanReport(string command, string sourceOrigin, string? notice,
-    IReadOnlySet<string> ignoredPaths, bool hideIgnored)
+    IReadOnlySet<string> ignoredPaths, CliCommands.ScanOptions options)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -24,7 +24,11 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     };
 
     private readonly Dictionary<string, ReportFile> files = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<object> groups = [];
+    private readonly List<ReportGroup> groups = [];
+    private readonly Dictionary<string, int> groupSeverityCounts = new()
+    {
+        ["abnormal"] = 0, ["risk"] = 0, ["no_effect"] = 0, ["incomplete"] = 0,
+    };
     private readonly List<ReportIssue> issues = [];
     private readonly HashSet<(string Path, string Code, string? Entry)> issueKeys = [];
     private readonly StableFileHasher hasher = new(new PhysicalFileSystemAccess());
@@ -39,14 +43,32 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     private int IgnoredCount => files.Values.Count(file => file.Ignored);
     private int IncompleteCount => issues.Count(issue => issue.Severity == "incomplete");
     private int AbnormalCount => abnormalGroupCount + issues.Count(issue => issue.Severity == "abnormal");
-    private bool Visible(string path) => !hideIgnored || !ignoredPaths.Contains(path);
+    private bool Visible(string path) => !options.HideIgnored || !ignoredPaths.Contains(path);
     public int ExitCode => groupCount == 0 && issues.Count == 0 ? 0 : 1;
     public IReadOnlyList<ScanSourceSnapshot> Sources => sources;
+
+    private bool Complete => !options.HasOutputFilters && !options.HideIgnored;
+    private bool Matches(string kind, string severity) =>
+        (options.Kinds.Count == 0 || options.Kinds.Contains(kind))
+        && (options.Severities.Count == 0 || options.Severities.Contains(severity));
+    private IEnumerable<ReportGroup> OutputGroups => options.SummaryOnly ? []
+        : groups.Where(group => Matches(group.Kind, group.Severity)).Take(options.Limit ?? int.MaxValue);
+    private IEnumerable<ReportIssue> OutputIssues => options.SummaryOnly ? []
+        : issues.Where(issue => (!issue.IsFile || Visible(issue.Path)) && Matches(issue.Kind, issue.Severity));
+    private int OmittedGroupCount => groupCount - OutputGroups.Count();
+    private int OmittedIssueCount => issues.Count - OutputIssues.Count();
+    private int SeverityCount(string severity) => groupSeverityCounts[severity] + issues.Count(issue => issue.Severity == severity);
+    private Dictionary<string, int> SeverityCounts => groupSeverityCounts.Keys.ToDictionary(severity => severity, SeverityCount);
+    public string OutputOmissionsText => (Complete ? "" : $"还有 {OmittedGroupCount} 组未列出 · 还有 {OmittedIssueCount} 项读取问题未列出")
+        + (options.OmitResourceKeys ? " · 未展开 resourceKeys" : "");
 
     public string SummaryText =>
         $"发现 {discoveredFileCount} 个文件"
         + (hashedFileCount is { } hashed ? $" · 已核对 {hashed} 个整文件哈希" : "")
-        + $" · {groupCount} 组结果 · {AbnormalCount} 项异常 · {IncompleteCount} 项未分析 · 已忽略 {IgnoredCount} 项";
+        + $" · {groupCount} 组结果 · {AbnormalCount} 项异常 · {IncompleteCount} 项未分析 · 已忽略 {IgnoredCount} 项"
+        + $" · 分级（含读取问题）：异常 {SeverityCount("abnormal")}、有隐患 {SeverityCount("risk")}、不影响 {SeverityCount("no_effect")}、未分析 {SeverityCount("incomplete")}"
+        + $" · 读取问题 {issues.Count} 项"
+        + (Complete ? "" : $" · {OutputOmissionsText}");
 
     public async Task RunAsync(IReadOnlyList<ScanSource> scanSources, string? modsRoot, IReadOnlyCollection<string> extensions)
     {
@@ -154,8 +176,13 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                 group.Members.All(member => duplicate.Files.Any(copy => SamePath(copy.Path, member.Path)))))
                 continue;
 
-            groupCount++;
-            if (group.Kind == PackageConflictRelationKind.OverrideConflict) abnormalGroupCount++;
+            var (kind, severity, certainty) = group.Kind switch
+            {
+                PackageConflictRelationKind.BundleContainment => ("bundle_containment", "risk", "confirmed"),
+                PackageConflictRelationKind.SuspectedSameMod => ("suspected_same_mod", "risk", "possible"),
+                _ => ("resource_conflict", "abnormal", "confirmed"),
+            };
+            CountGroup(severity);
             var members = new List<object>();
             foreach (var member in group.Members)
             {
@@ -172,16 +199,11 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                     });
             }
             if (members.Count == 0) continue;
-            var (kind, severity, certainty) = group.Kind switch
-            {
-                PackageConflictRelationKind.BundleContainment => ("bundle_containment", "risk", "confirmed"),
-                PackageConflictRelationKind.SuspectedSameMod => ("suspected_same_mod", "risk", "possible"),
-                _ => ("resource_conflict", "abnormal", "confirmed"),
-            };
-            groups.Add(new
+            groups.Add(new(kind, severity, new
             {
                 kind, severity, certainty, files = members,
                 resourceKeys = group.ResourceKeys.Select(key => key.Tgi),
+                resourceKeyCount = group.ResourceKeys.Count,
                 bundlePath = group.BundlePath is { } bundle && Visible(bundle) ? bundle : null,
                 group.BundleUniqueResourceCount,
                 relations = group.Relations.Where(relation => Visible(relation.Pair.FirstPath) && Visible(relation.Pair.SecondPath))
@@ -190,7 +212,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                         relation.Pair.FirstPath, relation.Pair.SecondPath, relation.Overlap,
                         relation.Pair.DifferentResourceCount, relation.Pair.IdenticalResourceCount, relation.Pair.IncompleteResourceCount,
                     }),
-            });
+            }));
         }
 
         foreach (var group in duplicateGroups)
@@ -206,10 +228,15 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     {
         foreach (var group in ConflictResultGrouping.GroupScripts(scripts.Collisions, changedPaths.Contains))
         {
-            groupCount++;
             var modules = group.OrderBy(module => module.ModuleName, StringComparer.Ordinal).ToArray();
             var verdict = ConflictResultGrouping.GetScriptVerdict(modules);
-            if (verdict == ScriptModuleVerdict.Different) abnormalGroupCount++;
+            var (kind, severity, certainty) = verdict switch
+            {
+                ScriptModuleVerdict.Different => ("script_collision", "abnormal", "confirmed"),
+                ScriptModuleVerdict.Identical => ("script_duplicate", "risk", "confirmed"),
+                _ => ("script_collision", "incomplete", "possible"),
+            };
+            CountGroup(severity);
             var members = new List<ReportFile>();
             foreach (var occurrence in modules[0].Occurrences.DistinctBy(item => item.ArchivePath, StringComparer.OrdinalIgnoreCase)
                 .OrderBy(item => item.ArchivePath, StringComparer.OrdinalIgnoreCase))
@@ -218,13 +245,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                 if (Visible(file.Path)) members.Add(file);
             }
             if (members.Count == 0) continue;
-            var (kind, severity, certainty) = verdict switch
-            {
-                ScriptModuleVerdict.Different => ("script_collision", "abnormal", "confirmed"),
-                ScriptModuleVerdict.Identical => ("script_duplicate", "risk", "confirmed"),
-                _ => ("script_collision", "incomplete", "possible"),
-            };
-            groups.Add(new
+            groups.Add(new(kind, severity, new
             {
                 kind, severity, certainty, modules[0].TopLevelName,
                 files = members.Select(file => new
@@ -241,13 +262,13 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                         contentSha256 = occurrence.Sha256, issueCode = occurrence.Issue?.Code,
                     }),
                 }),
-            });
+            }));
         }
     }
 
     private void AddDuplicate(DuplicateGroup group)
     {
-        groupCount++;
+        CountGroup("risk");
         var members = new List<object>();
         foreach (var file in group.Files)
         {
@@ -261,14 +282,21 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
         }
         if (members.Count == 0) return;
         var kept = Visible(group.SuggestedKeepPath) ? group.SuggestedKeepPath : null;
-        groups.Add(new
+        groups.Add(new("duplicate", "risk", new
         {
             kind = "duplicate", severity = "risk", certainty = "confirmed",
             group.Sha256, group.FileSize, group.Section, files = members,
             suggestedKeepPath = kept,
             suggestedDeletePaths = kept is null ? [] : group.SuggestedDeletePaths.Where(Visible).ToArray(),
             group.ReclaimableBytes,
-        });
+        }));
+    }
+
+    private void CountGroup(string severity)
+    {
+        groupCount++;
+        groupSeverityCounts[severity]++;
+        if (severity == "abnormal") abnormalGroupCount++;
     }
 
     private ReportFile AddFile(string path, string? sha256, FileStamp? stamp)
@@ -315,7 +343,13 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
 
     public string ToJson()
     {
-        var visibleIssues = issues.Where(issue => !issue.IsFile || Visible(issue.Path)).Select(issue => new
+        var outputGroups = OutputGroups.Select(group =>
+        {
+            var detail = JsonSerializer.SerializeToNode(group.Detail, JsonOptions)!.AsObject();
+            if (options.OmitResourceKeys) detail.Remove("resourceKeys");
+            return detail;
+        }).ToArray();
+        var visibleIssues = OutputIssues.Select(issue => new
         {
             issue.Path, issue.Code, issue.Message, issue.Stage, issue.Entry, issue.Kind, issue.Severity,
             certainty = "confirmed", file = issue.IsFile ? files[issue.Path] : null,
@@ -328,7 +362,14 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             schemaVersion = 1, version, command, sourceOrigin, notice, sources, startedAtUtc, completedAtUtc,
             discoveredFileCount, hashedFileCount, ignoredCount = IgnoredCount, incompleteCount = IncompleteCount,
             abnormalCount = AbnormalCount,
-            groupCount, visibleGroupCount = groups.Count, groups, issues = visibleIssues,
+            groupCount, visibleGroupCount = outputGroups.Length, groups = outputGroups, issues = visibleIssues,
+            complete = Complete, omittedGroupCount = OmittedGroupCount, omittedIssueCount = OmittedIssueCount,
+            filters = new
+            {
+                severity = options.Severities, kind = options.Kinds, options.Limit, options.HideIgnored,
+                options.OmitResourceKeys, options.SummaryOnly,
+            },
+            severityCounts = SeverityCounts, issueCount = issues.Count,
             duplicateFileCount = duplicates?.DuplicateFileCount,
             reclaimableBytes = duplicates?.ReclaimableBytes,
         }, JsonOptions);
@@ -337,7 +378,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     public string ToHtml()
     {
         var report = duplicates!;
-        if (hideIgnored)
+        if (options.HideIgnored)
             report = report with
             {
                 Groups = report.Groups.Where(group => Visible(group.SuggestedKeepPath))
@@ -348,6 +389,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
         return DuplicateHtmlReportRenderer.Render(report);
     }
 
+    private sealed record ReportGroup(string Kind, string Severity, object Detail);
     private sealed record ReportFile(string Path, string? Sha256, long? Size, DateTime? LastWriteTimeUtc, bool Ignored);
     private sealed record ReportIssue(string Path, string Code, string Message, string Stage, string? Entry,
         bool IsFile, string Kind, string Severity);

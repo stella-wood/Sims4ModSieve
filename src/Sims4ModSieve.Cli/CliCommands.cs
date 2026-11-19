@@ -107,12 +107,12 @@ internal static class CliCommands
             .Select(record => NormalizePath(record.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var extensions = options.Extensions.Count > 0 || explicitSources ? options.Extensions : [".package", ".ts4script"];
         var stdoutJson = options.JsonPath == "-";
-        var summary = stdoutJson ? error : output;
+        var summary = options.JsonPath is not null ? error : output;
         var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
         var reportName = command == "scan-duplicates" ? "duplicate" : command[5..];
         var jsonPath = stdoutJson ? null : GetReportPath(options.JsonPath ?? $"{reportName}-report-{timestamp}.json");
         var htmlPath = options.HtmlPath;
-        if (htmlPath is null && command == "scan-duplicates" && !stdoutJson)
+        if (htmlPath is null && command == "scan-duplicates" && !stdoutJson && !options.HasOutputFilters)
             htmlPath = $"duplicate-report-{timestamp}.html";
         if (htmlPath is not null) htmlPath = GetReportPath(htmlPath);
         if (jsonPath is not null && string.Equals(jsonPath, htmlPath, StringComparison.OrdinalIgnoreCase))
@@ -121,7 +121,7 @@ internal static class CliCommands
         if (!explicitSources) await error.WriteLineAsync(SettingsNotice);
         await error.WriteLineAsync("正在扫描…");
         var scan = new CliScanReport(command, explicitSources ? "argument" : "settings",
-            explicitSources ? null : SettingsNotice, ignored, options.HideIgnored);
+            explicitSources ? null : SettingsNotice, ignored, options);
         await scan.RunAsync(sources, modsRoot, extensions);
         var hasSources = scan.Sources.Count > 0;
         if (hasSources)
@@ -143,6 +143,8 @@ internal static class CliCommands
             await summary.WriteLineAsync($"HTML：{htmlPath}");
         }
         await summary.WriteLineAsync(scan.SummaryText);
+        if (options.JsonPath is null && (options.HasOutputFilters || options.HideIgnored))
+            await error.WriteLineAsync(scan.OutputOmissionsText);
         return hasSources ? scan.ExitCode : 2;
     }
 
@@ -183,13 +185,21 @@ internal static class CliCommands
         string? jsonPath = null;
         string? htmlPath = null;
         var hideIgnored = false;
+        var severities = new List<string>();
+        var kinds = new List<string>();
+        int? limit = null;
+        var omitResourceKeys = false;
+        var summaryOnly = false;
         for (var index = 0; index < args.Length; index++)
         {
             var option = args[index];
-            if (option == "--hide-ignored")
+            switch (option)
             {
-                hideIgnored = true;
-                continue;
+                case "--hide-ignored": hideIgnored = true; continue;
+                case "--summary-only": summaryOnly = true; continue;
+                case "--omit-resource-keys" when command == "scan-conflicts": omitResourceKeys = true; continue;
+                case "--omit-resource-keys":
+                    throw new ArgumentException($"{option} 仅适用于 scan-conflicts。");
             }
             if (index + 1 == args.Length || args[index + 1].StartsWith("--", StringComparison.Ordinal))
                 throw new ArgumentException($"缺少参数值：{option}");
@@ -198,6 +208,25 @@ internal static class CliCommands
             {
                 case "--source": sources.Add(value); break;
                 case "--json": jsonPath = value; break;
+                case "--severity":
+                    if (value is not ("abnormal" or "risk" or "no_effect" or "incomplete"))
+                        throw new ArgumentException($"无效的 --severity：{value}。可用值：abnormal、risk、no_effect、incomplete。");
+                    severities.Add(value);
+                    break;
+                case "--kind":
+                    var applicable = value == "read_incomplete"
+                        || command != "scan-scripts" && value == "duplicate"
+                        || command != "scan-duplicates" && value is ("script_collision" or "script_duplicate" or "damaged_file")
+                        || command == "scan-conflicts" && value is ("resource_conflict" or "bundle_containment" or "suspected_same_mod");
+                    if (!applicable) throw new ArgumentException($"--kind {value} 不适用于 {command} 或不是有效种类。");
+                    kinds.Add(value);
+                    break;
+                case "--limit":
+                    if (!int.TryParse(value, System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out var count))
+                        throw new ArgumentException("--limit 必须是大于或等于 0 的整数。");
+                    limit = count;
+                    break;
                 case "--mods-root" when command == "scan-duplicates": modsRoot = NormalizePath(value); break;
                 case "--extension" when command == "scan-duplicates":
                     ArgumentException.ThrowIfNullOrWhiteSpace(value);
@@ -207,7 +236,11 @@ internal static class CliCommands
                 default: throw new ArgumentException($"未知参数：{option}。请运行 {command} --help。");
             }
         }
-        return new(sources, extensions, modsRoot, jsonPath, htmlPath, hideIgnored);
+        var options = new ScanOptions(sources, extensions, modsRoot, jsonPath, htmlPath, hideIgnored,
+            severities.Distinct().ToArray(), kinds.Distinct().ToArray(), limit, omitResourceKeys, summaryOnly);
+        if (htmlPath is not null && options.HasOutputFilters)
+            throw new ArgumentException("--html 不能与 --severity、--kind、--limit、--omit-resource-keys 或 --summary-only 同用；请另行生成 HTML 报告。");
+        return options;
     }
 
     private static void PrintHelp(TextWriter output, string? command = null, string? subcommand = null)
@@ -230,13 +263,29 @@ internal static class CliCommands
                 output.WriteLine("  --extension <扩展名>  限定扫描类型，可重复指定");
                 output.WriteLine("  --html <文件>  指定 HTML 报告路径");
             }
-            output.WriteLine($"  例：Sims4ModSieve.Cli {scan.Command} --source \"D:\\Mods\" --json -");
+            output.WriteLine($"  例：Sims4ModSieve.Cli {scan.Command} --source \"D:\\Mods\" --json \"report.json\"");
         }
         if (command is null || scans.Any(scan => scan.Command == command))
         {
             output.WriteLine("  --source <目录>  临时指定扫描目录，可重复指定。省略时使用默认 Mods");
             output.WriteLine("  --json <文件|->  写入 JSON 文件，或用 - 输出到标准输出。省略时写入当前目录并显示摘要");
             output.WriteLine("  --hide-ignored  隐藏已经忽略的文件");
+            output.WriteLine("  --severity <级别>  筛选组和读取问题，可重复：abnormal、risk、no_effect、incomplete");
+            output.WriteLine("  --kind <种类>  筛选组和读取问题，可重复；与 severity 同用时取交集");
+            if (command is null or "scan-duplicates")
+                output.WriteLine("    scan-duplicates：duplicate、read_incomplete");
+            if (command is null or "scan-scripts")
+                output.WriteLine("    scan-scripts：script_collision、script_duplicate、damaged_file、read_incomplete");
+            if (command is null or "scan-conflicts")
+            {
+                output.WriteLine("    scan-conflicts：resource_conflict、bundle_containment、suspected_same_mod、duplicate、script_collision、script_duplicate、damaged_file、read_incomplete");
+                output.WriteLine("  --omit-resource-keys  不列 resourceKeys，保留 resourceKeyCount；仅 scan-conflicts");
+            }
+            output.WriteLine("  --limit <N>  筛选后最多列 N 组，N 可为 0；不限制读取问题");
+            output.WriteLine("  --summary-only  只输出汇总，groups 和 issues 为空");
+            output.WriteLine("  筛选只影响 JSON 明细，汇总和退出码按完整结果计算；complete=false 表示输出不完整。");
+            output.WriteLine("  显式 --json 时摘要写标准错误；不写 --json 时保持写文件并在标准输出显示摘要。");
+            output.WriteLine("  上述新筛选参数不能与 --html 同用，使用时也不自动生成 HTML。");
         }
         if (command is null or "find-mods")
             output.WriteLine("find-mods  查找 Mods 文件夹。例：Sims4ModSieve.Cli find-mods");
@@ -250,6 +299,11 @@ internal static class CliCommands
         output.WriteLine("退出码：0 完成且无发现或命令成功，1 有发现、未分析项或读取失败，2 参数错误或无可用目录。");
     }
 
-    private sealed record ScanOptions(List<string> Sources, List<string> Extensions, string? ModsRoot,
-        string? JsonPath, string? HtmlPath, bool HideIgnored);
+    internal sealed record ScanOptions(List<string> Sources, List<string> Extensions, string? ModsRoot,
+        string? JsonPath, string? HtmlPath, bool HideIgnored, IReadOnlyList<string> Severities,
+        IReadOnlyList<string> Kinds, int? Limit, bool OmitResourceKeys, bool SummaryOnly)
+    {
+        public bool HasOutputFilters => Severities.Count > 0 || Kinds.Count > 0 || Limit.HasValue
+            || OmitResourceKeys || SummaryOnly;
+    }
 }

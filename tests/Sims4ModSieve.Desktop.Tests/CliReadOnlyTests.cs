@@ -91,6 +91,8 @@ public sealed class CliReadOnlyTests
             Assert.AreEqual(1, scan.ExitCode);
             using var document = JsonDocument.Parse(scan.Output);
             var root = document.RootElement;
+            Assert.AreEqual(!hide, root.GetProperty("complete").GetBoolean());
+            Assert.AreEqual(0, root.GetProperty("omittedGroupCount").GetInt32());
             Assert.AreEqual(1, root.GetProperty("ignoredCount").GetInt32());
             Assert.AreEqual(3, root.GetProperty("discoveredFileCount").GetInt32());
             var group = root.GetProperty("groups").EnumerateArray().Single();
@@ -247,12 +249,287 @@ public sealed class CliReadOnlyTests
         StringAssert.Contains(guide.Output, "同一次对话里同一批目录确认一次就够");
     }
 
-    private static void WriteScript(string path, string content)
+    [TestMethod]
+    [DataRow("scan-duplicates", "duplicate", "risk")]
+    [DataRow("scan-conflicts", "resource_conflict", "abnormal")]
+    [DataRow("scan-scripts", "script_collision", "abnormal")]
+    public async Task SeverityAndKindFiltersSelectMatchingDetails(string command, string kind, string severity)
+    {
+        using var temp = new TempDirectory();
+        var source = CreateFilterFixture(temp);
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var baseline = await Run(settings, command, "--source", source, "--json", "-");
+        using var full = JsonDocument.Parse(baseline.Output);
+        Assert.IsTrue(full.RootElement.GetProperty("complete").GetBoolean());
+        Assert.AreEqual(0, full.RootElement.GetProperty("omittedGroupCount").GetInt32());
+        var fullGroups = full.RootElement.GetProperty("groups").EnumerateArray().ToArray();
+
+        var scan = await Run(settings, command, "--source", source, "--json", "-",
+            "--severity", severity, "--kind", kind);
+        using var filtered = JsonDocument.Parse(scan.Output);
+        var root = filtered.RootElement;
+        var expected = fullGroups.Where(group => Read(group, "severity") == severity && Read(group, "kind") == kind).ToArray();
+        Assert.IsNotEmpty(expected);
+        Assert.IsFalse(root.GetProperty("complete").GetBoolean());
+        CollectionAssert.AreEqual(expected.Select(GroupKey).ToArray(), root.GetProperty("groups").EnumerateArray().Select(GroupKey).ToArray());
+        Assert.AreEqual(fullGroups.Length - expected.Length, root.GetProperty("omittedGroupCount").GetInt32());
+        AssertFullSummaryUnchanged(full.RootElement, root);
+        Assert.AreEqual(baseline.ExitCode, scan.ExitCode);
+        CollectionAssert.AreEqual(new[] { severity }, root.GetProperty("filters").GetProperty("severity").EnumerateArray().Select(item => item.GetString()).ToArray());
+        CollectionAssert.AreEqual(new[] { kind }, root.GetProperty("filters").GetProperty("kind").EnumerateArray().Select(item => item.GetString()).ToArray());
+
+        var repeat = await Run(settings, command, "--source", source, "--json", "-",
+            "--severity", "abnormal", "--severity", "risk", "--severity", "risk",
+            "--kind", kind, "--kind", "read_incomplete", "--limit", "1");
+        using var repeated = JsonDocument.Parse(repeat.Output);
+        CollectionAssert.AreEqual(new[] { "abnormal", "risk" }, repeated.RootElement.GetProperty("filters").GetProperty("severity")
+            .EnumerateArray().Select(item => item.GetString()).ToArray());
+        CollectionAssert.AreEqual(fullGroups.Where(group => Read(group, "kind") == kind && Read(group, "severity") is "abnormal" or "risk")
+            .Take(1).Select(GroupKey).ToArray(), repeated.RootElement.GetProperty("groups").EnumerateArray().Select(GroupKey).ToArray());
+        Assert.AreEqual(fullGroups.Length - 1, repeated.RootElement.GetProperty("omittedGroupCount").GetInt32());
+        Assert.AreEqual(1, repeated.RootElement.GetProperty("filters").GetProperty("limit").GetInt32());
+        AssertFullSummaryUnchanged(full.RootElement, repeated.RootElement);
+    }
+
+    [TestMethod]
+    [DataRow("scan-duplicates")]
+    [DataRow("scan-conflicts")]
+    [DataRow("scan-scripts")]
+    public async Task LimitsAndSummaryOnlyReportOmissionsWithoutChangingFindings(string command)
+    {
+        using var temp = new TempDirectory();
+        var source = CreateFilterFixture(temp);
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var baseline = await Run(settings, command, "--source", source, "--json", "-");
+        using var full = JsonDocument.Parse(baseline.Output);
+        var total = full.RootElement.GetProperty("groupCount").GetInt32();
+        Assert.IsGreaterThan(1, total);
+        foreach (var options in new[] { new[] { "--limit", "1" }, new[] { "--limit", "0" },
+            new[] { "--summary-only" }, new[] { "--severity", "no_effect" }, new[] { "--limit", "1000" } })
+        {
+            var scan = await Run(settings, [command, "--source", source, "--json", "-", .. options]);
+            using var filtered = JsonDocument.Parse(scan.Output);
+            var root = filtered.RootElement;
+            var listed = options is ["--limit", "1"] ? 1 : options is ["--limit", "1000"] ? total : 0;
+            Assert.AreEqual(1, scan.ExitCode);
+            Assert.IsFalse(root.GetProperty("complete").GetBoolean());
+            Assert.AreEqual(listed, root.GetProperty("groups").GetArrayLength());
+            Assert.AreEqual(listed, root.GetProperty("visibleGroupCount").GetInt32());
+            Assert.AreEqual(total - listed, root.GetProperty("omittedGroupCount").GetInt32());
+            StringAssert.Contains(scan.Error, $"还有 {total - listed} 组未列出");
+            AssertFullSummaryUnchanged(full.RootElement, root);
+            if (options is ["--summary-only"])
+            {
+                Assert.IsTrue(root.GetProperty("filters").GetProperty("summaryOnly").GetBoolean());
+                Assert.AreEqual(0, root.GetProperty("issues").GetArrayLength());
+                Assert.AreEqual(root.GetProperty("issueCount").GetInt32(), root.GetProperty("omittedIssueCount").GetInt32());
+            }
+        }
+    }
+
+    [TestMethod]
+    [DataRow("scan-duplicates")]
+    [DataRow("scan-conflicts")]
+    [DataRow("scan-scripts")]
+    public async Task FiltersOnEmptyResultsKeepSuccessfulExitCode(string command)
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        var scan = await Run(new DuplicateSettingsStore(temp.Path), command, "--source", source,
+            "--json", "-", "--severity", "abnormal", "--limit", "0", "--summary-only");
+        using var document = JsonDocument.Parse(scan.Output);
+        var root = document.RootElement;
+        Assert.AreEqual(0, scan.ExitCode);
+        Assert.IsFalse(root.GetProperty("complete").GetBoolean());
+        Assert.AreEqual(0, root.GetProperty("groupCount").GetInt32());
+        Assert.AreEqual(0, root.GetProperty("omittedGroupCount").GetInt32());
+        Assert.AreEqual(0, root.GetProperty("issueCount").GetInt32());
+        Assert.AreEqual(0, root.GetProperty("omittedIssueCount").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task ResourceKeyOmissionKeepsCountsAndOtherGroupDetails()
+    {
+        using var temp = new TempDirectory();
+        var source = CreateFilterFixture(temp);
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var baseline = await Run(settings, "scan-conflicts", "--source", source, "--json", "-");
+        var scan = await Run(settings, "scan-conflicts", "--source", source, "--json", "-", "--omit-resource-keys");
+        using var full = JsonDocument.Parse(baseline.Output);
+        using var filtered = JsonDocument.Parse(scan.Output);
+        var root = filtered.RootElement;
+        Assert.AreEqual(baseline.ExitCode, scan.ExitCode);
+        AssertFullSummaryUnchanged(full.RootElement, root);
+        Assert.IsFalse(root.GetProperty("complete").GetBoolean());
+        Assert.IsTrue(root.GetProperty("filters").GetProperty("omitResourceKeys").GetBoolean());
+        Assert.AreEqual(0, root.GetProperty("omittedGroupCount").GetInt32());
+        StringAssert.Contains(scan.Error, "未展开 resourceKeys");
+        var groups = root.GetProperty("groups").EnumerateArray().ToArray();
+        Assert.IsTrue(full.RootElement.GetProperty("groups").EnumerateArray().Any(group => group.TryGetProperty("resourceKeys", out _)));
+        foreach (var original in full.RootElement.GetProperty("groups").EnumerateArray())
+        {
+            var actual = groups.Single(group => GroupKey(group) == GroupKey(original));
+            Assert.IsFalse(actual.TryGetProperty("resourceKeys", out _));
+            foreach (var property in original.EnumerateObject().Where(property => property.Name != "resourceKeys"))
+                Assert.AreEqual(property.Value.GetRawText(), actual.GetProperty(property.Name).GetRawText());
+            if (original.TryGetProperty("resourceKeys", out var keys))
+                Assert.AreEqual(keys.GetArrayLength(), actual.GetProperty("resourceKeyCount").GetInt32());
+        }
+    }
+
+    [TestMethod]
+    public async Task IssueFiltersAndSummaryOnlyPreserveReadProblemTotalsAndExitCode()
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        temp.WriteFile(@"Mods\broken.ts4script", "not a zip");
+        var absent = Path.Combine(temp.Path, "absent");
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var baseline = await Run(settings, "scan-scripts", "--source", source, "--source", absent, "--json", "-");
+        using var full = JsonDocument.Parse(baseline.Output);
+        foreach (var options in new[] { new[] { "--kind", "damaged_file" }, new[] { "--severity", "incomplete" },
+            new[] { "--kind", "damaged_file", "--kind", "read_incomplete" }, new[] { "--limit", "0" },
+            new[] { "--summary-only" }, new[] { "--severity", "no_effect" } })
+        {
+            var scan = await Run(settings, ["scan-scripts", "--source", source, "--source", absent, "--json", "-", .. options]);
+            using var filtered = JsonDocument.Parse(scan.Output);
+            var root = filtered.RootElement;
+            var expected = full.RootElement.GetProperty("issues").EnumerateArray().Where(issue => options switch
+            {
+                ["--kind", var kind] => Read(issue, "kind") == kind,
+                ["--severity", var severity] => Read(issue, "severity") == severity,
+                ["--summary-only"] => false,
+                _ => true,
+            }).ToArray();
+            Assert.AreEqual(1, scan.ExitCode);
+            AssertFullSummaryUnchanged(full.RootElement, root);
+            CollectionAssert.AreEqual(expected.Select(issue => issue.GetRawText()).ToArray(),
+                root.GetProperty("issues").EnumerateArray().Select(issue => issue.GetRawText()).ToArray());
+            Assert.AreEqual(full.RootElement.GetProperty("issueCount").GetInt32() - expected.Length,
+                root.GetProperty("omittedIssueCount").GetInt32());
+        }
+    }
+
+    [TestMethod]
+    public async Task HiddenIgnoredGroupsAlsoMarkOutputIncompleteAndKeepFullCounts()
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        var first = temp.WriteFile(@"Mods\first.package", "same");
+        var second = temp.WriteFile(@"Mods\second.package", "same");
+        var settings = new DuplicateSettingsStore(temp.Path);
+        new FileManagementStore(settings.DataDirectory).Update(data => data with
+        {
+            Ignored = [new(first, 4, DateTime.UtcNow), new(second, 4, DateTime.UtcNow)],
+        });
+        var scan = await Run(settings, "scan-duplicates", "--source", source, "--json", "-", "--hide-ignored");
+        using var document = JsonDocument.Parse(scan.Output);
+        var root = document.RootElement;
+        Assert.AreEqual(1, scan.ExitCode);
+        Assert.IsFalse(root.GetProperty("complete").GetBoolean());
+        Assert.IsTrue(root.GetProperty("filters").GetProperty("hideIgnored").GetBoolean());
+        Assert.AreEqual(1, root.GetProperty("groupCount").GetInt32());
+        Assert.AreEqual(0, root.GetProperty("groups").GetArrayLength());
+        Assert.AreEqual(1, root.GetProperty("omittedGroupCount").GetInt32());
+        Assert.AreEqual(1, root.GetProperty("severityCounts").GetProperty("risk").GetInt32());
+        StringAssert.Contains(scan.Error, "还有 1 组未列出");
+    }
+
+    [TestMethod]
+    [DataRow("scan-duplicates", "--omit-resource-keys", null)]
+    [DataRow("scan-scripts", "--omit-resource-keys", null)]
+    [DataRow("scan-duplicates", "--kind", "resource_conflict")]
+    [DataRow("scan-duplicates", "--kind", "script_collision")]
+    [DataRow("scan-duplicates", "--kind", "damaged_file")]
+    [DataRow("scan-scripts", "--kind", "duplicate")]
+    [DataRow("scan-scripts", "--kind", "bundle_containment")]
+    [DataRow("scan-conflicts", "--kind", "unknown")]
+    [DataRow("scan-conflicts", "--severity", "unknown")]
+    [DataRow("scan-conflicts", "--severity", null)]
+    [DataRow("scan-conflicts", "--kind", null)]
+    [DataRow("scan-conflicts", "--limit", null)]
+    [DataRow("scan-conflicts", "--limit", "-1")]
+    [DataRow("scan-conflicts", "--limit", "1.5")]
+    [DataRow("scan-conflicts", "--limit", "2147483648")]
+    public async Task InvalidOrInapplicableOutputOptionsReturnParameterError(string command, string option, string? value)
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var args = new[] { command, "--source", source, "--json", "-", option };
+        var scan = await Run(settings, value is null ? args : [.. args, value]);
+        Assert.AreEqual(2, scan.ExitCode);
+        Assert.AreEqual(string.Empty, scan.Output);
+        StringAssert.Contains(scan.Error, option);
+        Assert.IsFalse(scan.Error.Contains("正在扫描", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    [DataRow("--severity", "risk")]
+    [DataRow("--kind", "duplicate")]
+    [DataRow("--limit", "1")]
+    [DataRow("--summary-only", null)]
+    public async Task HtmlAndOutputFiltersAreRejectedBeforeWritingReports(string option, string? value)
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        var json = Path.Combine(temp.Path, "report.json");
+        var html = Path.Combine(temp.Path, "report.html");
+        var args = new[] { "scan-duplicates", "--source", source, "--json", json, "--html", html, option };
+        var scan = await Run(new DuplicateSettingsStore(temp.Path), value is null ? args : [.. args, value]);
+        Assert.AreEqual(2, scan.ExitCode);
+        StringAssert.Contains(scan.Error, "--html 不能");
+        Assert.IsFalse(File.Exists(json));
+        Assert.IsFalse(File.Exists(html));
+    }
+
+    [TestMethod]
+    public async Task FilteredJsonFileUsesStderrSummaryAndDoesNotGenerateHtml()
+    {
+        using var temp = new TempDirectory();
+        var source = CreateFilterFixture(temp);
+        var path = Path.Combine(temp.Path, "report.json");
+        var scan = await Run(new DuplicateSettingsStore(temp.Path), "scan-duplicates", "--source", source,
+            "--json", path, "--limit", "1");
+        Assert.AreEqual(1, scan.ExitCode);
+        Assert.AreEqual(string.Empty, scan.Output);
+        StringAssert.Contains(scan.Error, $"JSON：{path}");
+        Assert.IsFalse(scan.Error.Contains("HTML：", StringComparison.Ordinal));
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.IsFalse(document.RootElement.GetProperty("complete").GetBoolean());
+        Assert.AreEqual(1, document.RootElement.GetProperty("groups").GetArrayLength());
+    }
+
+    private static string CreateFilterFixture(TempDirectory temp)
+    {
+        var source = temp.CreateDirectory("Mods");
+        var first = new DbpfFixtureBuilder().AddContent([1, 2], instanceLo: 1).AddContent([3], instanceLo: 2).Build();
+        var second = new DbpfFixtureBuilder().AddContent([3, 4], instanceLo: 1)
+            .AddContent([5, 6], instanceLo: 3).AddContent([7], instanceLo: 4).Build();
+        temp.WriteBytes(@"Mods\a.package", first);
+        temp.WriteBytes(@"Mods\a-copy.package", first);
+        temp.WriteBytes(@"Mods\b.package", second);
+        temp.WriteBytes(@"Mods\b-copy.package", second);
+        WriteScript(Path.Combine(source, "a.ts4script"), "x = 1");
+        WriteScript(Path.Combine(source, "b.ts4script"), "x = 2");
+        WriteScript(Path.Combine(source, "c.ts4script"), "x = 0", "other");
+        WriteScript(Path.Combine(source, "d.ts4script"), "x = 0", "other");
+        return source;
+    }
+
+    private static void AssertFullSummaryUnchanged(JsonElement full, JsonElement filtered)
+    {
+        foreach (var field in new[] { "discoveredFileCount", "hashedFileCount", "ignoredCount", "incompleteCount",
+            "abnormalCount", "groupCount", "severityCounts", "issueCount", "duplicateFileCount", "reclaimableBytes" })
+            Assert.AreEqual(full.GetProperty(field).GetRawText(), filtered.GetProperty(field).GetRawText(), field);
+    }
+
+    private static void WriteScript(string path, string content, string topLevel = "lib")
     {
         using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
-        using (var writer = new StreamWriter(zip.CreateEntry("lib/shared.py").Open()))
+        using (var writer = new StreamWriter(zip.CreateEntry($"{topLevel}/shared.py").Open()))
             writer.Write(content);
-        using var other = new StreamWriter(zip.CreateEntry("lib/other.py").Open());
+        using var other = new StreamWriter(zip.CreateEntry($"{topLevel}/other.py").Open());
         other.Write("x = 0");
     }
 
