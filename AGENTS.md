@@ -4,6 +4,13 @@
 
 Windows 本地的《模拟人生 4》Mod 整理工具，.NET 10 + WPF。SDK 版本以 [global.json](global.json) 为准。
 
+## 跟用户说话
+
+- 用户没看过你写的那段代码，讲清楚是你的事，不是用户的。用大白话。
+- 先说结论和对用户的影响，再说细节。
+- 你起的名字、缩写、术语，第一次出现先说是干嘛的。
+- 用 [CONTEXT.md](CONTEXT.md) 里的词，别自造叫法。
+
 ## 1. 以什么为准
 
 冲突时按顺序：
@@ -13,7 +20,7 @@ Windows 本地的《模拟人生 4》Mod 整理工具，.NET 10 + WPF。SDK 版�
 3. 本文件
 4. [冲突评级与拆分标准](docs/product/冲突评级与拆分标准.md)
 5. `docs/product/产品需求文档.md`
-6. `docs/architecture/架构方案-v3.md`、`docs/design/UI设计风格规范-v1.md`
+6. [架构概览 v4](docs/architecture/架构概览-v4.md)、`docs/design/UI设计风格规范-v1.md`
 7. `docs/archive/`、`docs/research/`
 
 冲突评级与页面归属的产品规则以《冲突评级与拆分标准》为准；代码与测试用于核实现状，尚未对齐的实现不改变该标准。CLI 字段约定暂待对齐。
@@ -44,6 +51,10 @@ Windows 本地的《模拟人生 4》Mod 整理工具，.NET 10 + WPF。SDK 版�
 - 不写全文摘要、不写给文档自己的验收标准、不写替自己免责的句子。
 - 同一条规则只在一个地方写，其他地方链接过去。
 - 链接用仓库内相对路径，不写本机绝对路径。
+- 文档只写**现在**是什么样。「什么时候改了什么」写进根目录 [CHANGELOG.md](CHANGELOG.md) 的「未发布」，不在文档开头堆状态更新。
+- 用 [CONTEXT.md](CONTEXT.md) 里的叫法。需要新词先加进 CONTEXT.md，不自己另起名字。
+- 改了行为的 PR，在同一个 PR 里顺手更新：[架构概览 v4](docs/architecture/架构概览-v4.md) 里对应的那节、CONTEXT.md（有新词时）、CHANGELOG.md。
+- 做了有取舍的决定（难回滚、比过几个方案），在 [docs/decisions/](docs/decisions/README.md) 加一份。动手前先看有没有已经否掉的方案。
 
 ## 5. 当前状态
 
@@ -62,6 +73,8 @@ Windows 本地的《模拟人生 4》Mod 整理工具，.NET 10 + WPF。SDK 版�
 首页和导航里灰色的「尚未开放」不是已完成的功能。
 
 ## 6. 项目地图
+
+各块怎么配合、数据怎么流，见[架构概览 v4](docs/architecture/架构概览-v4.md)；全部文档见[文档目录](docs/README.md)。
 
 ```text
 src/
@@ -119,6 +132,14 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 
 ## 8. 界面
 
+- **避免不必要的次要标签、说明文字、辅助文案、描述性文字和冗余的微文案，让布局、视觉层级、间距和清晰的主操作自己完成解释。**
+- 需要补充信息时，优先用 info 图标 + Tooltip，不在区块下面加「帮助说明」、教学段落或口号式文字。
+- 去掉说明以后，第一次用的人也要看得懂下一步点哪里、点了会发生什么。
+- 保留必要的标签和可访问名称（`AutomationProperties.Name`）。界面清爽不能牺牲可访问性，测试也靠它找控件。
+- 危险或不可逆的操作必须说清后果：删除说清楚是进回收站，禁用说清楚是改成 `.off`，批量操作说清楚是多少个文件。
+- 报告里说明确定程度的话不是冗余文案：「可能」「确定」「未比完」「报告没有判定哪份会生效」这类是在说实话，不能为了少写字删掉。
+- 已有界面删文字、合并标签也算界面改动：先列清单给用户过，不自己删。
+
 视觉、尺寸、颜色、字体见 `docs/design/UI设计风格规范-v1.md`。最常被改坏的几条：
 
 - 气质：克制、温暖、清楚，有工具感。不用默认蓝、大圆角、大面积渐变或玻璃效果。
@@ -126,6 +147,8 @@ ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperati
 - 完整路径必须含文件名，可以截断显示，Tooltip 给全文。
 - 首页随窗口舒展，字号和图标不放大；不用 Viewbox 整页缩放。
 - 图标自绘矢量，不用 emoji 或 Unicode 方块。图标视觉尺寸和点击热区分开：图标 `IsHitTestVisible=false`，矩形宿主负责命中（批量展开按钮：图标 16×16，热区 24×24）。改命中后运行 `BareIconButtonHitTests`。
+
+界面用到的颜色、字号、间距、圆角和组件样式以 [DESIGN.md](DESIGN.md) 为准：XAML 里只用令牌名，不直接写 `#` 色值和随手的数字；需要新值先加进 DESIGN.md。
 
 ## 9. WPF 已知陷阱
 
