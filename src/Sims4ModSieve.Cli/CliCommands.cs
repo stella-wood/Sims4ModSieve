@@ -11,7 +11,7 @@ internal static class CliCommands
 
     internal static async Task<int> RunAsync(string[] args, DuplicateSettingsStore settings,
         TextWriter output, TextWriter error, string? documentsDirectory = null,
-        long? conflictResourceMatchLimit = null)
+        long? conflictGroupingMemoryBudgetBytes = null)
     {
         if (args is [] or ["-h" or "--help"])
         {
@@ -68,7 +68,7 @@ internal static class CliCommands
                     await output.WriteLineAsync($"已保存默认 Mods：{path}");
                     return 0;
                 case "scan-conflicts" or "scan-scripts" or "scan-duplicates":
-                    return await ScanAsync(command, operands, settings, output, error, documentsDirectory, conflictResourceMatchLimit);
+                    return await ScanAsync(command, operands, settings, output, error, documentsDirectory, conflictGroupingMemoryBudgetBytes);
                 default:
                     throw new ArgumentException($"未知命令或参数：{string.Join(' ', args)}。请运行 --help。");
             }
@@ -87,7 +87,7 @@ internal static class CliCommands
     }
 
     private static async Task<int> ScanAsync(string command, string[] args, DuplicateSettingsStore settings,
-        TextWriter output, TextWriter error, string? documentsDirectory, long? conflictResourceMatchLimit)
+        TextWriter output, TextWriter error, string? documentsDirectory, long? conflictGroupingMemoryBudgetBytes)
     {
         var options = ParseScanOptions(command, args);
         var explicitSources = options.Sources.Count > 0;
@@ -123,7 +123,7 @@ internal static class CliCommands
         if (!explicitSources) await error.WriteLineAsync(SettingsNotice);
         await error.WriteLineAsync("正在扫描…");
         var scan = new CliScanReport(command, explicitSources ? "argument" : "settings",
-            explicitSources ? null : SettingsNotice, ignored, options, conflictResourceMatchLimit, size =>
+            explicitSources ? null : SettingsNotice, ignored, options, conflictGroupingMemoryBudgetBytes, size =>
             {
                 error.WriteLine(size.DiagnosticText);
                 if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);

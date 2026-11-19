@@ -14,7 +14,7 @@ namespace Sims4ModSieve.Cli;
 
 internal sealed class CliScanReport(string command, string sourceOrigin, string? notice,
     IReadOnlySet<string> ignoredPaths, CliCommands.ScanOptions options,
-    long? resourceMatchLimit = null,
+    long? memoryBudgetBytes = null,
     Action<ConflictGroupingSize>? sizeObserved = null, Action<string>? memoryObserved = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -157,7 +157,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
 
         var (input, result, changedPaths, stampMismatches) =
             ConflictResultGrouping.BuildPackages(packages, contents, scripts, report,
-                resourceMatchLimit: resourceMatchLimit, sizeObserved: size =>
+                memoryBudgetBytes: memoryBudgetBytes, sizeObserved: size =>
                 {
                     GroupingSize = size;
                     sizeObserved?.Invoke(size);

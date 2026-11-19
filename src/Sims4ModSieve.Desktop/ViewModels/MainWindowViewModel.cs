@@ -20,7 +20,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IDuplicateSettingsStore settingsStore;
     private readonly IFileActionService fileActionService;
     private readonly IFileActionDialogService fileActionDialogs;
-    private readonly long? conflictResourceMatchLimit;
+    private readonly long? conflictGroupingMemoryBudgetBytes;
     private readonly IUnexpectedErrorHandler unexpectedErrorHandler;
     private CancellationTokenSource? scanCancellation;
     private IReadOnlyList<DuplicateGroup>? lastDeleteSnapshot;
@@ -61,7 +61,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Func<IReadOnlyList<string>>? pickDisabledFiles = null,
         Func<string, bool>? confirmModChange = null,
         Func<DownloadedUpdate, Task>? startUpdate = null,
-        long? conflictResourceMatchLimit = null)
+        long? conflictGroupingMemoryBudgetBytes = null)
     {
         this.duplicateRunService = duplicateRunService;
         this.conflictDetailsCopy = conflictDetailsCopy ?? System.Windows.Clipboard.SetText;
@@ -80,7 +80,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         this.fileActionService = fileActionService ?? new FileActionService(new WindowsRecycleBinAdapter(),
             new PhysicalFileMetadataAccess(), this.fileManagementStore, this.modDisableService);
         this.fileActionDialogs = fileActionDialogs ?? new FileActionDialogService();
-        this.conflictResourceMatchLimit = conflictResourceMatchLimit;
+        this.conflictGroupingMemoryBudgetBytes = conflictGroupingMemoryBudgetBytes;
         this.unexpectedErrorHandler = unexpectedErrorHandler ?? new UnexpectedErrorHandler();
         this.packageConflictScanner = packageConflictScanner ?? new PackageConflictScanner(
             new PhysicalFileSystemAccess(), Sims4ModSieve.Packages.LlamaLogicPackageIndexReader.CreateDefault());

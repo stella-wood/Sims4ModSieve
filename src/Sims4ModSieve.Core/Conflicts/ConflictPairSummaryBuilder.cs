@@ -73,12 +73,14 @@ public sealed class ConflictPairSummaryBuilder
     public ConflictGroupingSize EstimateGroupingPackagePairs(ResourceContentComparisonReport comparisonReport,
         IReadOnlySet<uint> excludedTypes, IReadOnlySet<string> excludedPaths,
         IReadOnlyDictionary<string, string> representatives, int redundantCopyCount,
-        long? resourceMatchLimit = null,
+        long? memoryBudgetBytes = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var excluded = new HashSet<string>(Walk(excludedPaths, cancellationToken), PathRules.Comparer);
         long actual = 0, collapsed = 0;
+        var files = new HashSet<string>(PathRules.Comparer);
+        var collapsedFiles = new HashSet<string>(PathRules.Comparer);
         var participants = new HashSet<string>(PathRules.Comparer);
         var collapsedParticipants = new HashSet<string>(PathRules.Comparer);
         foreach (var comparison in Walk(comparisonReport.Comparisons, cancellationToken))
@@ -93,15 +95,22 @@ public sealed class ConflictPairSummaryBuilder
                 participants.Add(occurrence.PackagePath);
                 collapsedParticipants.Add(representatives.GetValueOrDefault(occurrence.PackagePath, occurrence.PackagePath));
             }
+            if (participants.Count > 1)
+                foreach (var path in Walk(participants, cancellationToken)) files.Add(path);
+            if (collapsedParticipants.Count > 1)
+                foreach (var path in Walk(collapsedParticipants, cancellationToken)) collapsedFiles.Add(path);
             actual = checked(actual + participants.Count * (participants.Count - 1L) / 2);
             collapsed = checked(collapsed + collapsedParticipants.Count * (collapsedParticipants.Count - 1L) / 2);
         }
         cancellationToken.ThrowIfCancellationRequested();
         var availableMemoryBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
-        return new(actual, collapsed, resourceMatchLimit ?? ConflictGroupingSize.CalculateResourceMatchLimit(availableMemoryBytes), redundantCopyCount)
+        return new(actual, collapsed,
+            ConflictGroupingSize.CalculateFilePairUpperBound(actual, files.Count),
+            ConflictGroupingSize.CalculateFilePairUpperBound(collapsed, collapsedFiles.Count),
+            memoryBudgetBytes ?? ConflictGroupingSize.CalculateMemoryBudgetBytes(availableMemoryBytes), redundantCopyCount)
         {
             AvailableMemoryBytes = availableMemoryBytes,
-            IsLimitOverridden = resourceMatchLimit.HasValue,
+            IsLimitOverridden = memoryBudgetBytes.HasValue,
         };
     }
 

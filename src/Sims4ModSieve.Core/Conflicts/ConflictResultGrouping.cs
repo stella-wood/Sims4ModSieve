@@ -10,10 +10,10 @@ public static class ConflictResultGrouping
         IReadOnlySet<string> ChangedPaths, IReadOnlyList<DuplicateFile> StampMismatches) BuildPackages(
         PackageConflictScanReport packages, ResourceContentComparisonReport contents, ScriptModuleScanReport scripts,
         DuplicateReport? duplicates, CancellationToken cancellationToken = default,
-        long? resourceMatchLimit = null,
+        long? memoryBudgetBytes = null,
         Action<ConflictGroupingSize>? sizeObserved = null)
     {
-        var groupingBuilder = new PackageConflictGroupingBuilder(resourceMatchLimit);
+        var groupingBuilder = new PackageConflictGroupingBuilder(memoryBudgetBytes);
         var prepared = groupingBuilder.Prepare(packages, contents, cancellationToken: cancellationToken,
             duplicates: duplicates, scripts: scripts, sizeObserved: sizeObserved);
         var stampMismatches = duplicates?.Groups.SelectMany(group => group.Files)

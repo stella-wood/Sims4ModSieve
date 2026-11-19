@@ -21,7 +21,7 @@ public sealed class CliConflictGroupingSizeTests
         var output = new StringWriter();
         var error = new StringWriter();
         var exit = await CliCommands.RunAsync(["scan-conflicts", "--source", mods, "--json", "-"],
-            new DuplicateSettingsStore(temp.CreateDirectory("settings")), output, error, conflictResourceMatchLimit: 10);
+            new DuplicateSettingsStore(temp.CreateDirectory("settings")), output, error, conflictGroupingMemoryBudgetBytes: 4_000);
         Assert.AreEqual(1, exit);
         using var json = JsonDocument.Parse(output.ToString());
         var root = json.RootElement;
@@ -34,16 +34,23 @@ public sealed class CliConflictGroupingSizeTests
         Assert.AreEqual(reason, issue.GetProperty("reason").GetString());
         Assert.AreEqual(expectedMatches, issue.GetProperty("resourceMatchCount").GetInt64());
         Assert.AreEqual(expectedCollapsedMatches, issue.GetProperty("collapsedResourceMatchCount").GetInt64());
-        Assert.AreEqual(10L, issue.GetProperty("resourceMatchLimit").GetInt64());
+        Assert.AreEqual(0L, issue.GetProperty("resourceMatchLimit").GetInt64());
+        CollectionAssert.AreEquivalent(new[] { "path", "code", "message", "stage", "entry", "kind", "severity",
+                "certainty", "file", "ignored", "reason", "resourceMatchCount", "collapsedResourceMatchCount", "resourceMatchLimit" }
+            .Concat(reason == "duplicate-copies" ? new[] { "redundantCopyCount" } : []).ToArray(),
+            issue.EnumerateObject().Select(property => property.Name).ToArray());
         Assert.AreEqual("incomplete", issue.GetProperty("severity").GetString());
         var message = reason == "duplicate-copies"
             ? "⚠️文件夹内存在大量相同副本（3份），建议优先进行重复检测"
             : "⚠️所选文件冲突资源数过多，无法完整处理，请分批检测";
         Assert.AreEqual(message, issue.GetProperty("message").GetString());
         StringAssert.Contains(error.ToString(), message);
-        StringAssert.Contains(error.ToString(), $"资源匹配估算={expectedMatches}；合并副本后估算={expectedCollapsedMatches}；上限=10");
+        StringAssert.Contains(error.ToString(), $"资源匹配估算={expectedMatches}；合并副本后估算={expectedCollapsedMatches}；上限=0");
         StringAssert.Contains(error.ToString(), "可用内存字节=");
-        StringAssert.Contains(error.ToString(), "份额=1/4；系数字节每匹配=1024；上限来源=注入");
+        StringAssert.Contains(error.ToString(), "份额=1/4；系数字节每匹配=124；上限来源=注入");
+        StringAssert.Contains(error.ToString(), $"文件对上界={originals * 2 * (originals * 2 - 1) / 2}；合并副本后文件对上界={originals * (originals - 1) / 2}");
+        StringAssert.Contains(error.ToString(), "系数字节每文件对=492；安全余量=1.4；估算内存字节=");
+        StringAssert.Contains(error.ToString(), "内存预算字节=4000");
         Assert.IsFalse(error.ToString().Contains("结束托管内存字节=", StringComparison.Ordinal));
         if (reason == "duplicate-copies") Assert.AreEqual(3, issue.GetProperty("redundantCopyCount").GetInt32());
         else Assert.IsFalse(issue.TryGetProperty("redundantCopyCount", out _));
@@ -67,7 +74,7 @@ public sealed class CliConflictGroupingSizeTests
         var output = new StringWriter();
         var error = new StringWriter();
         var exit = await CliCommands.RunAsync(args.ToArray(), new DuplicateSettingsStore(temp.CreateDirectory("settings")),
-            output, error, conflictResourceMatchLimit: 10);
+            output, error, conflictGroupingMemoryBudgetBytes: 4_000);
         Assert.AreEqual(1, exit);
         using var json = JsonDocument.Parse(output.ToString());
         var root = json.RootElement;
@@ -88,7 +95,7 @@ public sealed class CliConflictGroupingSizeTests
         var output = new StringWriter();
         var error = new StringWriter();
         var exit = await CliCommands.RunAsync(["scan-conflicts", "--source", mods, "--json", "-"],
-            new DuplicateSettingsStore(temp.CreateDirectory("settings")), output, error, conflictResourceMatchLimit: 33);
+            new DuplicateSettingsStore(temp.CreateDirectory("settings")), output, error, conflictGroupingMemoryBudgetBytes: 16_061);
         Assert.AreEqual(1, exit);
         using var json = JsonDocument.Parse(output.ToString());
         Assert.IsTrue(json.RootElement.GetProperty("complete").GetBoolean());

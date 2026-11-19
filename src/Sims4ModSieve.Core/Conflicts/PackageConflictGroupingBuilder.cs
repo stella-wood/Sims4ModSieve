@@ -7,7 +7,7 @@ using Sims4ModSieve.Core.Scripts;
 namespace Sims4ModSieve.Core.Conflicts;
 
 /// <summary>Prepare 和 Build 均只处理报告中的内存数据，不持有读取器。</summary>
-public sealed class PackageConflictGroupingBuilder(long? resourceMatchLimit = null)
+public sealed class PackageConflictGroupingBuilder(long? memoryBudgetBytes = null)
 {
     public PackageConflictGroupingInput Prepare(PackageConflictScanReport scanReport,
         ResourceContentComparisonReport contentReport, bool excludeNameMap = true,
@@ -111,7 +111,7 @@ public sealed class PackageConflictGroupingBuilder(long? resourceMatchLimit = nu
         }
         var pairBuilder = new ConflictPairSummaryBuilder();
         var size = pairBuilder.EstimateGroupingPackagePairs(contentReport, excludedTypes, excludedPaths,
-            representatives, redundantCopyCount, resourceMatchLimit, cancellationToken);
+            representatives, redundantCopyCount, memoryBudgetBytes, cancellationToken);
         ScanPerformance.RecordDiagnostic(size.DiagnosticText);
         sizeObserved?.Invoke(size);
         cancellationToken.ThrowIfCancellationRequested();

@@ -36,7 +36,7 @@ public sealed class ConflictGroupingSizeTests
         var dialogs = new Dialogs(navigate);
         var actions = new NoFileActions();
         var model = new MainWindowViewModel(duplicateRuns, new Picker(), settings, actions, dialogs,
-            settingsSupport: new SettingsSupportService(localApplicationData: temp.Path), conflictResourceMatchLimit: 10);
+            settingsSupport: new SettingsSupportService(localApplicationData: temp.Path), conflictGroupingMemoryBudgetBytes: 4_000);
         await model.StartScanCommand.ExecuteAsync();
         model.ApplySuggestionsCommand.Execute(null);
         var groups = model.Groups.ToArray();
@@ -68,8 +68,8 @@ public sealed class ConflictGroupingSizeTests
         Assert.AreEqual(0, actions.FileOperations);
         foreach (var (path, bytes) in hashes) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path));
         StringAssert.Contains(model.LatestScanTiming, originals == 3
-            ? "资源匹配估算=33；合并副本后估算=6；上限=10"
-            : "资源匹配估算=60；合并副本后估算=12；上限=10");
+            ? "资源匹配估算=33；合并副本后估算=6；上限=0"
+            : "资源匹配估算=60；合并副本后估算=12；上限=0");
     });
 
     [TestMethod]
@@ -78,7 +78,7 @@ public sealed class ConflictGroupingSizeTests
     [DataRow(false, false)]
     public Task WarningUsesExistingCustomDialogWithExactTextAndWorkingButtons(bool duplicateCopies, bool navigate) => WpfTestHost.RunAsync(() =>
     {
-        var size = new ConflictGroupingSize(33, duplicateCopies ? 6 : 20, 10, 3);
+        var size = new ConflictGroupingSize(33, duplicateCopies ? 6 : 20, 15, duplicateCopies ? 3 : 10, 4_000, 3);
         var owner = new MainWindow(new MainWindowViewModel(new CountingDuplicateRuns(), new Picker(), new MemorySettings()));
         WpfTestHost.ShowOffScreen(owner);
         Application.Current.MainWindow = owner;
