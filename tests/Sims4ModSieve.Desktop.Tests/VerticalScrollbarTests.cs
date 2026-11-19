@@ -43,11 +43,6 @@ public sealed class VerticalScrollbarTests
             await WpfTestHost.ClickAsync(button);
             Assert.IsTrue(clicked, "适配后窗口右下角控件应可被真实鼠标点击。");
         }
-        catch (AssertFailedException)
-        {
-            NativeInputFailureDiagnostics.Save(window, button);
-            throw;
-        }
         finally { SetCursorPos(previous.X, previous.Y); }
     });
 
