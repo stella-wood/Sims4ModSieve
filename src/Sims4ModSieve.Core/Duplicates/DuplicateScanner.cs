@@ -74,18 +74,8 @@ public sealed class DuplicateScanner(
             .SelectMany(group => group.OrderBy(item => item.Path, PathRules.Comparer))
             .ToArray();
 
-        var volumes = new List<StorageVolumeProfile>();
-        if (request.HashConcurrency == DuplicateHashConcurrency.Auto && request.StorageProfile is { } storage)
-        {
-            // Discovery skips reparse points below each root, so probe the resolved root once.
-            foreach (var root in hashCandidates.Select(candidate => candidate.DiscoveryRoot).Distinct(PathRules.Comparer))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                volumes.Add(storage.GetVolume(root));
-            }
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        var parallelism = DuplicateHashConcurrencyPolicy.Resolve(request.HashConcurrency, volumes);
+        var parallelism = ScanConcurrencyDecision.Resolve("整文件哈希", request.HashConcurrency, request.StorageProfile,
+            hashCandidates.Select(candidate => candidate.DiscoveryRoot), cancellationToken, request.ConcurrencyDecided);
 
         if (preparationTiming is not null)
         {

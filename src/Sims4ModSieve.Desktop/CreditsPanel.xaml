@@ -19,7 +19,7 @@
             <StackPanel>
                 <Grid Margin="0,0,0,38">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                    <TextBlock Text="感谢名单" FontSize="28" FontWeight="SemiBold" />
+                    <TextBlock Text="感谢名单" Style="{StaticResource SettingsTitleTextStyle}" />
                     <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="24,0,0,0">
                         <StackPanel.RenderTransform><TranslateTransform Y="26" /></StackPanel.RenderTransform>
                         <TextBlock TextTrimming="CharacterEllipsis" Foreground="{StaticResource AccentBrush}" FontSize="13">

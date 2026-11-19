@@ -194,7 +194,13 @@ public sealed record ResourceContentPackageVersion(
 
 public sealed record ResourceContentComparisonRequest(
     IReadOnlyList<PackageConflictCandidate> Candidates,
-    ResourceContentLimits? Limits = null);
+    ResourceContentLimits? Limits = null)
+{
+    public ConflictScanOptions? Options { get; init; }
+
+    /// <summary>显式低层并发优先于快照策略；有限总预算仍保留 Limits 的原并发。</summary>
+    public int? MaxDegreeOfParallelism { get; init; }
+}
 
 public enum ResourceContentComparisonPhase
 {

@@ -17,6 +17,47 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ConflictScanFlowTests
 {
     [TestMethod]
+    public Task ConflictScanPassesOneImmutableSnapshotToIndexContentAndHash() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var mods = files.Directory("Snapshot");
+        var settings = new FakeSettingsStore(new DuplicateSettings(mods, []) { HashConcurrency = DuplicateHashConcurrency.Four });
+        var scanner = new SignalingScanner();
+        var comparer = new SignalingComparer();
+        var duplicates = new CapturingDuplicateService();
+        var model = new MainWindowViewModel(duplicates, new FakeFolderPicker(), settings,
+            packageConflictScanner: scanner, resourceContentComparer: comparer, scriptModuleScanner: new EmptyScriptScanner());
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var scan = model.StartConflictScanCommand.ExecuteAsync();
+        try
+        {
+            await scanner.Reading.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var snapshot = scanner.Request!.Options;
+            Assert.IsNotNull(snapshot);
+            Assert.AreEqual(DuplicateHashConcurrency.Four, snapshot.Concurrency);
+            Assert.IsNotNull(snapshot.StorageProfile);
+            settings.Save(new DuplicateSettings(mods, []) { HashConcurrency = DuplicateHashConcurrency.Eight });
+            scanner.Release.TrySetResult();
+            await comparer.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.AreSame(snapshot, comparer.Request!.Options);
+            comparer.Done.TrySetResult();
+            await scan.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.AreEqual("complete", model.ConflictRunState);
+            Assert.AreEqual(DuplicateHashConcurrency.Four, duplicates.Input!.HashConcurrency);
+            Assert.AreSame(snapshot.StorageProfile, duplicates.Input.StorageProfile);
+            Assert.IsNull(scanner.Request.MaxDegreeOfParallelism);
+            Assert.IsNull(comparer.Request.Limits);
+        }
+        finally
+        {
+            scanner.Release.TrySetResult();
+            comparer.Done.TrySetResult();
+            await scan;
+        }
+    });
+
+    [TestMethod]
     [DataRow(0x7FB6AD8Au)]
     [DataRow(0x6BF15BBEu)]
     [DataRow(0x01357924u)]
@@ -622,6 +663,7 @@ public sealed class ConflictScanFlowTests
 
     private sealed class SignalingScanner : IPackageConflictScanner
     {
+        public PackageConflictScanRequest? Request { get; private set; }
         public TaskCompletionSource Reading { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Reported { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -630,6 +672,7 @@ public sealed class ConflictScanFlowTests
         public async Task<PackageConflictScanReport> ScanAsync(PackageConflictScanRequest request,
             IProgress<PackageConflictScanProgress>? progress = null, CancellationToken cancellationToken = default)
         {
+            Request = request;
             Progress.Target = progress;
             Reading.TrySetResult();
             await Release.Task.WaitAsync(cancellationToken);
@@ -641,6 +684,7 @@ public sealed class ConflictScanFlowTests
 
     private sealed class SignalingComparer : IResourceContentComparer
     {
+        public ResourceContentComparisonRequest? Request { get; private set; }
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public InlineProgress<ResourceContentComparisonProgress> Progress { get; } = new();
@@ -648,6 +692,7 @@ public sealed class ConflictScanFlowTests
         public async Task<ResourceContentComparisonReport> CompareAsync(ResourceContentComparisonRequest request,
             IProgress<ResourceContentComparisonProgress>? progress = null, CancellationToken cancellationToken = default)
         {
+            Request = request;
             Progress.Target = progress;
             // 上一阶段的迟到进度校验在本方法之前完成，放行后报告一定属于比较阶段。
             progress?.Report(new(ResourceContentComparisonPhase.ReadingContents, "ignored", 3, 7, 0));
@@ -662,6 +707,17 @@ public sealed class ConflictScanFlowTests
     {
         public IProgress<T>? Target { get; set; }
         public void Report(T value) => Target?.Report(value);
+    }
+
+    private sealed class CapturingDuplicateService : IDuplicateRunService
+    {
+        public DuplicateRunInput? Input { get; private set; }
+        public Task<DuplicateReport> RunAsync(DuplicateRunInput input, IProgress<DuplicateScanProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            Input = input;
+            return Task.FromResult(new DuplicateReport(DateTime.UnixEpoch, DateTime.UnixEpoch, [], 0, 0, [], []));
+        }
     }
 
     private sealed class EmptyComparer : IResourceContentComparer

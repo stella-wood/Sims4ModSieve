@@ -15,7 +15,8 @@ namespace Sims4ModSieve.Cli;
 internal sealed class CliScanReport(string command, string sourceOrigin, string? notice,
     IReadOnlySet<string> ignoredPaths, CliCommands.ScanOptions options,
     long? memoryBudgetBytes = null,
-    Action<ConflictGroupingSize>? sizeObserved = null, Action<string>? memoryObserved = null)
+    Action<ConflictGroupingSize>? sizeObserved = null, Action<string>? memoryObserved = null,
+    ConflictScanOptions? scanOptions = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -76,9 +77,16 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     public async Task RunAsync(IReadOnlyList<ScanSource> scanSources, string? modsRoot, IReadOnlyCollection<string> extensions)
     {
         startedAtUtc = DateTime.UtcNow;
+        var snapshot = scanOptions ?? new ConflictScanOptions(StorageProfile: new WindowsStorageProfile());
+        DuplicateScanRequest DuplicateRequest(IReadOnlyCollection<string> included) => new(scanSources, modsRoot, included)
+        {
+            HashConcurrency = snapshot.Concurrency,
+            StorageProfile = snapshot.StorageProfile,
+            ConcurrencyDecided = snapshot.ConcurrencyDecided,
+        };
         if (command == "scan-duplicates")
         {
-            duplicates = await DuplicateScanner.CreateDefault().ScanAsync(new(scanSources, modsRoot, extensions));
+            duplicates = await DuplicateScanner.CreateDefault().ScanAsync(DuplicateRequest(extensions));
             sources = duplicates.Sources;
             discoveredFileCount = duplicates.DiscoveredFileCount;
             hashedFileCount = duplicates.HashedFileCount;
@@ -93,9 +101,9 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             if (command == "scan-conflicts")
             {
                 packages = await new PackageConflictScanner(fileSystem, LlamaLogicPackageIndexReader.CreateDefault())
-                    .ScanAsync(new(scanSources));
+                    .ScanAsync(new(scanSources) { Options = snapshot });
                 contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault())
-                    .CompareAsync(new(packages.Candidates));
+                    .CompareAsync(new(packages.Candidates) { Options = snapshot });
             }
 
             var scripts = await new ScriptModuleScanner(fileSystem).ScanAsync(new(scanSources));
@@ -109,7 +117,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
 
             if (packages is not null && contents is not null)
             {
-                var report = await DuplicateScanner.CreateDefault().ScanAsync(new(scanSources, modsRoot, [".package", ".ts4script"]));
+                var report = await DuplicateScanner.CreateDefault().ScanAsync(DuplicateRequest([".package", ".ts4script"]));
                 hashedFileCount = report.HashedFileCount;
                 try
                 {

@@ -33,6 +33,9 @@ public sealed class PackageConflictScanner(
     /// </summary>
     public static int DefaultMaxDegreeOfParallelism { get; } = Math.Clamp(Environment.ProcessorCount, 1, 4);
 
+    /// <summary>自动档且参与根全部为 SSD 时，package 索引与资源内容采用的并发上限：min(逻辑 CPU, 8)。</summary>
+    public static int SsdAutoMaxDegreeOfParallelism => DuplicateHashConcurrencyPolicy.PackageSsdAutoLimit;
+
     private readonly SourceFileDiscovery _discovery = new(fileSystem, applicationDirectory);
 
     public Task<PackageConflictScanReport> ScanAsync(
@@ -78,6 +81,13 @@ public sealed class PackageConflictScanner(
                     message,
                     DiscoveredPackageCount: count)),
             cancellationToken);
+
+        if (request.Options is { } options)
+        {
+            parallelism = ScanConcurrencyDecision.Resolve("package 索引", options.Concurrency, options.StorageProfile,
+                discovered.Values.Select(file => file.DiscoveryRoot), cancellationToken, options.ConcurrencyDecided,
+                request.MaxDegreeOfParallelism, ssdAutoLimit: DuplicateHashConcurrencyPolicy.PackageSsdAutoLimit);
+        }
 
         var bytes = ScanPerformance.CurrentStage is null ? 0 : discovered.Values.Sum(file => file.DiscoveredStamp.Length);
         if (discoveryTiming is not null)

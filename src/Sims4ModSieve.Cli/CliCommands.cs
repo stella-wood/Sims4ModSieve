@@ -11,7 +11,7 @@ internal static class CliCommands
 
     internal static async Task<int> RunAsync(string[] args, DuplicateSettingsStore settings,
         TextWriter output, TextWriter error, string? documentsDirectory = null,
-        long? conflictGroupingMemoryBudgetBytes = null)
+        long? conflictGroupingMemoryBudgetBytes = null, IStorageProfile? storageProfile = null)
     {
         if (args is [] or ["-h" or "--help"])
         {
@@ -68,7 +68,7 @@ internal static class CliCommands
                     await output.WriteLineAsync($"已保存默认 Mods：{path}");
                     return 0;
                 case "scan-conflicts" or "scan-scripts" or "scan-duplicates":
-                    return await ScanAsync(command, operands, settings, output, error, documentsDirectory, conflictGroupingMemoryBudgetBytes);
+                    return await ScanAsync(command, operands, settings, output, error, documentsDirectory, conflictGroupingMemoryBudgetBytes, storageProfile);
                 default:
                     throw new ArgumentException($"未知命令或参数：{string.Join(' ', args)}。请运行 --help。");
             }
@@ -87,7 +87,7 @@ internal static class CliCommands
     }
 
     private static async Task<int> ScanAsync(string command, string[] args, DuplicateSettingsStore settings,
-        TextWriter output, TextWriter error, string? documentsDirectory, long? conflictGroupingMemoryBudgetBytes)
+        TextWriter output, TextWriter error, string? documentsDirectory, long? conflictGroupingMemoryBudgetBytes, IStorageProfile? storageProfile)
     {
         var options = ParseScanOptions(command, args);
         var explicitSources = options.Sources.Count > 0;
@@ -127,7 +127,12 @@ internal static class CliCommands
             {
                 error.WriteLine(size.DiagnosticText);
                 if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);
-            }, memoryObserved: error.WriteLine);
+            }, memoryObserved: error.WriteLine,
+            scanOptions: new(LoadConcurrency(settings),
+                storageProfile ?? new WindowsStorageProfile())
+            {
+                ConcurrencyDecided = decision => error.WriteLine(decision.DiagnosticText),
+            });
         await scan.RunAsync(sources, modsRoot, extensions);
         var hasSources = scan.Sources.Count > 0;
         if (hasSources)
@@ -152,6 +157,19 @@ internal static class CliCommands
         if (options.JsonPath is null && (options.HasOutputFilters || options.HideIgnored))
             await error.WriteLineAsync(scan.OutputOmissionsText);
         return hasSources ? scan.ExitCode : 2;
+    }
+
+    private static DuplicateHashConcurrency LoadConcurrency(DuplicateSettingsStore settings)
+    {
+        try
+        {
+            var value = settings.Load()?.HashConcurrency ?? DuplicateHashConcurrency.Auto;
+            return Enum.IsDefined(value) ? value : DuplicateHashConcurrency.Auto;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return DuplicateHashConcurrency.Auto;
+        }
     }
 
     private static string NormalizePath(string path)

@@ -74,6 +74,8 @@
 
 现在代码里还零星用了 13、17、19、23、26，迁移时就近并到上面的档位。
 
+设置页右侧分类标题共用 `SettingsTitleTextStyle`，字号使用 `FontSizeLarge`，使用随程序提供的 Noto Sans SC 600 字重标题字形。
+
 字体和字重见 [UI 设计风格规范第 5 节](docs/design/UI设计风格规范-v1.md#5-字体与信息层级)，以已有的文字样式为准：`DisplayTextStyle`、`SectionTitleTextStyle`、`BodyTextStyle`、`DataTextStyle`、`FileNameTextStyle`、`BrandTextStyle`。
 
 ## 间距
@@ -104,6 +106,10 @@
 | `RadiusPill` | 24 | 胶囊形按钮、圆点外框 |
 
 代码里的 3 并入 4。
+
+## 扫描并发说明图标
+
+设置页局部资源：`ScanConcurrencyInfoSize` = 14（矢量图标），`ScanConcurrencyInfoTargetSize` = 24（键盘和鼠标宿主），`ScanConcurrencyInfoGap` = 左侧 2。颜色使用 `MutedBrush`；图标与标题垂直居中，说明放入可通过键盘焦点显示的 Tooltip。
 
 ## 组件
 
