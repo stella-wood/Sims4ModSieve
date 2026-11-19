@@ -121,15 +121,31 @@ internal static class WpfTestHost
     public static async Task MoveMouseAsync(FrameworkElement element, Point? point = null)
     {
         var target = element.PointToScreen(point ?? new Point(element.ActualWidth / 2, element.ActualHeight / 2));
-        Assert.IsTrue(SetCursorPos((int)target.X, (int)target.Y), DescribeInput(element, target));
+        GetCursorPos(out var before);
+        // 光标原本就在目标点、或窗口移到静止光标下方时，SetCursorPos 到同一点不会产生 WM_MOUSEMOVE，
+        // WPF 收不到移动就不会更新 DirectlyOver。先偏移 1 像素再回到目标，确保产生真实移动。
+        NudgeCursor(target);
+        Assert.IsTrue(SetCursorPos((int)target.X, (int)target.Y), DescribeInput(element, target, before));
         for (var attempt = 0; attempt < 40; attempt++)
         {
             await Task.Delay(25);
+            if (attempt is 10 or 20 or 30)
+            {
+                NudgeCursor(target);
+                SetCursorPos((int)target.X, (int)target.Y);
+            }
             Mouse.Synchronize();
             if (GetCursorPos(out var actual) && Math.Abs(actual.X - target.X) <= 1 && Math.Abs(actual.Y - target.Y) <= 1
                 && IsWithin(Mouse.DirectlyOver as DependencyObject, element)) return;
         }
-        Assert.Fail("鼠标定位后未实际命中目标；" + DescribeInput(element, target));
+        Assert.Fail("鼠标定位后未实际命中目标；" + DescribeInput(element, target, before));
+    }
+
+    private static void NudgeCursor(Point target)
+    {
+        var x = (int)target.X;
+        var y = (int)target.Y;
+        SetCursorPos(x > 0 ? x - 1 : x + 1, y);
     }
 
     public static async Task ClickAsync(FrameworkElement element, Point? point = null)
@@ -164,12 +180,12 @@ internal static class WpfTestHost
         return false;
     }
 
-    private static string DescribeInput(FrameworkElement element, Point target)
+    private static string DescribeInput(FrameworkElement element, Point target, System.Drawing.Point? before = null)
     {
         GetCursorPos(out var actual);
         var window = Window.GetWindow(element);
         var dpi = VisualTreeHelper.GetDpi(element);
-        return $"workArea={SystemParameters.WorkArea}; dpi={dpi.PixelsPerInchX}x{dpi.PixelsPerInchY}; target={target}; actual={actual}; element={element.GetType().Name}/{element.Name}; over={Mouse.DirectlyOver}; capture={Mouse.Captured}; active={window?.IsActive}";
+        return $"workArea={SystemParameters.WorkArea}; dpi={dpi.PixelsPerInchX}x{dpi.PixelsPerInchY}; target={target}; before={(before is { } b ? b.ToString() : "-")}; actual={actual}; element={element.GetType().Name}/{element.Name}; over={Mouse.DirectlyOver}; capture={Mouse.Captured}; active={window?.IsActive}";
     }
 
     private static void SaveFailure()
