@@ -20,7 +20,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IDuplicateSettingsStore settingsStore;
     private readonly IFileActionService fileActionService;
     private readonly IFileActionDialogService fileActionDialogs;
-    private readonly long conflictResourceMatchLimit;
+    private readonly long? conflictResourceMatchLimit;
     private readonly IUnexpectedErrorHandler unexpectedErrorHandler;
     private CancellationTokenSource? scanCancellation;
     private IReadOnlyList<DuplicateGroup>? lastDeleteSnapshot;
@@ -61,7 +61,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Func<IReadOnlyList<string>>? pickDisabledFiles = null,
         Func<string, bool>? confirmModChange = null,
         Func<DownloadedUpdate, Task>? startUpdate = null,
-        long conflictResourceMatchLimit = ConflictGroupingSize.DefaultResourceMatchLimit)
+        long? conflictResourceMatchLimit = null)
     {
         this.duplicateRunService = duplicateRunService;
         this.conflictDetailsCopy = conflictDetailsCopy ?? System.Windows.Clipboard.SetText;

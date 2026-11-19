@@ -73,7 +73,7 @@ public sealed class ConflictPairSummaryBuilder
     public ConflictGroupingSize EstimateGroupingPackagePairs(ResourceContentComparisonReport comparisonReport,
         IReadOnlySet<uint> excludedTypes, IReadOnlySet<string> excludedPaths,
         IReadOnlyDictionary<string, string> representatives, int redundantCopyCount,
-        long resourceMatchLimit = ConflictGroupingSize.DefaultResourceMatchLimit,
+        long? resourceMatchLimit = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -97,7 +97,12 @@ public sealed class ConflictPairSummaryBuilder
             collapsed = checked(collapsed + collapsedParticipants.Count * (collapsedParticipants.Count - 1L) / 2);
         }
         cancellationToken.ThrowIfCancellationRequested();
-        return new(actual, collapsed, resourceMatchLimit, redundantCopyCount);
+        var availableMemoryBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        return new(actual, collapsed, resourceMatchLimit ?? ConflictGroupingSize.CalculateResourceMatchLimit(availableMemoryBytes), redundantCopyCount)
+        {
+            AvailableMemoryBytes = availableMemoryBytes,
+            IsLimitOverridden = resourceMatchLimit.HasValue,
+        };
     }
 
     /// <summary>v2 分组专用：先排除类型和退出文件，保留包括纯一致局部重叠的所有配对。</summary>

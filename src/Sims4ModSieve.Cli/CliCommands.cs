@@ -11,7 +11,7 @@ internal static class CliCommands
 
     internal static async Task<int> RunAsync(string[] args, DuplicateSettingsStore settings,
         TextWriter output, TextWriter error, string? documentsDirectory = null,
-        long conflictResourceMatchLimit = ConflictGroupingSize.DefaultResourceMatchLimit)
+        long? conflictResourceMatchLimit = null)
     {
         if (args is [] or ["-h" or "--help"])
         {
@@ -87,7 +87,7 @@ internal static class CliCommands
     }
 
     private static async Task<int> ScanAsync(string command, string[] args, DuplicateSettingsStore settings,
-        TextWriter output, TextWriter error, string? documentsDirectory, long conflictResourceMatchLimit)
+        TextWriter output, TextWriter error, string? documentsDirectory, long? conflictResourceMatchLimit)
     {
         var options = ParseScanOptions(command, args);
         var explicitSources = options.Sources.Count > 0;
@@ -127,7 +127,7 @@ internal static class CliCommands
             {
                 error.WriteLine(size.DiagnosticText);
                 if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);
-            });
+            }, memoryObserved: error.WriteLine);
         await scan.RunAsync(sources, modsRoot, extensions);
         var hasSources = scan.Sources.Count > 0;
         if (hasSources)

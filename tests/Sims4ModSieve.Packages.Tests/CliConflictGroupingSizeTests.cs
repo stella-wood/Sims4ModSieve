@@ -42,6 +42,9 @@ public sealed class CliConflictGroupingSizeTests
         Assert.AreEqual(message, issue.GetProperty("message").GetString());
         StringAssert.Contains(error.ToString(), message);
         StringAssert.Contains(error.ToString(), $"资源匹配估算={expectedMatches}；合并副本后估算={expectedCollapsedMatches}；上限=10");
+        StringAssert.Contains(error.ToString(), "可用内存字节=");
+        StringAssert.Contains(error.ToString(), "份额=1/4；系数字节每匹配=1024；上限来源=注入");
+        Assert.IsFalse(error.ToString().Contains("结束托管内存字节=", StringComparison.Ordinal));
         if (reason == "duplicate-copies") Assert.AreEqual(3, issue.GetProperty("redundantCopyCount").GetInt32());
         else Assert.IsFalse(issue.TryGetProperty("redundantCopyCount", out _));
     }
@@ -92,6 +95,8 @@ public sealed class CliConflictGroupingSizeTests
         Assert.AreEqual(0, json.RootElement.GetProperty("issues").GetArrayLength());
         Assert.IsTrue(json.RootElement.GetProperty("groups").GetArrayLength() > 0);
         StringAssert.Contains(error.ToString(), "资源匹配估算=33；合并副本后估算=6；上限=33");
+        StringAssert.Contains(error.ToString(), "冲突分组内存：阶段=合并副本后；结束托管内存字节=");
+        StringAssert.Contains(error.ToString(), "强制GC=false");
     }
 
     private static string WriteFanout(TempDirectory temp, int originals)

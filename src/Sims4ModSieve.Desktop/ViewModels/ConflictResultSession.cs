@@ -149,7 +149,7 @@ public sealed partial class ConflictResultSession
     public void Replace(PackageConflictScanReport packages, ResourceContentComparisonReport contents,
         ScriptModuleScanReport scripts, CancellationToken cancellationToken = default,
         DuplicateReport? duplicates = null,
-        long resourceMatchLimit = ConflictGroupingSize.DefaultResourceMatchLimit)
+        long? resourceMatchLimit = null)
     {
         var (prepared, grouping, changedPaths, stampMismatches) =
             ConflictResultGrouping.BuildPackages(packages, contents, scripts, duplicates, cancellationToken, resourceMatchLimit);

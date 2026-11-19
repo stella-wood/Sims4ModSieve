@@ -6,6 +6,7 @@ using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
+using Sims4ModSieve.Core.Scripts;
 using static Sims4ModSieve.Core.Tests.Conflicts.PackageConflictGroupingBuilderTests;
 
 namespace Sims4ModSieve.Core.Tests.Conflicts;
@@ -13,6 +14,87 @@ namespace Sims4ModSieve.Core.Tests.Conflicts;
 [TestClass]
 public sealed class ConflictGroupingSizeTests
 {
+    [TestMethod]
+    [DataRow(8L, 2_097_152L)]
+    [DataRow(16L, 4_194_304L)]
+    [DataRow(32L, 8_388_608L)]
+    public void MemoryBudgetScalesWithAvailableMemory(long availableGiB, long expectedLimit)
+    {
+        Assert.AreEqual(expectedLimit, ConflictGroupingSize.CalculateResourceMatchLimit(availableGiB * 1024 * 1024 * 1024));
+    }
+
+    [TestMethod]
+    [DataRow(0L)]
+    [DataRow(64L * 1024 * 1024)]
+    [DataRow(512L * 1024 * 1024)]
+    [DataRow(1024L * 1024 * 1024)]
+    public void SmallMemoryBudgetUsesMinimumLimit(long availableBytes)
+    {
+        Assert.AreEqual(ConflictGroupingSize.MinimumResourceMatchLimit,
+            ConflictGroupingSize.CalculateResourceMatchLimit(availableBytes));
+    }
+
+    [TestMethod]
+    public void MemoryBudgetRejectsNegativeMemoryAndDoesNotOverflow()
+    {
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => ConflictGroupingSize.CalculateResourceMatchLimit(-1));
+        Assert.AreEqual(long.MaxValue / 4 / 1024, ConflictGroupingSize.CalculateResourceMatchLimit(long.MaxValue));
+    }
+
+    [TestMethod]
+    [DataRow(33L, null)]
+    [DataRow(32L, "duplicate-copies")]
+    [DataRow(6L, "duplicate-copies")]
+    [DataRow(5L, "too-many-shared-resources")]
+    public void InjectedLimitPreservesBoundaryAndBothReasons(long limit, string? expectedReason)
+    {
+        var (scan, contents, duplicates) = Fanout(3, 2);
+        ConflictGroupingSize? size = null;
+        var builder = new PackageConflictGroupingBuilder(limit);
+        if (expectedReason is null)
+        {
+            var input = builder.Prepare(scan, contents, duplicates: duplicates, sizeObserved: value => size = value);
+            Assert.AreEqual(33L, input.Pairs.Sum(pair => (long)pair.Resources.Count));
+        }
+        else
+            Assert.ThrowsExactly<ConflictGroupingTooLargeException>(() =>
+                builder.Prepare(scan, contents, duplicates: duplicates, sizeObserved: value => size = value));
+        Assert.AreEqual(expectedReason, size!.Reason);
+        Assert.AreEqual(limit, size.ResourceMatchLimit);
+        Assert.IsTrue(size.IsLimitOverridden);
+        StringAssert.Contains(size.DiagnosticText, "上限来源=注入");
+    }
+
+    [TestMethod]
+    public void DefaultLimitUsesAvailableMemorySnapshotInDiagnostics()
+    {
+        var (scan, contents, duplicates) = Fanout(3, 2);
+        ConflictGroupingSize? size = null;
+        new PackageConflictGroupingBuilder().Prepare(scan, contents, duplicates: duplicates, sizeObserved: value => size = value);
+        Assert.AreEqual(ConflictGroupingSize.CalculateResourceMatchLimit(size!.AvailableMemoryBytes), size.ResourceMatchLimit);
+        Assert.IsFalse(size.IsLimitOverridden);
+        StringAssert.Contains(size.DiagnosticText, $"可用内存字节={size.AvailableMemoryBytes}");
+        StringAssert.Contains(size.DiagnosticText, "份额=1/4；系数字节每匹配=1024；上限来源=内存预算");
+    }
+
+    [TestMethod]
+    public void CompletedGroupingRecordsEndMemoryAfterDuplicateMerge()
+    {
+        var (scan, contents, duplicates) = Fanout(3, 2);
+        using var performance = ScanPerformance.Start("冲突检测");
+        var (input, result, changedPaths, _) = ConflictResultGrouping.BuildPackages(scan, contents,
+            new(DateTime.UnixEpoch, DateTime.UnixEpoch, [], ScriptModuleLimits.Default, 0, 0, [], 0, [], [], 0),
+            duplicates, resourceMatchLimit: 33);
+        var beforeMerge = performance.Finish("完成", "test");
+        Assert.IsFalse(beforeMerge.Contains("结束托管内存字节=", StringComparison.Ordinal));
+        string? observed = null;
+        ConflictResultGrouping.MergeDuplicatePackageGroups(input, result, duplicates, changedPaths, scan, null,
+            memoryObserved: value => observed = value);
+        StringAssert.Contains(observed!, "冲突分组内存：阶段=合并副本后；结束托管内存字节=");
+        StringAssert.Contains(observed!, "强制GC=false");
+        StringAssert.Contains(performance.Finish("完成", "test"), observed!);
+    }
+
     [TestMethod]
     public void EstimateMatchesMaterializedResourcesWithRepeatedOccurrencesAndExclusions()
     {
@@ -35,7 +117,7 @@ public sealed class ConflictGroupingSizeTests
     {
         var values = Enumerable.Range(0, 70_000).Select(index => ($"{index}.package", (string?)"same")).ToArray();
         var size = new ConflictPairSummaryBuilder().EstimateGroupingPackagePairs(Contents(Resource(1, values)),
-            new HashSet<uint>(), new HashSet<string>(), new Dictionary<string, string>(), 0);
+            new HashSet<uint>(), new HashSet<string>(), new Dictionary<string, string>(), 0, resourceMatchLimit: 100);
         Assert.AreEqual(2_449_965_000L, size.ResourceMatchCount);
         Assert.IsTrue(size.ExceedsLimit);
     }
@@ -224,8 +306,12 @@ public sealed class ConflictGroupingSizeTests
         using var performance = ScanPerformance.Start("冲突检测");
         try { new PackageConflictGroupingBuilder(limit).Prepare(scan, contents, duplicates: duplicates); }
         catch (ConflictGroupingTooLargeException) { }
-        StringAssert.Contains(performance.Finish("未完成", "test"),
+        var diagnostics = performance.Finish("未完成", "test");
+        StringAssert.Contains(diagnostics,
             $"冲突分组规模：资源匹配估算=33；合并副本后估算=6；上限={limit}；多余副本=3");
+        StringAssert.Contains(diagnostics, "可用内存字节=");
+        StringAssert.Contains(diagnostics, "份额=1/4；系数字节每匹配=1024；上限来源=注入");
+        Assert.IsFalse(diagnostics.Contains("结束托管内存字节=", StringComparison.Ordinal));
     }
 
     [TestMethod]

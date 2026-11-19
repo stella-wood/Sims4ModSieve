@@ -7,7 +7,7 @@ using Sims4ModSieve.Core.Scripts;
 namespace Sims4ModSieve.Core.Conflicts;
 
 /// <summary>Prepare 和 Build 均只处理报告中的内存数据，不持有读取器。</summary>
-public sealed class PackageConflictGroupingBuilder(long resourceMatchLimit = ConflictGroupingSize.DefaultResourceMatchLimit)
+public sealed class PackageConflictGroupingBuilder(long? resourceMatchLimit = null)
 {
     public PackageConflictGroupingInput Prepare(PackageConflictScanReport scanReport,
         ResourceContentComparisonReport contentReport, bool excludeNameMap = true,

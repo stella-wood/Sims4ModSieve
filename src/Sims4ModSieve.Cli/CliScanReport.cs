@@ -14,8 +14,8 @@ namespace Sims4ModSieve.Cli;
 
 internal sealed class CliScanReport(string command, string sourceOrigin, string? notice,
     IReadOnlySet<string> ignoredPaths, CliCommands.ScanOptions options,
-    long resourceMatchLimit = ConflictGroupingSize.DefaultResourceMatchLimit,
-    Action<ConflictGroupingSize>? sizeObserved = null)
+    long? resourceMatchLimit = null,
+    Action<ConflictGroupingSize>? sizeObserved = null, Action<string>? memoryObserved = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -185,7 +185,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
 
         var duplicateHashes = duplicateGroups.SelectMany(group => group.Files.Select(file => (file.Path, group.Sha256)))
             .ToDictionary(copy => copy.Path, copy => copy.Sha256, StringComparer.OrdinalIgnoreCase);
-        var (grouping, _) = ConflictResultGrouping.MergeDuplicatePackageGroups(input, result, report, changedPaths, packages, scripts);
+        var (grouping, _) = ConflictResultGrouping.MergeDuplicatePackageGroups(input, result, report, changedPaths, packages, scripts, memoryObserved);
         foreach (var group in grouping.Groups)
         {
             if (group.Kind == PackageConflictRelationKind.SuspectedSameMod && duplicateGroups.Any(duplicate =>
