@@ -1,0 +1,74 @@
+<Window x:Class="Sims4ModSieve.Desktop.Components.WarningDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="352"
+        Height="192"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{StaticResource SurfaceBrush}">
+    <Window.Resources>
+        <SolidColorBrush x:Key="WarningInkBrush" Color="#24221F" />
+        <PathGeometry x:Key="WarningTriangle"
+                      Figures="M11.20,3.73 A0.92,0.92 0 0 1 12.80,3.73 L21.95,19.59 A0.92,0.92 0 0 1 21.15,20.97 L2.85,20.97 A0.92,0.92 0 0 1 2.05,19.59 Z" />
+        <DrawingImage x:Key="WarningImage">
+            <DrawingImage.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
+                    <DrawingGroup>
+                        <DrawingGroup.Transform>
+                            <ScaleTransform ScaleY="1.08" CenterY="12" />
+                        </DrawingGroup.Transform>
+                        <GeometryDrawing Brush="#FFCE49" Geometry="{StaticResource WarningTriangle}" />
+                        <DrawingGroup ClipGeometry="{StaticResource WarningTriangle}">
+                            <GeometryDrawing Geometry="{StaticResource WarningTriangle}">
+                                <GeometryDrawing.Pen>
+                                    <Pen Brush="{StaticResource WarningInkBrush}" Thickness="2.35" LineJoin="Round" />
+                                </GeometryDrawing.Pen>
+                            </GeometryDrawing>
+                        </DrawingGroup>
+                        <GeometryDrawing Brush="{StaticResource WarningInkBrush}">
+                            <GeometryDrawing.Geometry>
+                                <GeometryGroup>
+                                    <GeometryGroup.Transform>
+                                        <TranslateTransform Y="1.48" />
+                                    </GeometryGroup.Transform>
+                                    <PathGeometry Figures="M10.73,8.18 Q10.69,7.10 12,7.10 Q13.31,7.10 13.27,8.18 L12.92,13.03 Q12.87,13.89 12,13.89 Q11.13,13.89 11.08,13.03 Z" />
+                                    <EllipseGeometry Center="12,16.4" RadiusX="1.15" RadiusY="1.15" />
+                                </GeometryGroup>
+                            </GeometryDrawing.Geometry>
+                        </GeometryDrawing>
+                    </DrawingGroup>
+                </DrawingGroup>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+    </Window.Resources>
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Image Source="{StaticResource WarningImage}" Width="32" Height="32"
+                   VerticalAlignment="Center" IsHitTestVisible="False" />
+            <TextBlock x:Name="MessageText" Grid.Column="1" Margin="8,0,0,0"
+                       FontFamily="Microsoft YaHei UI" FontSize="14" LineHeight="21"
+                       LineStackingStrategy="BlockLineHeight" TextWrapping="Wrap" VerticalAlignment="Center" />
+        </Grid>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+            <Button Width="56" Height="28" Content="关闭" IsCancel="True"
+                    Cursor="Hand" Style="{StaticResource SecondaryButtonStyle}"
+                    Padding="0" FontSize="12" FontWeight="Normal" Click="Close_Click" />
+            <Button x:Name="ActionButton" MinWidth="112" Height="28" Margin="8,0,0,0"
+                    Cursor="Hand" Style="{StaticResource PrimaryButtonStyle}"
+                    Padding="12,0" FontSize="12" FontWeight="Normal"
+                    Visibility="Collapsed" Click="Action_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

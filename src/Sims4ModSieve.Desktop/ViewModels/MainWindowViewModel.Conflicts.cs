@@ -477,7 +477,7 @@ public sealed partial class MainWindowViewModel
                 Report(4, "正在整理文件组…", 0, null);
                 using var sessionTiming = ScanPerformance.Measure("界面 · 生成冲突会话和结果行");
                 var mapped = new ConflictResultSession();
-                mapped.Replace(packages, contents, scripts, cancellation.Token, duplicates);
+                mapped.Replace(packages, contents, scripts, cancellation.Token, duplicates, conflictGroupingMemoryBudgetBytes);
                 mapped.SetIgnoredFiles(ignoredRecords.Select(record => record.Path));
                 cancellation.Token.ThrowIfCancellationRequested();
                 var view = initialView;
@@ -554,6 +554,15 @@ public sealed partial class MainWindowViewModel
             conflictStatus = "扫描已取消";
             ClearProgress();
             conflictPhase = "本次分析未完成";
+        }
+        catch (ConflictGroupingTooLargeException exception)
+        {
+            timingOutcome = "未完成";
+            if (generation != conflictGeneration) return;
+            ReportConflictFailure(exception);
+            if (fileActionDialogs.ShowConflictGroupingWarning(exception.Size)
+                && exception.Size.Reason == "duplicate-copies")
+                ShowScanner();
         }
         catch (Exception exception)
         {

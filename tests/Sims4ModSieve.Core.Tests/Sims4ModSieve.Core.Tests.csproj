@@ -11,5 +11,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
+    <EmbeddedResource Include="Conflicts\GroupingBeforeGuard.json" LogicalName="GroupingBeforeGuard.json" />
   </ItemGroup>
 </Project>

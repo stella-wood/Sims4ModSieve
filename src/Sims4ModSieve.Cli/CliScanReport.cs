@@ -13,7 +13,9 @@ using Sims4ModSieve.Packages;
 namespace Sims4ModSieve.Cli;
 
 internal sealed class CliScanReport(string command, string sourceOrigin, string? notice,
-    IReadOnlySet<string> ignoredPaths, CliCommands.ScanOptions options)
+    IReadOnlySet<string> ignoredPaths, CliCommands.ScanOptions options,
+    long? memoryBudgetBytes = null,
+    Action<ConflictGroupingSize>? sizeObserved = null, Action<string>? memoryObserved = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -34,6 +36,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     private readonly StableFileHasher hasher = new(new PhysicalFileSystemAccess());
     private IReadOnlyList<ScanSourceSnapshot> sources = [];
     private DuplicateReport? duplicates;
+    public ConflictGroupingSize? GroupingSize { get; private set; }
     private DateTime startedAtUtc;
     private DateTime completedAtUtc;
     private int groupCount;
@@ -47,7 +50,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     public int ExitCode => groupCount == 0 && issues.Count == 0 ? 0 : 1;
     public IReadOnlyList<ScanSourceSnapshot> Sources => sources;
 
-    private bool Complete => !options.HasOutputFilters && !options.HideIgnored;
+    private bool Complete => GroupingSize?.ExceedsLimit != true && !options.HasOutputFilters && !options.HideIgnored;
     private bool Matches(string kind, string severity) =>
         (options.Kinds.Count == 0 || options.Kinds.Contains(kind))
         && (options.Severities.Count == 0 || options.Severities.Contains(severity));
@@ -108,7 +111,15 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             {
                 var report = await DuplicateScanner.CreateDefault().ScanAsync(new(scanSources, modsRoot, [".package", ".ts4script"]));
                 hashedFileCount = report.HashedFileCount;
-                await AddConflicts(packages, contents, scripts, report);
+                try
+                {
+                    await AddConflicts(packages, contents, scripts, report);
+                }
+                catch (ConflictGroupingTooLargeException exception)
+                {
+                    issues.Add(new(string.Empty, ConflictGroupingSize.IssueCode, exception.Message,
+                        "grouping", null, false, "read_incomplete", "incomplete", exception.Size));
+                }
             }
             else
                 await AddScripts(scripts, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
@@ -145,7 +156,12 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                 occurrence.Issue?.Message ?? "资源内容未比完", "resource", occurrence.Key.Tgi, isFile: true);
 
         var (input, result, changedPaths, stampMismatches) =
-            ConflictResultGrouping.BuildPackages(packages, contents, scripts, report);
+            ConflictResultGrouping.BuildPackages(packages, contents, scripts, report,
+                memoryBudgetBytes: memoryBudgetBytes, sizeObserved: size =>
+                {
+                    GroupingSize = size;
+                    sizeObserved?.Invoke(size);
+                });
         foreach (var file in stampMismatches)
             AddIssue(file.Path, "hash-scan-stamp-mismatch", "整文件哈希与资源或脚本扫描的文件版本不一致", "stability", isFile: true);
         foreach (var excluded in result.ExcludedFiles)
@@ -169,7 +185,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
 
         var duplicateHashes = duplicateGroups.SelectMany(group => group.Files.Select(file => (file.Path, group.Sha256)))
             .ToDictionary(copy => copy.Path, copy => copy.Sha256, StringComparer.OrdinalIgnoreCase);
-        var (grouping, _) = ConflictResultGrouping.MergeDuplicatePackageGroups(input, result, report, changedPaths, packages, scripts);
+        var (grouping, _) = ConflictResultGrouping.MergeDuplicatePackageGroups(input, result, report, changedPaths, packages, scripts, memoryObserved);
         foreach (var group in grouping.Groups)
         {
             if (group.Kind == PackageConflictRelationKind.SuspectedSameMod && duplicateGroups.Any(duplicate =>
@@ -349,11 +365,23 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             if (options.OmitResourceKeys) detail.Remove("resourceKeys");
             return detail;
         }).ToArray();
-        var visibleIssues = OutputIssues.Select(issue => new
+        var visibleIssues = OutputIssues.Select(issue =>
         {
-            issue.Path, issue.Code, issue.Message, issue.Stage, issue.Entry, issue.Kind, issue.Severity,
-            certainty = "confirmed", file = issue.IsFile ? files[issue.Path] : null,
-            ignored = issue.IsFile && ignoredPaths.Contains(issue.Path),
+            var detail = JsonSerializer.SerializeToNode(new
+            {
+                issue.Path, issue.Code, issue.Message, issue.Stage, issue.Entry, issue.Kind, issue.Severity,
+                certainty = "confirmed", file = issue.IsFile ? files[issue.Path] : null,
+                ignored = issue.IsFile && ignoredPaths.Contains(issue.Path),
+            }, JsonOptions)!.AsObject();
+            if (issue.GroupingSize is { } size)
+            {
+                detail["reason"] = size.Reason;
+                detail["resourceMatchCount"] = size.ResourceMatchCount;
+                detail["collapsedResourceMatchCount"] = size.CollapsedResourceMatchCount;
+                detail["resourceMatchLimit"] = size.ResourceMatchLimit;
+                if (size.Reason == "duplicate-copies") detail["redundantCopyCount"] = size.RedundantCopyCount;
+            }
+            return detail;
         });
         var version = typeof(CliScanReport).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!
             .InformationalVersion.Split('+')[0];
@@ -392,5 +420,5 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     private sealed record ReportGroup(string Kind, string Severity, object Detail);
     private sealed record ReportFile(string Path, string? Sha256, long? Size, DateTime? LastWriteTimeUtc, bool Ignored);
     private sealed record ReportIssue(string Path, string Code, string Message, string Stage, string? Entry,
-        bool IsFile, string Kind, string Severity);
+        bool IsFile, string Kind, string Severity, ConflictGroupingSize? GroupingSize = null);
 }

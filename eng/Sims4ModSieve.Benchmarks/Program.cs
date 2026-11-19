@@ -13,6 +13,7 @@ internal static class Program
     {
         if (args.Length == 0 || args[0] is "--help" or "-h")
         {
+            Console.WriteLine("grouping-memory <originals> <shared-resources: 1..63> (two copies, 64 resources/file; fresh process per run)");
             Console.WriteLine("generate --output <new-corpus-directory>");
             Console.WriteLine("run --source <directory> [--source <directory> ...] --output <new-directory>");
             Console.WriteLine("    --sample-id <id> [--runs 3] [--mods-root <directory>] [--baseline <previous-output>]");
@@ -23,6 +24,7 @@ internal static class Program
         }
         try
         {
+            if (args[0] == "grouping-memory") return GroupingMemoryBenchmark.Run(args[1..]);
             var options = Parse(args);
             if (args[0] == "generate")
             {

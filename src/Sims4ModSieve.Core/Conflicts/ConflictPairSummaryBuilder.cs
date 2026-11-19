@@ -70,6 +70,50 @@ public sealed record ScriptConflictPairSummary(
 /// <summary>只整理已有报告，不读取文件；明细共享原始资源比较和模块碰撞。</summary>
 public sealed class ConflictPairSummaryBuilder
 {
+    public ConflictGroupingSize EstimateGroupingPackagePairs(ResourceContentComparisonReport comparisonReport,
+        IReadOnlySet<uint> excludedTypes, IReadOnlySet<string> excludedPaths,
+        IReadOnlyDictionary<string, string> representatives, int redundantCopyCount,
+        long? memoryBudgetBytes = null,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var excluded = new HashSet<string>(Walk(excludedPaths, cancellationToken), PathRules.Comparer);
+        long actual = 0, collapsed = 0;
+        var files = new HashSet<string>(PathRules.Comparer);
+        var collapsedFiles = new HashSet<string>(PathRules.Comparer);
+        var participants = new HashSet<string>(PathRules.Comparer);
+        var collapsedParticipants = new HashSet<string>(PathRules.Comparer);
+        foreach (var comparison in Walk(comparisonReport.Comparisons, cancellationToken))
+        {
+            if (excludedTypes.Contains(comparison.Key.Type)) continue;
+            participants.Clear();
+            collapsedParticipants.Clear();
+            foreach (var occurrence in PackageOccurrences(comparison, cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (excluded.Contains(occurrence.PackagePath)) continue;
+                participants.Add(occurrence.PackagePath);
+                collapsedParticipants.Add(representatives.GetValueOrDefault(occurrence.PackagePath, occurrence.PackagePath));
+            }
+            if (participants.Count > 1)
+                foreach (var path in Walk(participants, cancellationToken)) files.Add(path);
+            if (collapsedParticipants.Count > 1)
+                foreach (var path in Walk(collapsedParticipants, cancellationToken)) collapsedFiles.Add(path);
+            actual = checked(actual + participants.Count * (participants.Count - 1L) / 2);
+            collapsed = checked(collapsed + collapsedParticipants.Count * (collapsedParticipants.Count - 1L) / 2);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var availableMemoryBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        return new(actual, collapsed,
+            ConflictGroupingSize.CalculateFilePairUpperBound(actual, files.Count),
+            ConflictGroupingSize.CalculateFilePairUpperBound(collapsed, collapsedFiles.Count),
+            memoryBudgetBytes ?? ConflictGroupingSize.CalculateMemoryBudgetBytes(availableMemoryBytes), redundantCopyCount)
+        {
+            AvailableMemoryBytes = availableMemoryBytes,
+            IsLimitOverridden = memoryBudgetBytes.HasValue,
+        };
+    }
+
     /// <summary>v2 分组专用：先排除类型和退出文件，保留包括纯一致局部重叠的所有配对。</summary>
     public IReadOnlyList<PackageConflictPairSummary> BuildGroupingPackagePairs(
         ResourceContentComparisonReport comparisonReport,

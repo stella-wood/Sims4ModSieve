@@ -1,4 +1,5 @@
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Scripts;
 
 namespace Sims4ModSieve.Core.Conflicts;
@@ -8,10 +9,13 @@ public static class ConflictResultGrouping
     public static (PackageConflictGroupingInput Input, PackageConflictGroupingResult Result,
         IReadOnlySet<string> ChangedPaths, IReadOnlyList<DuplicateFile> StampMismatches) BuildPackages(
         PackageConflictScanReport packages, ResourceContentComparisonReport contents, ScriptModuleScanReport scripts,
-        DuplicateReport? duplicates, CancellationToken cancellationToken = default)
+        DuplicateReport? duplicates, CancellationToken cancellationToken = default,
+        long? memoryBudgetBytes = null,
+        Action<ConflictGroupingSize>? sizeObserved = null)
     {
-        var groupingBuilder = new PackageConflictGroupingBuilder();
-        var prepared = groupingBuilder.Prepare(packages, contents, cancellationToken: cancellationToken);
+        var groupingBuilder = new PackageConflictGroupingBuilder(memoryBudgetBytes);
+        var prepared = groupingBuilder.Prepare(packages, contents, cancellationToken: cancellationToken,
+            duplicates: duplicates, scripts: scripts, sizeObserved: sizeObserved);
         var stampMismatches = duplicates?.Groups.SelectMany(group => group.Files)
             .Where(file => !MatchesScannedStamp(file, packages, scripts))
             .DistinctBy(file => file.Path, StringComparer.OrdinalIgnoreCase).ToArray() ?? [];
@@ -31,7 +35,7 @@ public static class ConflictResultGrouping
     public static (PackageConflictGroupingResult Result, IReadOnlyDictionary<string, string> Representatives)
         MergeDuplicatePackageGroups(PackageConflictGroupingInput input,
         PackageConflictGroupingResult result, DuplicateReport? duplicates, IReadOnlySet<string> changedPaths,
-        PackageConflictScanReport? packages, ScriptModuleScanReport? scripts)
+        PackageConflictScanReport? packages, ScriptModuleScanReport? scripts, Action<string>? memoryObserved = null)
     {
         var representatives = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var packagePaths = input.Files.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -58,13 +62,18 @@ public static class ConflictResultGrouping
                     Relations = groups.SelectMany(group => group.Relations).Distinct().ToArray(),
                 };
             }).ToArray();
-        return (result with
+        var merged = result with
         {
             Groups = packageGroups,
             GroupsByFile = packageGroups.SelectMany(group => group.Members.Select(member => (member.Path, Group: group)))
                 .GroupBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<PackageConflictGroup>)group.Select(item => item.Group).ToArray(), StringComparer.OrdinalIgnoreCase),
-        }, representatives);
+        };
+        // 常规扫描不强制 GC；这个值包含尚未回收的临时对象，不能当作存活堆或阶段峰值。
+        var memory = FormattableString.Invariant($"冲突分组内存：阶段=合并副本后；结束托管内存字节={GC.GetTotalMemory(false)}；强制GC=false");
+        ScanPerformance.RecordDiagnostic(memory);
+        memoryObserved?.Invoke(memory);
+        return (merged, representatives);
     }
 
     public static IEnumerable<IGrouping<string, ScriptModuleCollision>> GroupScripts(

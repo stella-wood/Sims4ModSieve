@@ -1,0 +1,1873 @@
+{
+  "Input": {
+    "ExcludeNameMap": true,
+    "Files": [
+      {
+        "Path": "a",
+        "ScannedStamp": {
+          "Length": 100,
+          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+          "Identity": null
+        },
+        "ResourceCount": 3
+      },
+      {
+        "Path": "b",
+        "ScannedStamp": {
+          "Length": 100,
+          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+          "Identity": null
+        },
+        "ResourceCount": 7
+      }
+    ],
+    "Pairs": [
+      {
+        "FirstPath": "a",
+        "SecondPath": "b",
+        "DifferentResourceCount": 3,
+        "IdenticalResourceCount": 0,
+        "IncompleteResourceCount": 0,
+        "FirstContainedInSecond": false,
+        "SecondContainedInFirst": false,
+        "Resources": [
+          {
+            "Comparison": {
+              "Key": {
+                "Type": 1,
+                "Group": 0,
+                "Instance": 1,
+                "Tgi": "00000001:00000000:0000000000000001"
+              },
+              "ContentGroups": [
+                {
+                  "Sha256": "y",
+                  "DecompressedLength": 1,
+                  "Occurrences": [
+                    {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 1,
+                        "Tgi": "00000001:00000000:0000000000000001"
+                      },
+                      "PackagePath": "b",
+                      "Ordinal": 0,
+                      "PackageStamp": {
+                        "Length": 100,
+                        "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                        "Identity": null
+                      },
+                      "Sha256": "y",
+                      "DecompressedLength": 1,
+                      "Issue": null,
+                      "IsSuccess": true
+                    }
+                  ]
+                },
+                {
+                  "Sha256": "x",
+                  "DecompressedLength": 1,
+                  "Occurrences": [
+                    {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 1,
+                        "Tgi": "00000001:00000000:0000000000000001"
+                      },
+                      "PackagePath": "a",
+                      "Ordinal": 1,
+                      "PackageStamp": {
+                        "Length": 100,
+                        "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                        "Identity": null
+                      },
+                      "Sha256": "x",
+                      "DecompressedLength": 1,
+                      "Issue": null,
+                      "IsSuccess": true
+                    }
+                  ]
+                }
+              ],
+              "Uncompared": [
+                {
+                  "Key": {
+                    "Type": 1,
+                    "Group": 0,
+                    "Instance": 1,
+                    "Tgi": "00000001:00000000:0000000000000001"
+                  },
+                  "PackagePath": "broken",
+                  "Ordinal": 2,
+                  "PackageStamp": {
+                    "Length": 100,
+                    "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                    "Identity": null
+                  },
+                  "Sha256": null,
+                  "DecompressedLength": null,
+                  "Issue": {
+                    "Code": "test-failure",
+                    "Stage": 3,
+                    "Message": "test",
+                    "Detail": null
+                  },
+                  "IsSuccess": false
+                }
+              ],
+              "IsComplete": false,
+              "HasConfirmedDifference": true,
+              "Verdict": 1
+            },
+            "HasConfirmedDifference": true,
+            "HasConfirmedIdentical": false,
+            "HasIncomplete": false,
+            "Key": {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 1,
+              "Tgi": "00000001:00000000:0000000000000001"
+            },
+            "Priority": 0
+          },
+          {
+            "Comparison": {
+              "Key": {
+                "Type": 1,
+                "Group": 0,
+                "Instance": 2,
+                "Tgi": "00000001:00000000:0000000000000002"
+              },
+              "ContentGroups": [
+                {
+                  "Sha256": "y",
+                  "DecompressedLength": 1,
+                  "Occurrences": [
+                    {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 2,
+                        "Tgi": "00000001:00000000:0000000000000002"
+                      },
+                      "PackagePath": "b",
+                      "Ordinal": 0,
+                      "PackageStamp": {
+                        "Length": 100,
+                        "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                        "Identity": null
+                      },
+                      "Sha256": "y",
+                      "DecompressedLength": 1,
+                      "Issue": null,
+                      "IsSuccess": true
+                    }
+                  ]
+                },
+                {
+                  "Sha256": "x",
+                  "DecompressedLength": 1,
+                  "Occurrences": [
+                    {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 2,
+                        "Tgi": "00000001:00000000:0000000000000002"
+                      },
+                      "PackagePath": "a",
+                      "Ordinal": 1,
+                      "PackageStamp": {
+                        "Length": 100,
+                        "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                        "Identity": null
+                      },
+                      "Sha256": "x",
+                      "DecompressedLength": 1,
+                      "Issue": null,
+                      "IsSuccess": true
+                    }
+                  ]
+                }
+              ],
+              "Uncompared": [],
+              "IsComplete": true,
+              "HasConfirmedDifference": true,
+              "Verdict": 1
+            },
+            "HasConfirmedDifference": true,
+            "HasConfirmedIdentical": false,
+            "HasIncomplete": false,
+            "Key": {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 2,
+              "Tgi": "00000001:00000000:0000000000000002"
+            },
+            "Priority": 0
+          },
+          {
+            "Comparison": {
+              "Key": {
+                "Type": 1,
+                "Group": 0,
+                "Instance": 3,
+                "Tgi": "00000001:00000000:0000000000000003"
+              },
+              "ContentGroups": [
+                {
+                  "Sha256": "y",
+                  "DecompressedLength": 1,
+                  "Occurrences": [
+                    {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 3,
+                        "Tgi": "00000001:00000000:0000000000000003"
+                      },
+                      "PackagePath": "b",
+                      "Ordinal": 0,
+                      "PackageStamp": {
+                        "Length": 100,
+                        "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                        "Identity": null
+                      },
+                      "Sha256": "y",
+                      "DecompressedLength": 1,
+                      "Issue": null,
+                      "IsSuccess": true
+                    }
+                  ]
+                },
+                {
+                  "Sha256": "x",
+                  "DecompressedLength": 1,
+                  "Occurrences": [
+                    {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 3,
+                        "Tgi": "00000001:00000000:0000000000000003"
+                      },
+                      "PackagePath": "a",
+                      "Ordinal": 1,
+                      "PackageStamp": {
+                        "Length": 100,
+                        "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                        "Identity": null
+                      },
+                      "Sha256": "x",
+                      "DecompressedLength": 1,
+                      "Issue": null,
+                      "IsSuccess": true
+                    }
+                  ]
+                }
+              ],
+              "Uncompared": [],
+              "IsComplete": true,
+              "HasConfirmedDifference": true,
+              "Verdict": 1
+            },
+            "HasConfirmedDifference": true,
+            "HasConfirmedIdentical": false,
+            "HasIncomplete": false,
+            "Key": {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 3,
+              "Tgi": "00000001:00000000:0000000000000003"
+            },
+            "Priority": 0
+          }
+        ],
+        "HasConfirmedDifference": true,
+        "HasConfirmedIdentical": false,
+        "HasIncomplete": false,
+        "IsSuspectedModVersionPair": false,
+        "Priority": 0
+      }
+    ],
+    "Comparisons": [
+      {
+        "Key": {
+          "Type": 1,
+          "Group": 0,
+          "Instance": 1,
+          "Tgi": "00000001:00000000:0000000000000001"
+        },
+        "ContentGroups": [
+          {
+            "Sha256": "y",
+            "DecompressedLength": 1,
+            "Occurrences": [
+              {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 1,
+                  "Tgi": "00000001:00000000:0000000000000001"
+                },
+                "PackagePath": "b",
+                "Ordinal": 0,
+                "PackageStamp": {
+                  "Length": 100,
+                  "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                  "Identity": null
+                },
+                "Sha256": "y",
+                "DecompressedLength": 1,
+                "Issue": null,
+                "IsSuccess": true
+              }
+            ]
+          },
+          {
+            "Sha256": "x",
+            "DecompressedLength": 1,
+            "Occurrences": [
+              {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 1,
+                  "Tgi": "00000001:00000000:0000000000000001"
+                },
+                "PackagePath": "a",
+                "Ordinal": 1,
+                "PackageStamp": {
+                  "Length": 100,
+                  "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                  "Identity": null
+                },
+                "Sha256": "x",
+                "DecompressedLength": 1,
+                "Issue": null,
+                "IsSuccess": true
+              }
+            ]
+          }
+        ],
+        "Uncompared": [
+          {
+            "Key": {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 1,
+              "Tgi": "00000001:00000000:0000000000000001"
+            },
+            "PackagePath": "broken",
+            "Ordinal": 2,
+            "PackageStamp": {
+              "Length": 100,
+              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+              "Identity": null
+            },
+            "Sha256": null,
+            "DecompressedLength": null,
+            "Issue": {
+              "Code": "test-failure",
+              "Stage": 3,
+              "Message": "test",
+              "Detail": null
+            },
+            "IsSuccess": false
+          }
+        ],
+        "IsComplete": false,
+        "HasConfirmedDifference": true,
+        "Verdict": 1
+      },
+      {
+        "Key": {
+          "Type": 1,
+          "Group": 0,
+          "Instance": 2,
+          "Tgi": "00000001:00000000:0000000000000002"
+        },
+        "ContentGroups": [
+          {
+            "Sha256": "y",
+            "DecompressedLength": 1,
+            "Occurrences": [
+              {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 2,
+                  "Tgi": "00000001:00000000:0000000000000002"
+                },
+                "PackagePath": "b",
+                "Ordinal": 0,
+                "PackageStamp": {
+                  "Length": 100,
+                  "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                  "Identity": null
+                },
+                "Sha256": "y",
+                "DecompressedLength": 1,
+                "Issue": null,
+                "IsSuccess": true
+              }
+            ]
+          },
+          {
+            "Sha256": "x",
+            "DecompressedLength": 1,
+            "Occurrences": [
+              {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 2,
+                  "Tgi": "00000001:00000000:0000000000000002"
+                },
+                "PackagePath": "a",
+                "Ordinal": 1,
+                "PackageStamp": {
+                  "Length": 100,
+                  "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                  "Identity": null
+                },
+                "Sha256": "x",
+                "DecompressedLength": 1,
+                "Issue": null,
+                "IsSuccess": true
+              }
+            ]
+          }
+        ],
+        "Uncompared": [],
+        "IsComplete": true,
+        "HasConfirmedDifference": true,
+        "Verdict": 1
+      },
+      {
+        "Key": {
+          "Type": 1,
+          "Group": 0,
+          "Instance": 3,
+          "Tgi": "00000001:00000000:0000000000000003"
+        },
+        "ContentGroups": [
+          {
+            "Sha256": "y",
+            "DecompressedLength": 1,
+            "Occurrences": [
+              {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 3,
+                  "Tgi": "00000001:00000000:0000000000000003"
+                },
+                "PackagePath": "b",
+                "Ordinal": 0,
+                "PackageStamp": {
+                  "Length": 100,
+                  "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                  "Identity": null
+                },
+                "Sha256": "y",
+                "DecompressedLength": 1,
+                "Issue": null,
+                "IsSuccess": true
+              }
+            ]
+          },
+          {
+            "Sha256": "x",
+            "DecompressedLength": 1,
+            "Occurrences": [
+              {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 3,
+                  "Tgi": "00000001:00000000:0000000000000003"
+                },
+                "PackagePath": "a",
+                "Ordinal": 1,
+                "PackageStamp": {
+                  "Length": 100,
+                  "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                  "Identity": null
+                },
+                "Sha256": "x",
+                "DecompressedLength": 1,
+                "Issue": null,
+                "IsSuccess": true
+              }
+            ]
+          }
+        ],
+        "Uncompared": [],
+        "IsComplete": true,
+        "HasConfirmedDifference": true,
+        "Verdict": 1
+      }
+    ],
+    "ExcludedFiles": [
+      {
+        "Path": "broken",
+        "ScanIssues": [],
+        "FailedResources": [
+          {
+            "Key": {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 1,
+              "Tgi": "00000001:00000000:0000000000000001"
+            },
+            "PackagePath": "broken",
+            "Ordinal": 2,
+            "PackageStamp": {
+              "Length": 100,
+              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+              "Identity": null
+            },
+            "Sha256": null,
+            "DecompressedLength": null,
+            "Issue": {
+              "Code": "test-failure",
+              "Stage": 3,
+              "Message": "test",
+              "Detail": null
+            },
+            "IsSuccess": false
+          }
+        ],
+        "InvalidVersions": [],
+        "InputIssues": []
+      }
+    ],
+    "FileCount": 2
+  },
+  "Result": {
+    "Relations": [
+      {
+        "Pair": {
+          "FirstPath": "a",
+          "SecondPath": "b",
+          "DifferentResourceCount": 3,
+          "IdenticalResourceCount": 0,
+          "IncompleteResourceCount": 0,
+          "FirstContainedInSecond": false,
+          "SecondContainedInFirst": false,
+          "Resources": [
+            {
+              "Comparison": {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 1,
+                  "Tgi": "00000001:00000000:0000000000000001"
+                },
+                "ContentGroups": [
+                  {
+                    "Sha256": "y",
+                    "DecompressedLength": 1,
+                    "Occurrences": [
+                      {
+                        "Key": {
+                          "Type": 1,
+                          "Group": 0,
+                          "Instance": 1,
+                          "Tgi": "00000001:00000000:0000000000000001"
+                        },
+                        "PackagePath": "b",
+                        "Ordinal": 0,
+                        "PackageStamp": {
+                          "Length": 100,
+                          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                          "Identity": null
+                        },
+                        "Sha256": "y",
+                        "DecompressedLength": 1,
+                        "Issue": null,
+                        "IsSuccess": true
+                      }
+                    ]
+                  },
+                  {
+                    "Sha256": "x",
+                    "DecompressedLength": 1,
+                    "Occurrences": [
+                      {
+                        "Key": {
+                          "Type": 1,
+                          "Group": 0,
+                          "Instance": 1,
+                          "Tgi": "00000001:00000000:0000000000000001"
+                        },
+                        "PackagePath": "a",
+                        "Ordinal": 1,
+                        "PackageStamp": {
+                          "Length": 100,
+                          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                          "Identity": null
+                        },
+                        "Sha256": "x",
+                        "DecompressedLength": 1,
+                        "Issue": null,
+                        "IsSuccess": true
+                      }
+                    ]
+                  }
+                ],
+                "Uncompared": [
+                  {
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 1,
+                      "Tgi": "00000001:00000000:0000000000000001"
+                    },
+                    "PackagePath": "broken",
+                    "Ordinal": 2,
+                    "PackageStamp": {
+                      "Length": 100,
+                      "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                      "Identity": null
+                    },
+                    "Sha256": null,
+                    "DecompressedLength": null,
+                    "Issue": {
+                      "Code": "test-failure",
+                      "Stage": 3,
+                      "Message": "test",
+                      "Detail": null
+                    },
+                    "IsSuccess": false
+                  }
+                ],
+                "IsComplete": false,
+                "HasConfirmedDifference": true,
+                "Verdict": 1
+              },
+              "HasConfirmedDifference": true,
+              "HasConfirmedIdentical": false,
+              "HasIncomplete": false,
+              "Key": {
+                "Type": 1,
+                "Group": 0,
+                "Instance": 1,
+                "Tgi": "00000001:00000000:0000000000000001"
+              },
+              "Priority": 0
+            },
+            {
+              "Comparison": {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 2,
+                  "Tgi": "00000001:00000000:0000000000000002"
+                },
+                "ContentGroups": [
+                  {
+                    "Sha256": "y",
+                    "DecompressedLength": 1,
+                    "Occurrences": [
+                      {
+                        "Key": {
+                          "Type": 1,
+                          "Group": 0,
+                          "Instance": 2,
+                          "Tgi": "00000001:00000000:0000000000000002"
+                        },
+                        "PackagePath": "b",
+                        "Ordinal": 0,
+                        "PackageStamp": {
+                          "Length": 100,
+                          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                          "Identity": null
+                        },
+                        "Sha256": "y",
+                        "DecompressedLength": 1,
+                        "Issue": null,
+                        "IsSuccess": true
+                      }
+                    ]
+                  },
+                  {
+                    "Sha256": "x",
+                    "DecompressedLength": 1,
+                    "Occurrences": [
+                      {
+                        "Key": {
+                          "Type": 1,
+                          "Group": 0,
+                          "Instance": 2,
+                          "Tgi": "00000001:00000000:0000000000000002"
+                        },
+                        "PackagePath": "a",
+                        "Ordinal": 1,
+                        "PackageStamp": {
+                          "Length": 100,
+                          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                          "Identity": null
+                        },
+                        "Sha256": "x",
+                        "DecompressedLength": 1,
+                        "Issue": null,
+                        "IsSuccess": true
+                      }
+                    ]
+                  }
+                ],
+                "Uncompared": [],
+                "IsComplete": true,
+                "HasConfirmedDifference": true,
+                "Verdict": 1
+              },
+              "HasConfirmedDifference": true,
+              "HasConfirmedIdentical": false,
+              "HasIncomplete": false,
+              "Key": {
+                "Type": 1,
+                "Group": 0,
+                "Instance": 2,
+                "Tgi": "00000001:00000000:0000000000000002"
+              },
+              "Priority": 0
+            },
+            {
+              "Comparison": {
+                "Key": {
+                  "Type": 1,
+                  "Group": 0,
+                  "Instance": 3,
+                  "Tgi": "00000001:00000000:0000000000000003"
+                },
+                "ContentGroups": [
+                  {
+                    "Sha256": "y",
+                    "DecompressedLength": 1,
+                    "Occurrences": [
+                      {
+                        "Key": {
+                          "Type": 1,
+                          "Group": 0,
+                          "Instance": 3,
+                          "Tgi": "00000001:00000000:0000000000000003"
+                        },
+                        "PackagePath": "b",
+                        "Ordinal": 0,
+                        "PackageStamp": {
+                          "Length": 100,
+                          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                          "Identity": null
+                        },
+                        "Sha256": "y",
+                        "DecompressedLength": 1,
+                        "Issue": null,
+                        "IsSuccess": true
+                      }
+                    ]
+                  },
+                  {
+                    "Sha256": "x",
+                    "DecompressedLength": 1,
+                    "Occurrences": [
+                      {
+                        "Key": {
+                          "Type": 1,
+                          "Group": 0,
+                          "Instance": 3,
+                          "Tgi": "00000001:00000000:0000000000000003"
+                        },
+                        "PackagePath": "a",
+                        "Ordinal": 1,
+                        "PackageStamp": {
+                          "Length": 100,
+                          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                          "Identity": null
+                        },
+                        "Sha256": "x",
+                        "DecompressedLength": 1,
+                        "Issue": null,
+                        "IsSuccess": true
+                      }
+                    ]
+                  }
+                ],
+                "Uncompared": [],
+                "IsComplete": true,
+                "HasConfirmedDifference": true,
+                "Verdict": 1
+              },
+              "HasConfirmedDifference": true,
+              "HasConfirmedIdentical": false,
+              "HasIncomplete": false,
+              "Key": {
+                "Type": 1,
+                "Group": 0,
+                "Instance": 3,
+                "Tgi": "00000001:00000000:0000000000000003"
+              },
+              "Priority": 0
+            }
+          ],
+          "HasConfirmedDifference": true,
+          "HasConfirmedIdentical": false,
+          "HasIncomplete": false,
+          "IsSuspectedModVersionPair": false,
+          "Priority": 0
+        },
+        "Kind": 0,
+        "Overlap": 0.42857142857142855,
+        "ContainedPath": "a",
+        "BundlePath": "b",
+        "SharedResourceCount": 3,
+        "HasDifferentContent": true,
+        "HasIdenticalContent": false
+      }
+    ],
+    "Groups": [
+      {
+        "Kind": 0,
+        "Members": [
+          {
+            "Path": "a",
+            "ScannedStamp": {
+              "Length": 100,
+              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+              "Identity": null
+            },
+            "ResourceCount": 3,
+            "SharedResourceCount": 3,
+            "UniqueResourceCount": 0,
+            "IsBundle": false,
+            "ContainedContentIdentical": false
+          },
+          {
+            "Path": "b",
+            "ScannedStamp": {
+              "Length": 100,
+              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+              "Identity": null
+            },
+            "ResourceCount": 7,
+            "SharedResourceCount": 3,
+            "UniqueResourceCount": 4,
+            "IsBundle": true,
+            "ContainedContentIdentical": null
+          }
+        ],
+        "ResourceKeys": [
+          {
+            "Type": 1,
+            "Group": 0,
+            "Instance": 1,
+            "Tgi": "00000001:00000000:0000000000000001"
+          },
+          {
+            "Type": 1,
+            "Group": 0,
+            "Instance": 2,
+            "Tgi": "00000001:00000000:0000000000000002"
+          },
+          {
+            "Type": 1,
+            "Group": 0,
+            "Instance": 3,
+            "Tgi": "00000001:00000000:0000000000000003"
+          }
+        ],
+        "Relations": [
+          {
+            "Pair": {
+              "FirstPath": "a",
+              "SecondPath": "b",
+              "DifferentResourceCount": 3,
+              "IdenticalResourceCount": 0,
+              "IncompleteResourceCount": 0,
+              "FirstContainedInSecond": false,
+              "SecondContainedInFirst": false,
+              "Resources": [
+                {
+                  "Comparison": {
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 1,
+                      "Tgi": "00000001:00000000:0000000000000001"
+                    },
+                    "ContentGroups": [
+                      {
+                        "Sha256": "y",
+                        "DecompressedLength": 1,
+                        "Occurrences": [
+                          {
+                            "Key": {
+                              "Type": 1,
+                              "Group": 0,
+                              "Instance": 1,
+                              "Tgi": "00000001:00000000:0000000000000001"
+                            },
+                            "PackagePath": "b",
+                            "Ordinal": 0,
+                            "PackageStamp": {
+                              "Length": 100,
+                              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                              "Identity": null
+                            },
+                            "Sha256": "y",
+                            "DecompressedLength": 1,
+                            "Issue": null,
+                            "IsSuccess": true
+                          }
+                        ]
+                      },
+                      {
+                        "Sha256": "x",
+                        "DecompressedLength": 1,
+                        "Occurrences": [
+                          {
+                            "Key": {
+                              "Type": 1,
+                              "Group": 0,
+                              "Instance": 1,
+                              "Tgi": "00000001:00000000:0000000000000001"
+                            },
+                            "PackagePath": "a",
+                            "Ordinal": 1,
+                            "PackageStamp": {
+                              "Length": 100,
+                              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                              "Identity": null
+                            },
+                            "Sha256": "x",
+                            "DecompressedLength": 1,
+                            "Issue": null,
+                            "IsSuccess": true
+                          }
+                        ]
+                      }
+                    ],
+                    "Uncompared": [
+                      {
+                        "Key": {
+                          "Type": 1,
+                          "Group": 0,
+                          "Instance": 1,
+                          "Tgi": "00000001:00000000:0000000000000001"
+                        },
+                        "PackagePath": "broken",
+                        "Ordinal": 2,
+                        "PackageStamp": {
+                          "Length": 100,
+                          "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                          "Identity": null
+                        },
+                        "Sha256": null,
+                        "DecompressedLength": null,
+                        "Issue": {
+                          "Code": "test-failure",
+                          "Stage": 3,
+                          "Message": "test",
+                          "Detail": null
+                        },
+                        "IsSuccess": false
+                      }
+                    ],
+                    "IsComplete": false,
+                    "HasConfirmedDifference": true,
+                    "Verdict": 1
+                  },
+                  "HasConfirmedDifference": true,
+                  "HasConfirmedIdentical": false,
+                  "HasIncomplete": false,
+                  "Key": {
+                    "Type": 1,
+                    "Group": 0,
+                    "Instance": 1,
+                    "Tgi": "00000001:00000000:0000000000000001"
+                  },
+                  "Priority": 0
+                },
+                {
+                  "Comparison": {
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 2,
+                      "Tgi": "00000001:00000000:0000000000000002"
+                    },
+                    "ContentGroups": [
+                      {
+                        "Sha256": "y",
+                        "DecompressedLength": 1,
+                        "Occurrences": [
+                          {
+                            "Key": {
+                              "Type": 1,
+                              "Group": 0,
+                              "Instance": 2,
+                              "Tgi": "00000001:00000000:0000000000000002"
+                            },
+                            "PackagePath": "b",
+                            "Ordinal": 0,
+                            "PackageStamp": {
+                              "Length": 100,
+                              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                              "Identity": null
+                            },
+                            "Sha256": "y",
+                            "DecompressedLength": 1,
+                            "Issue": null,
+                            "IsSuccess": true
+                          }
+                        ]
+                      },
+                      {
+                        "Sha256": "x",
+                        "DecompressedLength": 1,
+                        "Occurrences": [
+                          {
+                            "Key": {
+                              "Type": 1,
+                              "Group": 0,
+                              "Instance": 2,
+                              "Tgi": "00000001:00000000:0000000000000002"
+                            },
+                            "PackagePath": "a",
+                            "Ordinal": 1,
+                            "PackageStamp": {
+                              "Length": 100,
+                              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                              "Identity": null
+                            },
+                            "Sha256": "x",
+                            "DecompressedLength": 1,
+                            "Issue": null,
+                            "IsSuccess": true
+                          }
+                        ]
+                      }
+                    ],
+                    "Uncompared": [],
+                    "IsComplete": true,
+                    "HasConfirmedDifference": true,
+                    "Verdict": 1
+                  },
+                  "HasConfirmedDifference": true,
+                  "HasConfirmedIdentical": false,
+                  "HasIncomplete": false,
+                  "Key": {
+                    "Type": 1,
+                    "Group": 0,
+                    "Instance": 2,
+                    "Tgi": "00000001:00000000:0000000000000002"
+                  },
+                  "Priority": 0
+                },
+                {
+                  "Comparison": {
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 3,
+                      "Tgi": "00000001:00000000:0000000000000003"
+                    },
+                    "ContentGroups": [
+                      {
+                        "Sha256": "y",
+                        "DecompressedLength": 1,
+                        "Occurrences": [
+                          {
+                            "Key": {
+                              "Type": 1,
+                              "Group": 0,
+                              "Instance": 3,
+                              "Tgi": "00000001:00000000:0000000000000003"
+                            },
+                            "PackagePath": "b",
+                            "Ordinal": 0,
+                            "PackageStamp": {
+                              "Length": 100,
+                              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                              "Identity": null
+                            },
+                            "Sha256": "y",
+                            "DecompressedLength": 1,
+                            "Issue": null,
+                            "IsSuccess": true
+                          }
+                        ]
+                      },
+                      {
+                        "Sha256": "x",
+                        "DecompressedLength": 1,
+                        "Occurrences": [
+                          {
+                            "Key": {
+                              "Type": 1,
+                              "Group": 0,
+                              "Instance": 3,
+                              "Tgi": "00000001:00000000:0000000000000003"
+                            },
+                            "PackagePath": "a",
+                            "Ordinal": 1,
+                            "PackageStamp": {
+                              "Length": 100,
+                              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                              "Identity": null
+                            },
+                            "Sha256": "x",
+                            "DecompressedLength": 1,
+                            "Issue": null,
+                            "IsSuccess": true
+                          }
+                        ]
+                      }
+                    ],
+                    "Uncompared": [],
+                    "IsComplete": true,
+                    "HasConfirmedDifference": true,
+                    "Verdict": 1
+                  },
+                  "HasConfirmedDifference": true,
+                  "HasConfirmedIdentical": false,
+                  "HasIncomplete": false,
+                  "Key": {
+                    "Type": 1,
+                    "Group": 0,
+                    "Instance": 3,
+                    "Tgi": "00000001:00000000:0000000000000003"
+                  },
+                  "Priority": 0
+                }
+              ],
+              "HasConfirmedDifference": true,
+              "HasConfirmedIdentical": false,
+              "HasIncomplete": false,
+              "IsSuspectedModVersionPair": false,
+              "Priority": 0
+            },
+            "Kind": 0,
+            "Overlap": 0.42857142857142855,
+            "ContainedPath": "a",
+            "BundlePath": "b",
+            "SharedResourceCount": 3,
+            "HasDifferentContent": true,
+            "HasIdenticalContent": false
+          }
+        ],
+        "BundlePath": "b",
+        "BundleUniqueResourceCount": 4
+      }
+    ],
+    "ExcludedFiles": [
+      {
+        "Path": "broken",
+        "ScanIssues": [],
+        "FailedResources": [
+          {
+            "Key": {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 1,
+              "Tgi": "00000001:00000000:0000000000000001"
+            },
+            "PackagePath": "broken",
+            "Ordinal": 2,
+            "PackageStamp": {
+              "Length": 100,
+              "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+              "Identity": null
+            },
+            "Sha256": null,
+            "DecompressedLength": null,
+            "Issue": {
+              "Code": "test-failure",
+              "Stage": 3,
+              "Message": "test",
+              "Detail": null
+            },
+            "IsSuccess": false
+          }
+        ],
+        "InvalidVersions": [],
+        "InputIssues": []
+      }
+    ],
+    "GroupsByFile": {
+      "a": [
+        {
+          "Kind": 0,
+          "Members": [
+            {
+              "Path": "a",
+              "ScannedStamp": {
+                "Length": 100,
+                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                "Identity": null
+              },
+              "ResourceCount": 3,
+              "SharedResourceCount": 3,
+              "UniqueResourceCount": 0,
+              "IsBundle": false,
+              "ContainedContentIdentical": false
+            },
+            {
+              "Path": "b",
+              "ScannedStamp": {
+                "Length": 100,
+                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                "Identity": null
+              },
+              "ResourceCount": 7,
+              "SharedResourceCount": 3,
+              "UniqueResourceCount": 4,
+              "IsBundle": true,
+              "ContainedContentIdentical": null
+            }
+          ],
+          "ResourceKeys": [
+            {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 1,
+              "Tgi": "00000001:00000000:0000000000000001"
+            },
+            {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 2,
+              "Tgi": "00000001:00000000:0000000000000002"
+            },
+            {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 3,
+              "Tgi": "00000001:00000000:0000000000000003"
+            }
+          ],
+          "Relations": [
+            {
+              "Pair": {
+                "FirstPath": "a",
+                "SecondPath": "b",
+                "DifferentResourceCount": 3,
+                "IdenticalResourceCount": 0,
+                "IncompleteResourceCount": 0,
+                "FirstContainedInSecond": false,
+                "SecondContainedInFirst": false,
+                "Resources": [
+                  {
+                    "Comparison": {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 1,
+                        "Tgi": "00000001:00000000:0000000000000001"
+                      },
+                      "ContentGroups": [
+                        {
+                          "Sha256": "y",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 1,
+                                "Tgi": "00000001:00000000:0000000000000001"
+                              },
+                              "PackagePath": "b",
+                              "Ordinal": 0,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "y",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        },
+                        {
+                          "Sha256": "x",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 1,
+                                "Tgi": "00000001:00000000:0000000000000001"
+                              },
+                              "PackagePath": "a",
+                              "Ordinal": 1,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "x",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        }
+                      ],
+                      "Uncompared": [
+                        {
+                          "Key": {
+                            "Type": 1,
+                            "Group": 0,
+                            "Instance": 1,
+                            "Tgi": "00000001:00000000:0000000000000001"
+                          },
+                          "PackagePath": "broken",
+                          "Ordinal": 2,
+                          "PackageStamp": {
+                            "Length": 100,
+                            "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                            "Identity": null
+                          },
+                          "Sha256": null,
+                          "DecompressedLength": null,
+                          "Issue": {
+                            "Code": "test-failure",
+                            "Stage": 3,
+                            "Message": "test",
+                            "Detail": null
+                          },
+                          "IsSuccess": false
+                        }
+                      ],
+                      "IsComplete": false,
+                      "HasConfirmedDifference": true,
+                      "Verdict": 1
+                    },
+                    "HasConfirmedDifference": true,
+                    "HasConfirmedIdentical": false,
+                    "HasIncomplete": false,
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 1,
+                      "Tgi": "00000001:00000000:0000000000000001"
+                    },
+                    "Priority": 0
+                  },
+                  {
+                    "Comparison": {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 2,
+                        "Tgi": "00000001:00000000:0000000000000002"
+                      },
+                      "ContentGroups": [
+                        {
+                          "Sha256": "y",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 2,
+                                "Tgi": "00000001:00000000:0000000000000002"
+                              },
+                              "PackagePath": "b",
+                              "Ordinal": 0,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "y",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        },
+                        {
+                          "Sha256": "x",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 2,
+                                "Tgi": "00000001:00000000:0000000000000002"
+                              },
+                              "PackagePath": "a",
+                              "Ordinal": 1,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "x",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        }
+                      ],
+                      "Uncompared": [],
+                      "IsComplete": true,
+                      "HasConfirmedDifference": true,
+                      "Verdict": 1
+                    },
+                    "HasConfirmedDifference": true,
+                    "HasConfirmedIdentical": false,
+                    "HasIncomplete": false,
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 2,
+                      "Tgi": "00000001:00000000:0000000000000002"
+                    },
+                    "Priority": 0
+                  },
+                  {
+                    "Comparison": {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 3,
+                        "Tgi": "00000001:00000000:0000000000000003"
+                      },
+                      "ContentGroups": [
+                        {
+                          "Sha256": "y",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 3,
+                                "Tgi": "00000001:00000000:0000000000000003"
+                              },
+                              "PackagePath": "b",
+                              "Ordinal": 0,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "y",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        },
+                        {
+                          "Sha256": "x",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 3,
+                                "Tgi": "00000001:00000000:0000000000000003"
+                              },
+                              "PackagePath": "a",
+                              "Ordinal": 1,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "x",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        }
+                      ],
+                      "Uncompared": [],
+                      "IsComplete": true,
+                      "HasConfirmedDifference": true,
+                      "Verdict": 1
+                    },
+                    "HasConfirmedDifference": true,
+                    "HasConfirmedIdentical": false,
+                    "HasIncomplete": false,
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 3,
+                      "Tgi": "00000001:00000000:0000000000000003"
+                    },
+                    "Priority": 0
+                  }
+                ],
+                "HasConfirmedDifference": true,
+                "HasConfirmedIdentical": false,
+                "HasIncomplete": false,
+                "IsSuspectedModVersionPair": false,
+                "Priority": 0
+              },
+              "Kind": 0,
+              "Overlap": 0.42857142857142855,
+              "ContainedPath": "a",
+              "BundlePath": "b",
+              "SharedResourceCount": 3,
+              "HasDifferentContent": true,
+              "HasIdenticalContent": false
+            }
+          ],
+          "BundlePath": "b",
+          "BundleUniqueResourceCount": 4
+        }
+      ],
+      "b": [
+        {
+          "Kind": 0,
+          "Members": [
+            {
+              "Path": "a",
+              "ScannedStamp": {
+                "Length": 100,
+                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                "Identity": null
+              },
+              "ResourceCount": 3,
+              "SharedResourceCount": 3,
+              "UniqueResourceCount": 0,
+              "IsBundle": false,
+              "ContainedContentIdentical": false
+            },
+            {
+              "Path": "b",
+              "ScannedStamp": {
+                "Length": 100,
+                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                "Identity": null
+              },
+              "ResourceCount": 7,
+              "SharedResourceCount": 3,
+              "UniqueResourceCount": 4,
+              "IsBundle": true,
+              "ContainedContentIdentical": null
+            }
+          ],
+          "ResourceKeys": [
+            {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 1,
+              "Tgi": "00000001:00000000:0000000000000001"
+            },
+            {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 2,
+              "Tgi": "00000001:00000000:0000000000000002"
+            },
+            {
+              "Type": 1,
+              "Group": 0,
+              "Instance": 3,
+              "Tgi": "00000001:00000000:0000000000000003"
+            }
+          ],
+          "Relations": [
+            {
+              "Pair": {
+                "FirstPath": "a",
+                "SecondPath": "b",
+                "DifferentResourceCount": 3,
+                "IdenticalResourceCount": 0,
+                "IncompleteResourceCount": 0,
+                "FirstContainedInSecond": false,
+                "SecondContainedInFirst": false,
+                "Resources": [
+                  {
+                    "Comparison": {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 1,
+                        "Tgi": "00000001:00000000:0000000000000001"
+                      },
+                      "ContentGroups": [
+                        {
+                          "Sha256": "y",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 1,
+                                "Tgi": "00000001:00000000:0000000000000001"
+                              },
+                              "PackagePath": "b",
+                              "Ordinal": 0,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "y",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        },
+                        {
+                          "Sha256": "x",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 1,
+                                "Tgi": "00000001:00000000:0000000000000001"
+                              },
+                              "PackagePath": "a",
+                              "Ordinal": 1,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "x",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        }
+                      ],
+                      "Uncompared": [
+                        {
+                          "Key": {
+                            "Type": 1,
+                            "Group": 0,
+                            "Instance": 1,
+                            "Tgi": "00000001:00000000:0000000000000001"
+                          },
+                          "PackagePath": "broken",
+                          "Ordinal": 2,
+                          "PackageStamp": {
+                            "Length": 100,
+                            "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                            "Identity": null
+                          },
+                          "Sha256": null,
+                          "DecompressedLength": null,
+                          "Issue": {
+                            "Code": "test-failure",
+                            "Stage": 3,
+                            "Message": "test",
+                            "Detail": null
+                          },
+                          "IsSuccess": false
+                        }
+                      ],
+                      "IsComplete": false,
+                      "HasConfirmedDifference": true,
+                      "Verdict": 1
+                    },
+                    "HasConfirmedDifference": true,
+                    "HasConfirmedIdentical": false,
+                    "HasIncomplete": false,
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 1,
+                      "Tgi": "00000001:00000000:0000000000000001"
+                    },
+                    "Priority": 0
+                  },
+                  {
+                    "Comparison": {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 2,
+                        "Tgi": "00000001:00000000:0000000000000002"
+                      },
+                      "ContentGroups": [
+                        {
+                          "Sha256": "y",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 2,
+                                "Tgi": "00000001:00000000:0000000000000002"
+                              },
+                              "PackagePath": "b",
+                              "Ordinal": 0,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "y",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        },
+                        {
+                          "Sha256": "x",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 2,
+                                "Tgi": "00000001:00000000:0000000000000002"
+                              },
+                              "PackagePath": "a",
+                              "Ordinal": 1,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "x",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        }
+                      ],
+                      "Uncompared": [],
+                      "IsComplete": true,
+                      "HasConfirmedDifference": true,
+                      "Verdict": 1
+                    },
+                    "HasConfirmedDifference": true,
+                    "HasConfirmedIdentical": false,
+                    "HasIncomplete": false,
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 2,
+                      "Tgi": "00000001:00000000:0000000000000002"
+                    },
+                    "Priority": 0
+                  },
+                  {
+                    "Comparison": {
+                      "Key": {
+                        "Type": 1,
+                        "Group": 0,
+                        "Instance": 3,
+                        "Tgi": "00000001:00000000:0000000000000003"
+                      },
+                      "ContentGroups": [
+                        {
+                          "Sha256": "y",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 3,
+                                "Tgi": "00000001:00000000:0000000000000003"
+                              },
+                              "PackagePath": "b",
+                              "Ordinal": 0,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "y",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        },
+                        {
+                          "Sha256": "x",
+                          "DecompressedLength": 1,
+                          "Occurrences": [
+                            {
+                              "Key": {
+                                "Type": 1,
+                                "Group": 0,
+                                "Instance": 3,
+                                "Tgi": "00000001:00000000:0000000000000003"
+                              },
+                              "PackagePath": "a",
+                              "Ordinal": 1,
+                              "PackageStamp": {
+                                "Length": 100,
+                                "LastWriteTimeUtc": "1970-01-01T00:00:00Z",
+                                "Identity": null
+                              },
+                              "Sha256": "x",
+                              "DecompressedLength": 1,
+                              "Issue": null,
+                              "IsSuccess": true
+                            }
+                          ]
+                        }
+                      ],
+                      "Uncompared": [],
+                      "IsComplete": true,
+                      "HasConfirmedDifference": true,
+                      "Verdict": 1
+                    },
+                    "HasConfirmedDifference": true,
+                    "HasConfirmedIdentical": false,
+                    "HasIncomplete": false,
+                    "Key": {
+                      "Type": 1,
+                      "Group": 0,
+                      "Instance": 3,
+                      "Tgi": "00000001:00000000:0000000000000003"
+                    },
+                    "Priority": 0
+                  }
+                ],
+                "HasConfirmedDifference": true,
+                "HasConfirmedIdentical": false,
+                "HasIncomplete": false,
+                "IsSuspectedModVersionPair": false,
+                "Priority": 0
+              },
+              "Kind": 0,
+              "Overlap": 0.42857142857142855,
+              "ContainedPath": "a",
+              "BundlePath": "b",
+              "SharedResourceCount": 3,
+              "HasDifferentContent": true,
+              "HasIdenticalContent": false
+            }
+          ],
+          "BundlePath": "b",
+          "BundleUniqueResourceCount": 4
+        }
+      ]
+    }
+  }
+}

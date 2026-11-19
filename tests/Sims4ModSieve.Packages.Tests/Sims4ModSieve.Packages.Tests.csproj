@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
+    <ProjectReference Include="..\..\src\Sims4ModSieve.Cli\Sims4ModSieve.Cli.csproj" />
   </ItemGroup>
 
   <!--

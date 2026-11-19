@@ -8,5 +8,6 @@
     <ProjectReference Include="..\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
     <EmbeddedResource Include="..\..\AI-GUIDE.md" LogicalName="AI-GUIDE.md" />
     <InternalsVisibleTo Include="Sims4ModSieve.Desktop.Tests" />
+    <InternalsVisibleTo Include="Sims4ModSieve.Packages.Tests" />
   </ItemGroup>
 </Project>

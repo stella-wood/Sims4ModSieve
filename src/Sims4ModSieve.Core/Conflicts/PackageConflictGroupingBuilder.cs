@@ -1,15 +1,18 @@
 using System.Collections.ObjectModel;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
+using Sims4ModSieve.Core.Diagnostics;
+using Sims4ModSieve.Core.Scripts;
 
 namespace Sims4ModSieve.Core.Conflicts;
 
 /// <summary>Prepare 和 Build 均只处理报告中的内存数据，不持有读取器。</summary>
-public sealed class PackageConflictGroupingBuilder
+public sealed class PackageConflictGroupingBuilder(long? memoryBudgetBytes = null)
 {
     public PackageConflictGroupingInput Prepare(PackageConflictScanReport scanReport,
         ResourceContentComparisonReport contentReport, bool excludeNameMap = true,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, DuplicateReport? duplicates = null,
+        ScriptModuleScanReport? scripts = null, Action<ConflictGroupingSize>? sizeObserved = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (scanReport.ResourceInventories.Count != scanReport.AnalyzedPackageCount)
@@ -83,8 +86,37 @@ public sealed class PackageConflictGroupingBuilder
                     Exit(occurrence.PackagePath).Input.Add(new("missing-resource-comparison", "缺少撞号资源内容比较。", candidate.Key));
             }
         }
-        var pairs = new ConflictPairSummaryBuilder().BuildGroupingPackagePairs(contentReport, excludedTypes,
-            new HashSet<string>(exits.Keys, PathRules.Comparer), cancellationToken);
+        var excludedPaths = new HashSet<string>(exits.Keys, PathRules.Comparer);
+        var changedPaths = (duplicates?.Issues ?? []).Where(issue => issue.Code == "file-changed-during-hash")
+            .Select(issue => issue.Path).ToHashSet(PathRules.Comparer);
+        var representatives = new Dictionary<string, string>(PathRules.Comparer);
+        var redundantCopyCount = 0;
+        foreach (var duplicate in duplicates?.Groups ?? [])
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(duplicate.Sha256)) continue;
+            var eligible = new List<DuplicateFile>();
+            foreach (var file in duplicate.Files)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (inventories.ContainsKey(file.Path) && !excludedPaths.Contains(file.Path)
+                    && !changedPaths.Contains(file.Path) && file.Size == duplicate.FileSize
+                    && ConflictResultGrouping.MatchesScannedStamp(file, scanReport, scripts))
+                    eligible.Add(file);
+            }
+            if (eligible.Count < 2) continue;
+            var keep = new DuplicateSelectionService().Select(eligible.ToArray()).KeepPath;
+            foreach (var file in eligible) representatives[file.Path] = keep;
+            redundantCopyCount += eligible.Count - 1;
+        }
+        var pairBuilder = new ConflictPairSummaryBuilder();
+        var size = pairBuilder.EstimateGroupingPackagePairs(contentReport, excludedTypes, excludedPaths,
+            representatives, redundantCopyCount, memoryBudgetBytes, cancellationToken);
+        ScanPerformance.RecordDiagnostic(size.DiagnosticText);
+        sizeObserved?.Invoke(size);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (size.ExceedsLimit) throw new ConflictGroupingTooLargeException(size);
+        var pairs = pairBuilder.BuildGroupingPackagePairs(contentReport, excludedTypes, excludedPaths, cancellationToken);
         var files = new List<PackageConflictGroupingFile>();
         foreach (var inventory in inventories.Values.OrderBy(item => item.Path, PathRules.Comparer).ThenBy(item => item.Path, StringComparer.Ordinal))
         {

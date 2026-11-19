@@ -148,10 +148,11 @@ public sealed partial class ConflictResultSession
 
     public void Replace(PackageConflictScanReport packages, ResourceContentComparisonReport contents,
         ScriptModuleScanReport scripts, CancellationToken cancellationToken = default,
-        DuplicateReport? duplicates = null)
+        DuplicateReport? duplicates = null,
+        long? memoryBudgetBytes = null)
     {
         var (prepared, grouping, changedPaths, stampMismatches) =
-            ConflictResultGrouping.BuildPackages(packages, contents, scripts, duplicates, cancellationToken);
+            ConflictResultGrouping.BuildPackages(packages, contents, scripts, duplicates, cancellationToken, memoryBudgetBytes);
         var builder = new ConflictPairSummaryBuilder();
         var resources = builder.BuildPackagePairs(packages, contents, cancellationToken)
             .Where(pair => !changedPaths.Contains(pair.FirstPath) && !changedPaths.Contains(pair.SecondPath)).ToArray();
