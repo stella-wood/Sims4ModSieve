@@ -14,6 +14,8 @@
         <SolidColorBrush x:Key="HoverTextBrush" Color="#603B8C" />
         <SolidColorBrush x:Key="AccentSoftBrush" Color="#E6E0ED" />
         <SolidColorBrush x:Key="BorderBrush" Color="#D5D0CA" />
+        <SolidColorBrush x:Key="ComboBoxFillBrush" Color="#F2F1EF" />
+        <SolidColorBrush x:Key="ComboBoxActiveFillBrush" Color="#E9E6E2" />
 
         <Style x:Key="ResultVerticalScrollBarStyle" TargetType="ScrollBar">
             <Setter Property="Width" Value="12" />
@@ -228,6 +230,125 @@
                     <Setter Property="Cursor" Value="Arrow" />
                 </Trigger>
             </Style.Triggers>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="Background" Value="{StaticResource ComboBoxFillBrush}" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="PickerFrame" Background="{TemplateBinding Background}"
+                                    BorderBrush="Transparent" BorderThickness="1" CornerRadius="4" Padding="11,6">
+                                <Grid>
+                                    <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+                                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                      ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                                      ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                                      VerticalAlignment="Center" />
+                                    <Path x:Name="DropDownArrow" Data="M 0,0 L 4,4 L 8,0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          Stroke="{StaticResource MutedBrush}" StrokeThickness="1.25" />
+                                </Grid>
+                            </Border>
+                            <ToggleButton x:Name="DropDownToggle" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent" />
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup" Placement="Bottom" Focusable="False" AllowsTransparency="True"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}">
+                                <!-- 弹窗按直接子元素定位，位移只作用在内层菜单。 -->
+                                <Grid Margin="0,4,0,0">
+                                    <Border x:Name="PickerMenu" MinWidth="{TemplateBinding ActualWidth}" Padding="3"
+                                            Background="White" BorderBrush="#E6E2DE" BorderThickness="1" CornerRadius="4">
+                                        <Border.RenderTransform><TranslateTransform /></Border.RenderTransform>
+                                        <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}" Focusable="False" VerticalScrollBarVisibility="Auto">
+                                            <ItemsPresenter />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger SourceName="DropDownToggle" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PickerFrame" Property="Background" Value="{StaticResource ComboBoxActiveFillBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="DropDownArrow" Property="Stroke" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="PickerFrame" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding Path=(SystemParameters.ClientAreaAnimation)}" Value="True">
+                                <Setter TargetName="PART_Popup" Property="PopupAnimation" Value="Fade" />
+                            </DataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsDropDownOpen, RelativeSource={RelativeSource Self}}" Value="True" />
+                                    <Condition Binding="{Binding Path=(SystemParameters.ClientAreaAnimation)}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <MultiDataTrigger.EnterActions>
+                                    <BeginStoryboard x:Name="OpenPickerMenu">
+                                        <Storyboard FillBehavior="Stop">
+                                            <DoubleAnimation Storyboard.TargetName="PickerMenu" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                             From="-4" To="0" Duration="0:0:0.15" DecelerationRatio="0.7" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiDataTrigger.EnterActions>
+                                <MultiDataTrigger.ExitActions>
+                                    <RemoveStoryboard BeginStoryboardName="OpenPickerMenu" />
+                                </MultiDataTrigger.ExitActions>
+                            </MultiDataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsDropDownOpen, RelativeSource={RelativeSource Self}}" Value="False" />
+                                    <Condition Binding="{Binding Path=(SystemParameters.ClientAreaAnimation)}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <MultiDataTrigger.EnterActions>
+                                    <BeginStoryboard x:Name="ClosePickerMenu">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="PickerMenu" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                             To="-4" Duration="0:0:0.15" AccelerationRatio="0.7" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiDataTrigger.EnterActions>
+                                <MultiDataTrigger.ExitActions>
+                                    <RemoveStoryboard BeginStoryboardName="ClosePickerMenu" />
+                                </MultiDataTrigger.ExitActions>
+                            </MultiDataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="Option" Background="Transparent" Padding="8,5" CornerRadius="3">
+                                        <ContentPresenter IsHitTestVisible="False" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsHighlighted" Value="True">
+                                            <Setter TargetName="Option" Property="Background" Value="{StaticResource ComboBoxFillBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Option" Property="Background" Value="{StaticResource ComboBoxActiveFillBrush}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="CheckBox">
