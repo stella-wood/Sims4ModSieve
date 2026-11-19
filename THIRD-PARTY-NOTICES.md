@@ -57,6 +57,12 @@ Copyright © 2014–2025 Adobe, with Reserved Font Name “Source”. The font i
 its license is included at `Assets/Fonts/source-han-sans-LICENSE.txt` and copied to build/publish output.
 Source: https://github.com/adobe-fonts/source-han-sans (the prototype's existing CN Light font asset).
 
+## Noto Sans SC — SIL Open Font License 1.1
+
+`Assets/Fonts/Sims4ModSieveSettingsTitle-Semibold.ttf` 取自 [Google Fonts 的 Noto Sans SC](https://github.com/google/fonts/tree/cc5661d43cd4f9aad5567033a8e15ca28dc35c86/ofl/notosanssc)。
+版权归 Adobe（2014–2021），保留字体名为 “Source”。应用字体将字重固定为 600，只保留设置页右侧五个分类标题用到的字形，并以 “Sims4ModSieve Settings Title” 命名。
+衍生字体继续采用 SIL Open Font License 1.1，完整许可证见 `Assets/Fonts/noto-sans-sc-LICENSE.txt`，随构建和发布产物分发。
+
 ## 感谢名单彩蛋图标
 
 四份作者提供的 SVG 已转换为 `Assets/CreditsIcons.xaml` 内的 WPF 矢量几何，不另行分发 SVG 文件。

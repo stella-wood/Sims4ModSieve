@@ -1,6 +1,7 @@
 <Application x:Class="Sims4ModSieve.Desktop.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=System.Runtime"
              xmlns:local="clr-namespace:Sims4ModSieve.Desktop.Infrastructure">
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
@@ -16,6 +17,7 @@
         <SolidColorBrush x:Key="BorderBrush" Color="#D5D0CA" />
         <SolidColorBrush x:Key="ComboBoxFillBrush" Color="#F2F1EF" />
         <SolidColorBrush x:Key="ComboBoxActiveFillBrush" Color="#E9E6E2" />
+        <sys:Double x:Key="FontSizeLarge">28</sys:Double>
 
         <Style x:Key="ResultVerticalScrollBarStyle" TargetType="ScrollBar">
             <Setter Property="Width" Value="12" />
@@ -70,6 +72,12 @@
 
         <Style x:Key="SectionTitleTextStyle" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="SettingsTitleTextStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="/Sims4ModSieve;component/Assets/Fonts/#Sims4ModSieve Settings Title, Microsoft YaHei UI" />
+            <Setter Property="FontSize" Value="{StaticResource FontSizeLarge}" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 

@@ -31,9 +31,7 @@
                 <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
             </Style.Triggers>
         </Style>
-        <Style x:Key="SettingsTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="28" />
-            <Setter Property="FontWeight" Value="SemiBold" />
+        <Style x:Key="SettingsTitle" TargetType="TextBlock" BasedOn="{StaticResource SettingsTitleTextStyle}">
             <Setter Property="Margin" Value="0,0,0,38" />
         </Style>
         <Style x:Key="SettingsButton" TargetType="Button">
