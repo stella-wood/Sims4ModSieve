@@ -450,6 +450,7 @@ public sealed partial class ConflictResultSession
     public static string GetResourceTypeDisplayName(uint type) => type switch
     {
         // 离线核对 LlamaLogic.Packages 3.8.2 ResourceType 常量及随包 XML。
+        // 当前依赖已升到 4.9.0，这张表没有按 4.9.0 重新核对。
         0x034AEECB => "捏人部件",
         0x545AC67A => "模拟数据",
         0xC0DB5AE7 => "物件定义",
