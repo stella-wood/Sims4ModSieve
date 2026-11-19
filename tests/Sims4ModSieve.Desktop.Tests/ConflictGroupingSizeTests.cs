@@ -8,6 +8,7 @@ using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Settings;
 using Sims4ModSieve.Core.Tests;
 using Sims4ModSieve.Core.Tests.Packages;
+using Sims4ModSieve.Desktop.Components;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Desktop.ViewModels;
 
@@ -86,23 +87,24 @@ public sealed class ConflictGroupingSizeTests
         var checkedDialog = false;
         owner.Dispatcher.BeginInvoke(() =>
         {
-            var dialog = Application.Current.Windows.OfType<MultiFileConfirmationWindow>().Single();
+            var dialog = Application.Current.Windows.OfType<WarningDialog>().Single();
             try
             {
                 dialog.UpdateLayout();
                 Assert.AreSame(owner, dialog.Owner);
-                Assert.AreEqual("扫描没有完成", dialog.Title);
+                Assert.AreEqual("扫描未完成", dialog.Title);
                 var message = (TextBlock)dialog.FindName("MessageText");
                 Assert.AreEqual(duplicateCopies
-                    ? "⚠️文件夹内存在大量相同副本（3份），建议优先进行重复检测"
-                    : "⚠️所选文件冲突资源数过多，无法完整处理，请分批检测", message.Text);
+                    ? "文件夹内存在大量相同副本（3\u2060份），建议优先进行重复检测"
+                    : "所选文件冲突资源数过多，无法完整处理，请分批检测", message.Text);
                 var buttons = ConflictPageRenderTests.Descendants<Button>(dialog).Where(button => button.IsVisible).ToArray();
                 CollectionAssert.AreEquivalent(duplicateCopies ? new[] { "关闭", "前往重复检测" } : new[] { "关闭" },
                     buttons.Select(button => (string)button.Content).ToArray());
+                Assert.IsTrue(buttons.Single(button => (string)button.Content == "关闭").IsCancel);
                 var button = buttons.Single(button => (string)button.Content == (navigate ? "前往重复检测" : "关闭"));
-                var point = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), dialog);
+                var point = button.TranslatePoint(new Point(button.ActualWidth / 10, button.ActualHeight / 2), dialog);
                 var hit = dialog.InputHitTest(point) as DependencyObject;
-                Assert.IsTrue(Contains(button, hit), "按钮中心应命中按钮及其子控件。");
+                Assert.IsTrue(Contains(button, hit), "按钮边缘的留白应命中按钮及其子控件。");
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 checkedDialog = true;
             }

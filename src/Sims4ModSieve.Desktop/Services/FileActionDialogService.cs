@@ -1,5 +1,6 @@
 using System.Windows;
 using Sims4ModSieve.Core.Conflicts;
+using Sims4ModSieve.Desktop.Components;
 
 namespace Sims4ModSieve.Desktop.Services;
 
@@ -18,7 +19,15 @@ public sealed class FileActionDialogService : IFileActionDialogService
 {
     public bool ShowConflictGroupingWarning(ConflictGroupingSize size)
     {
-        var dialog = new MultiFileConfirmationWindow(size)
+        var duplicateCopies = size.Reason == "duplicate-copies";
+        var message = size.WarningMessage.TrimStart('\u26A0', '\uFE0F');
+        if (duplicateCopies)
+        {
+            // 保持括号内的副本数量在同一行，同时允许正文自然换行。
+            message = message.Replace("份）", "\u2060份）", StringComparison.Ordinal);
+        }
+
+        var dialog = new WarningDialog("扫描未完成", message, duplicateCopies ? "前往重复检测" : null)
         {
             Owner = Application.Current?.MainWindow,
         };
