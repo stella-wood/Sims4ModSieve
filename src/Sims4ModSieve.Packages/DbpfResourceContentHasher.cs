@@ -22,6 +22,7 @@ namespace Sims4ModSieve.Packages;
 /// <item>RefPack 同样按头部声明大小预分配，回引用不做越界检查，不支持取消，结尾不核对长度；</item>
 /// <item>没有公开的流式读取入口。</item>
 /// </list>
+/// 以上是对 3.8.2 的核对结论；当前依赖已升到 4.9.0，这些行为没有在 4.9.0 上重新核对，改动本类前先复核。
 /// 这些行为都无法在调用前用声明值完全防住，所以内容读取由本类直接完成；
 /// 索引读取仍由 <see cref="LlamaLogicPackageIndexReader"/> 负责，本类只按同一布局复核目标记录。
 /// <para>
@@ -207,6 +208,7 @@ public sealed class DbpfResourceContentHasher(
     /// 位域 → 公共常量 → 每条 [Type][Group][InstanceHi][InstanceLo][Position][Size][MemSize]
     /// （公共常量对应的字段不逐条存储），Size 最高位置位时尾随 [Compression u16][Committed u16]。
     /// 没有扩展字段的记录按未压缩处理，与该库相同。
+    /// 逐字段对照是按 3.8.2 做的；当前依赖已升到 4.9.0，未重新对照。
     /// </summary>
     private async Task<LocateResult> LocateAsync(
         Stream stream,
