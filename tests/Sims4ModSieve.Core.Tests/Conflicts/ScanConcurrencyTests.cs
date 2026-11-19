@@ -90,7 +90,7 @@ public sealed class ScanConcurrencyTests
         Assert.AreEqual(limits, report.Limits);
         Assert.AreEqual(limits, hasher.Requests.Single().Limits);
         Assert.AreEqual(original, decision!.AdoptedLimit);
-        Assert.AreEqual(setting == DuplicateHashConcurrency.Auto ? 4 : 8, decision.PolicyLimit);
+        Assert.AreEqual(setting == DuplicateHashConcurrency.Auto ? PackageConflictScanner.SsdAutoMaxDegreeOfParallelism : 8, decision.PolicyLimit);
         StringAssert.Contains(decision.FallbackReason!, "有限总预算");
     }
 
@@ -123,13 +123,15 @@ public sealed class ScanConcurrencyTests
     }
 
     [TestMethod]
-    [DataRow(false, false, 4, "SSD")]
+    [DataRow(false, false, -1, "SSD")]
     [DataRow(false, true, 1, "SSD+HDD")]
     [DataRow(false, null, 2, "SSD+未知")]
     [DataRow(true, null, 1, "HDD+未知")]
     [DataRow(null, null, 2, "未知")]
     public async Task StoragePolicyUsesOnlyParticipatingRoots(bool? first, bool? second, int expected, string classification)
     {
+        // -1 表示全 SSD：package 阶段采用按逻辑 CPU 封顶的 8。
+        if (expected == -1) expected = PackageConflictScanner.SsdAutoMaxDegreeOfParallelism;
         using var temp = new TempDirectory();
         var ssd = temp.CreateDirectory("first");
         var other = temp.CreateDirectory("second");
@@ -152,6 +154,10 @@ public sealed class ScanConcurrencyTests
     }
 
     [TestMethod]
+    public void PackageSsdAutoLimitIsEightCappedByCpu() =>
+        Assert.AreEqual(Math.Clamp(Environment.ProcessorCount, 1, 8), PackageConflictScanner.SsdAutoMaxDegreeOfParallelism);
+
+    [TestMethod]
     public async Task ContentStoragePolicyExcludesPackagesWithoutCandidates()
     {
         using var temp = new TempDirectory();
@@ -169,7 +175,7 @@ public sealed class ScanConcurrencyTests
         await new ResourceContentComparer(new FakeResourceContentHasher().WithContent(a, 0, new string('A', 64))
             .WithContent(b, 0, new string('A', 64))).CompareAsync(new(packages.Candidates) { Options = options });
         Assert.AreEqual(1, decisions[0].AdoptedLimit);
-        Assert.AreEqual(4, decisions[1].AdoptedLimit);
+        Assert.AreEqual(PackageConflictScanner.SsdAutoMaxDegreeOfParallelism, decisions[1].AdoptedLimit);
         Assert.AreEqual(1, storage.Paths.Count(path => path == hdd));
     }
 
@@ -206,7 +212,7 @@ public sealed class ScanConcurrencyTests
             {
                 Options = new(StorageProfile: new FakeStorage(false)) { ConcurrencyDecided = value => decision = value },
             });
-        Assert.AreEqual(4, decision!.PolicyLimit);
+        Assert.AreEqual(PackageConflictScanner.SsdAutoMaxDegreeOfParallelism, decision!.PolicyLimit);
         Assert.AreEqual(3, decision.AdoptedLimit);
         StringAssert.Contains(decision.FallbackReason!, "显式低层");
     }

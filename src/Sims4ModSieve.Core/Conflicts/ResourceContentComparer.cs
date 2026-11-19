@@ -56,7 +56,7 @@ public sealed class ResourceContentComparer(IResourceContentHasher hasher) : IRe
             var parallelism = ScanConcurrencyDecision.Resolve("资源内容", options.Concurrency, options.StorageProfile,
                 batches.Select(batch => Path.GetDirectoryName(batch.Path) ?? batch.Path), cancellationToken,
                 options.ConcurrencyDecided, finite ? limits.MaxDegreeOfParallelism : request.MaxDegreeOfParallelism,
-                finite ? "有限总预算：保留调用者原内容并发" : null);
+                finite ? "有限总预算：保留调用者原内容并发" : null, DuplicateHashConcurrencyPolicy.PackageSsdAutoLimit);
             limits = limits with { MaxDegreeOfParallelism = parallelism };
         }
         else if (limits.MaxTotalProcessedBytes == long.MaxValue && request.MaxDegreeOfParallelism is { } parallelism)

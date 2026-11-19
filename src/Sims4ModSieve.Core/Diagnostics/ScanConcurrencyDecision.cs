@@ -15,7 +15,8 @@ public sealed record ScanConcurrencyDecision(
 
     internal static int Resolve(string stage, DuplicateHashConcurrency requested, IStorageProfile? storage,
         IEnumerable<string> participatingRoots, CancellationToken cancellationToken,
-        Action<ScanConcurrencyDecision>? observed = null, int? explicitLimit = null, string? fallbackReason = null)
+        Action<ScanConcurrencyDecision>? observed = null, int? explicitLimit = null, string? fallbackReason = null,
+        int ssdAutoLimit = DuplicateHashConcurrencyPolicy.DuplicateHashSsdAutoLimit)
     {
         var roots = participatingRoots.Distinct(PathRules.Comparer).ToArray();
         var volumes = new List<StorageVolumeProfile>();
@@ -28,7 +29,7 @@ public sealed record ScanConcurrencyDecision(
             }
         }
         cancellationToken.ThrowIfCancellationRequested();
-        var policy = DuplicateHashConcurrencyPolicy.Resolve(requested, volumes);
+        var policy = DuplicateHashConcurrencyPolicy.Resolve(requested, volumes, ssdAutoLimit);
         var adopted = explicitLimit ?? policy;
         // 空阶段没有 worker，不制造实际并发记录。
         if (roots.Length > 0)

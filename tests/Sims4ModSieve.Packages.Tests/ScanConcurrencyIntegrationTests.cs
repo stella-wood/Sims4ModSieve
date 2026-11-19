@@ -181,13 +181,15 @@ public sealed class ScanConcurrencyIntegrationTests
         var exit = await CliCommands.RunAsync(["scan-conflicts", "--source", a, "--source", b, "--json", "-"],
             new DuplicateSettingsStore(temp.CreateDirectory("settings")), output, error, storageProfile: storage);
         Assert.AreEqual(1, exit);
+        // 全 SSD 时 package 两阶段为 min(逻辑 CPU, 8)，整文件哈希仍为 4；其余存储三阶段一致。
+        int Expected(string stage) => storageClass == "SSD" && stage != "整文件哈希" ? PackageConflictScanner.SsdAutoMaxDegreeOfParallelism : expected;
         foreach (var stage in new[] { "package 索引", "资源内容", "整文件哈希" })
         {
             var line = error.ToString().Split('\n').Single(line => line.StartsWith($"阶段={stage}；", StringComparison.Ordinal));
-            StringAssert.Contains(line, $"请求档位=Auto；策略上限={expected}；采用上限={expected}；存储分类={storageClass}；回退原因=");
+            StringAssert.Contains(line, $"请求档位=Auto；策略上限={Expected(stage)}；采用上限={Expected(stage)}；存储分类={storageClass}；回退原因=");
         }
-        foreach (var name in new[] { "Package · 排序和读取索引", "资源内容 · 复核索引、读取、解压和哈希", "整文件核对 · 整文件 SHA-256" })
-            Assert.AreEqual(expected, performance.Stages.Single(stage => stage.Name == name).Parallelism);
+        foreach (var (name, stage) in new[] { ("Package · 排序和读取索引", "package 索引"), ("资源内容 · 复核索引、读取、解压和哈希", "资源内容"), ("整文件核对 · 整文件 SHA-256", "整文件哈希") })
+            Assert.AreEqual(Expected(stage), performance.Stages.Single(s => s.Name == name).Parallelism);
         using var json = JsonDocument.Parse(output.ToString());
         Assert.IsTrue(json.RootElement.GetProperty("complete").GetBoolean());
     }
@@ -224,7 +226,11 @@ public sealed class ScanConcurrencyIntegrationTests
         var exit = await CliCommands.RunAsync(["scan-conflicts", "--source", root, "--json", "-"],
             store, new StringWriter(), error, storageProfile: new FakeStorage(_ => false));
         Assert.AreEqual(1, exit);
-        Assert.AreEqual(3, error.ToString().Split('\n').Count(line => line.Contains("请求档位=Auto；策略上限=4；采用上限=4")));
+        var lines = error.ToString().Split('\n');
+        var package = PackageConflictScanner.SsdAutoMaxDegreeOfParallelism;
+        Assert.AreEqual(1, lines.Count(line => line.StartsWith("阶段=整文件哈希；", StringComparison.Ordinal) && line.Contains("请求档位=Auto；策略上限=4；采用上限=4")));
+        Assert.AreEqual(2, lines.Count(line => (line.StartsWith("阶段=package 索引；", StringComparison.Ordinal) || line.StartsWith("阶段=资源内容；", StringComparison.Ordinal))
+            && line.Contains($"请求档位=Auto；策略上限={package}；采用上限={package}")));
     }
 
     private static string CreateCorpus(TempDirectory temp)
