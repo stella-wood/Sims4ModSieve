@@ -20,6 +20,7 @@ internal static class Program
             Console.WriteLine("    [--cancel-after-ms <milliseconds>] [--revision <commit>] [--storage <description>]");
             Console.WriteLine("    [--scope all|duplicates] (default: all)");
             Console.WriteLine("    [--hash-concurrency auto|1|2|4|8] (default: auto)");
+            Console.WriteLine("    [--index-concurrency auto|1|2|4|8] [--content-concurrency auto|1|2|4|8] (default: legacy calls)");
             return 0;
         }
         try
@@ -56,15 +57,11 @@ internal static class Program
         var scope = One(options, "--scope") ?? "all";
         if (scope is not ("all" or "duplicates")) throw new ArgumentException("--scope must be all or duplicates.");
         var concurrencyLabel = One(options, "--hash-concurrency") ?? "auto";
-        var hashConcurrency = concurrencyLabel switch
-        {
-            "auto" => DuplicateHashConcurrency.Auto,
-            "1" => DuplicateHashConcurrency.One,
-            "2" => DuplicateHashConcurrency.Two,
-            "4" => DuplicateHashConcurrency.Four,
-            "8" => DuplicateHashConcurrency.Eight,
-            _ => throw new ArgumentException("--hash-concurrency must be auto, 1, 2, 4 or 8."),
-        };
+        var hashConcurrency = ParseConcurrency(concurrencyLabel, "--hash-concurrency");
+        var indexConcurrency = One(options, "--index-concurrency") is { } indexLabel
+            ? (DuplicateHashConcurrency?)ParseConcurrency(indexLabel, "--index-concurrency") : null;
+        var contentConcurrency = One(options, "--content-concurrency") is { } contentLabel
+            ? (DuplicateHashConcurrency?)ParseConcurrency(contentLabel, "--content-concurrency") : null;
         BenchmarkInputs.ValidateOutput(output, sources.Select(source => source.Path));
         var before = InputManifest.Capture(sources.Select(source => source.Path));
         string? expected = null;
@@ -95,7 +92,7 @@ internal static class Program
                 var storage = new WindowsStorageProfile();
                 var measurement = await BenchmarkRunner.MeasureAsync(
                     token => BenchmarkRunner.CaptureAsync(sources, One(options, "--mods-root"), token, snapshotPath, scope,
-                        hashConcurrency, storage),
+                        hashConcurrency, storage, indexConcurrency, contentConcurrency),
                     cancelAfter, lifetime.Token, storage);
                 measurements.Add(measurement);
                 await File.WriteAllTextAsync(Path.Combine(output, $"run-{iteration:D2}.log"), measurement.TimingLog);
@@ -126,6 +123,8 @@ internal static class Program
             Revision = One(options, "--revision") ?? "unspecified",
             Storage = One(options, "--storage") ?? "unknown",
             HashConcurrency = concurrencyLabel,
+            IndexConcurrency = One(options, "--index-concurrency") ?? "legacy",
+            ContentConcurrency = One(options, "--content-concurrency") ?? "legacy",
             OS = RuntimeInformation.OSDescription, Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
             Runtime = RuntimeInformation.FrameworkDescription, LogicalCpuCount = Environment.ProcessorCount,
             Runs = measurements.Count, RequestedRuns = runs, CompletedRuns = completed.Length,
@@ -176,7 +175,7 @@ internal static class Program
     private static Dictionary<string, List<string>> Parse(string[] args)
     {
         string[] allowed = ["--source", "--output", "--sample-id", "--runs", "--mods-root", "--baseline",
-            "--cancel-after-ms", "--revision", "--storage", "--scope", "--hash-concurrency"];
+            "--cancel-after-ms", "--revision", "--storage", "--scope", "--hash-concurrency", "--index-concurrency", "--content-concurrency"];
         var options = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (var index = 1; index < args.Length; index += 2)
         {
@@ -193,6 +192,16 @@ internal static class Program
     private static string? One(Dictionary<string, List<string>> options, string key, bool required = false) =>
         options.TryGetValue(key, out var values) ? values.Single()
         : required ? throw new ArgumentException($"Missing {key}.") : null;
+
+    private static DuplicateHashConcurrency ParseConcurrency(string value, string option) => value switch
+    {
+        "auto" => DuplicateHashConcurrency.Auto,
+        "1" => DuplicateHashConcurrency.One,
+        "2" => DuplicateHashConcurrency.Two,
+        "4" => DuplicateHashConcurrency.Four,
+        "8" => DuplicateHashConcurrency.Eight,
+        _ => throw new ArgumentException($"{option} must be auto, 1, 2, 4 or 8."),
+    };
 
     private static int? PositiveInt(Dictionary<string, List<string>> options, string key)
     {

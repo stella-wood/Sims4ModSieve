@@ -21,7 +21,8 @@ internal static class BenchmarkRunner
 {
     internal static async Task<string> CaptureAsync(IReadOnlyList<ScanSource> sources, string? modsRoot,
         CancellationToken cancellationToken, string snapshotPath, string scope = "all",
-        DuplicateHashConcurrency hashConcurrency = DuplicateHashConcurrency.Auto, IStorageProfile? storage = null)
+        DuplicateHashConcurrency hashConcurrency = DuplicateHashConcurrency.Auto, IStorageProfile? storage = null,
+        DuplicateHashConcurrency? indexConcurrency = null, DuplicateHashConcurrency? contentConcurrency = null)
     {
         var duplicateRequest = new DuplicateScanRequest(sources, modsRoot, [".package", ".ts4script"])
         {
@@ -36,9 +37,15 @@ internal static class BenchmarkRunner
             return snapshotPath;
         }
         var packages = await new PackageConflictScanner(new PhysicalFileSystemAccess(),
-            LlamaLogicPackageIndexReader.CreateDefault()).ScanAsync(new(sources), cancellationToken);
+            LlamaLogicPackageIndexReader.CreateDefault()).ScanAsync(new(sources)
+            {
+                Options = indexConcurrency is { } index ? new(index, storage) : null,
+            }, cancellationToken);
         var contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault())
-            .CompareAsync(new(packages.Candidates), cancellationToken: cancellationToken);
+            .CompareAsync(new(packages.Candidates)
+            {
+                Options = contentConcurrency is { } content ? new(content, storage) : null,
+            }, cancellationToken: cancellationToken);
         var scripts = await new ScriptModuleScanner(new PhysicalFileSystemAccess())
             .ScanAsync(new(sources), cancellationToken: cancellationToken);
         var duplicates = await DuplicateScanner.CreateDefault().ScanAsync(duplicateRequest, cancellationToken);

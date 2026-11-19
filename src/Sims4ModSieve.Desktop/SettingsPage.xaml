@@ -1,12 +1,16 @@
 <UserControl x:Class="Sims4ModSieve.Desktop.SettingsPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=System.Runtime"
              xmlns:duplicates="clr-namespace:Sims4ModSieve.Core.Duplicates;assembly=Sims4ModSieve.Core"
              xmlns:services="clr-namespace:Sims4ModSieve.Desktop.Services"
              xmlns:local="clr-namespace:Sims4ModSieve.Desktop"
              Background="White" FontFamily="Microsoft YaHei UI" FontSize="13"
              Foreground="{StaticResource InkBrush}" UseLayoutRounding="True">
     <UserControl.Resources>
+        <sys:Double x:Key="ScanConcurrencyInfoSize">14</sys:Double>
+        <sys:Double x:Key="ScanConcurrencyInfoTargetSize">24</sys:Double>
+        <Thickness x:Key="ScanConcurrencyInfoGap">2,0,0,0</Thickness>
         <Style x:Key="SettingsLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -415,8 +419,19 @@
                         <Grid Margin="0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,18,0">
-                                <TextBlock x:Name="HashConcurrencyLabel" Text="重复检测并发" Style="{StaticResource SettingsLabel}" />
-                                <TextBlock Text="适用于重复检测及冲突检测中的整文件核对" Style="{StaticResource SettingsDescription}" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="HashConcurrencyLabel" Text="扫描并发" Style="{StaticResource SettingsLabel}" VerticalAlignment="Center" />
+                                    <Button x:Name="ScanConcurrencyInfo" Style="{StaticResource BareIconButtonStyle}"
+                                            Width="{StaticResource ScanConcurrencyInfoTargetSize}" Height="{StaticResource ScanConcurrencyInfoTargetSize}"
+                                            Margin="{StaticResource ScanConcurrencyInfoGap}" VerticalAlignment="Center"
+                                            Background="Transparent" Foreground="{StaticResource MutedBrush}"
+                                            AutomationProperties.Name="扫描并发说明" ToolTipService.ShowsToolTipOnKeyboardFocus="True"
+                                            ToolTip="适用于重复检测、整文件核对、package 读取和资源内容比较。脚本扫描固定为 2。">
+                                        <Path Width="{StaticResource ScanConcurrencyInfoSize}" Height="{StaticResource ScanConcurrencyInfoSize}"
+                                              Fill="{StaticResource MutedBrush}" Stretch="Uniform" IsHitTestVisible="False"
+                                              Data="F0 M7,0 A7,7 0 1 1 7,14 A7,7 0 1 1 7,0 Z M7,1 A6,6 0 1 0 7,13 A6,6 0 1 0 7,1 Z M6.4,6 H7.6 V11 H6.4 Z M7,3 A0.7,0.7 0 1 1 7,4.4 A0.7,0.7 0 1 1 7,3 Z" />
+                                    </Button>
+                                </StackPanel>
                             </StackPanel>
                             <ComboBox x:Name="HashConcurrencyPicker" Grid.Column="1" Width="104" VerticalAlignment="Center"
                                       AutomationProperties.LabeledBy="{Binding ElementName=HashConcurrencyLabel}"

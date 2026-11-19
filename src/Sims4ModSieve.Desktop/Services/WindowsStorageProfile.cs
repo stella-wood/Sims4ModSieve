@@ -4,7 +4,11 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 using Sims4ModSieve.Core.Duplicates;
 
+#if CLI_STORAGE_PROFILE
+namespace Sims4ModSieve.Cli;
+#else
 namespace Sims4ModSieve.Desktop.Services;
+#endif
 
 internal sealed class WindowsStorageProfile : IStorageProfile
 {

@@ -40,6 +40,8 @@ public sealed class ResourceContentComparer(IResourceContentHasher hasher) : IRe
 
         var limits = request.Limits ?? ResourceContentLimits.Default;
         limits.Validate();
+        if (request.MaxDegreeOfParallelism is { } explicitLimit)
+            ArgumentOutOfRangeException.ThrowIfLessThan(explicitLimit, 1, nameof(request.MaxDegreeOfParallelism));
 
         cancellationToken.ThrowIfCancellationRequested();
         var startedAt = DateTime.UtcNow;
@@ -48,6 +50,19 @@ public sealed class ResourceContentComparer(IResourceContentHasher hasher) : IRe
 
         using var preparationTiming = ScanPerformance.Measure("资源内容 · 构建读取批次");
         var batches = BuildBatches(request.Candidates, cancellationToken);
+        if (request.Options is { } options)
+        {
+            var finite = limits.MaxTotalProcessedBytes < long.MaxValue;
+            var parallelism = ScanConcurrencyDecision.Resolve("资源内容", options.Concurrency, options.StorageProfile,
+                batches.Select(batch => Path.GetDirectoryName(batch.Path) ?? batch.Path), cancellationToken,
+                options.ConcurrencyDecided, finite ? limits.MaxDegreeOfParallelism : request.MaxDegreeOfParallelism,
+                finite ? "有限总预算：保留调用者原内容并发" : null);
+            limits = limits with { MaxDegreeOfParallelism = parallelism };
+        }
+        else if (limits.MaxTotalProcessedBytes == long.MaxValue && request.MaxDegreeOfParallelism is { } parallelism)
+        {
+            limits = limits with { MaxDegreeOfParallelism = parallelism };
+        }
         var total = batches.Sum(batch => batch.Targets.Count);
         var bytes = preparationTiming is null ? 0 : batches.Sum(batch => batch.Stamp.Length);
         if (preparationTiming is not null)

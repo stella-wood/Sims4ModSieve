@@ -1,11 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <DefineConstants>$(DefineConstants);CLI_STORAGE_PROFILE</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
     <ProjectReference Include="..\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
+    <Compile Include="..\Sims4ModSieve.Desktop\Services\WindowsStorageProfile.cs" Link="WindowsStorageProfile.cs" />
     <EmbeddedResource Include="..\..\AI-GUIDE.md" LogicalName="AI-GUIDE.md" />
     <InternalsVisibleTo Include="Sims4ModSieve.Desktop.Tests" />
     <InternalsVisibleTo Include="Sims4ModSieve.Packages.Tests" />

@@ -19,6 +19,39 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class SettingsPageTests
 {
     [TestMethod]
+    public Task ScanConcurrencyInfoHasAccessibleKeyboardTooltipAndNoDescriptionLine() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        WpfTestHost.ShowOffScreen(window);
+        try
+        {
+            model.OpenSettingsCommand.Execute(null);
+            await WpfTestHost.LayoutAsync(window);
+            var page = Descendants<SettingsPage>(window).Single();
+            var label = (TextBlock)page.FindName("HashConcurrencyLabel");
+            var info = (Button)page.FindName("ScanConcurrencyInfo");
+            var picker = (ComboBox)page.FindName("HashConcurrencyPicker");
+            Assert.AreEqual("扫描并发", label.Text);
+            Assert.IsFalse(Descendants<TextBlock>(page).Any(text => text.Text == "适用于重复检测及冲突检测中的整文件核对"));
+            Assert.AreEqual("扫描并发说明", new ButtonAutomationPeer(info).GetName());
+            Assert.AreEqual("适用于重复检测、整文件核对、package 读取和资源内容比较。脚本扫描固定为 2。", info.ToolTip);
+            Assert.AreEqual(true, ToolTipService.GetShowsToolTipOnKeyboardFocus(info));
+            Assert.IsTrue(info.Focusable && KeyboardNavigation.GetIsTabStop(info));
+            info.BringIntoView();
+            await WpfTestHost.LayoutAsync(window);
+            AssertHitRectangle(info);
+            WpfTestHost.PlaceOnScreen(window);
+            Assert.IsTrue(picker.Focus());
+            Assert.IsTrue(picker.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous)));
+            Assert.IsTrue(info.IsKeyboardFocused, "下拉框前一个键盘焦点应为说明图标");
+            SaveReview(window, "scan-concurrency-info.png");
+        }
+        finally { window.Close(); }
+    });
+
+    [TestMethod]
     public Task HashConcurrencyPickerSavesSelectionAndRestoresItAfterWriteFailure() => WpfTestHost.RunAsync(async () =>
     {
         using var files = new Scenario();

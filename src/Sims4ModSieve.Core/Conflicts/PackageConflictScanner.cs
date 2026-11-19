@@ -79,6 +79,13 @@ public sealed class PackageConflictScanner(
                     DiscoveredPackageCount: count)),
             cancellationToken);
 
+        if (request.Options is { } options)
+        {
+            parallelism = ScanConcurrencyDecision.Resolve("package 索引", options.Concurrency, options.StorageProfile,
+                discovered.Values.Select(file => file.DiscoveryRoot), cancellationToken, options.ConcurrencyDecided,
+                request.MaxDegreeOfParallelism);
+        }
+
         var bytes = ScanPerformance.CurrentStage is null ? 0 : discovered.Values.Sum(file => file.DiscoveredStamp.Length);
         if (discoveryTiming is not null)
         {

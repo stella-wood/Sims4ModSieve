@@ -448,9 +448,10 @@ public sealed partial class MainWindowViewModel
             p.Phase == ScriptModuleScanPhase.Discovering ? "正在查找脚本文件…" : "正在比较同名脚本…", p.CompletedItems, p.TotalItems));
 
         var storage = new WindowsStorageProfile();
+        var scanOptions = new ConflictScanOptions(DuplicateHashConcurrency, storage);
         var duplicateInput = new DuplicateRunInput(sources.Select(source => new DuplicateRunSource(source.Path, source.Label ?? source.Path)).ToArray(), ModsRoot)
         {
-            HashConcurrency = DuplicateHashConcurrency,
+            HashConcurrency = scanOptions.Concurrency,
             StorageProfile = storage,
         };
         var duplicateProgress = new Progress<DuplicateScanProgress>(p => Report(3, "正在核对文件内容…", p.CompletedItems, p.TotalItems));
@@ -462,10 +463,10 @@ public sealed partial class MainWindowViewModel
         {
             var results = await Task.Run(async () =>
             {
-                var packages = await packageConflictScanner.ScanAsync(new(sources), packageProgress, cancellation.Token);
+                var packages = await packageConflictScanner.ScanAsync(new(sources) { Options = scanOptions }, packageProgress, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
                 Volatile.Write(ref activeStage, 1);
-                var contents = await resourceContentComparer.CompareAsync(new(packages.Candidates), contentProgress, cancellation.Token);
+                var contents = await resourceContentComparer.CompareAsync(new(packages.Candidates) { Options = scanOptions }, contentProgress, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
                 Volatile.Write(ref activeStage, 2);
                 var scripts = await scriptModuleScanner.ScanAsync(new(sources), scriptProgress, cancellation.Token);

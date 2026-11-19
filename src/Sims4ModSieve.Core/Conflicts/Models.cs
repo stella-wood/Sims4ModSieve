@@ -9,12 +9,15 @@ namespace Sims4ModSieve.Core.Conflicts;
 /// 候选冲突扫描请求。
 /// </summary>
 /// <param name="MaxDegreeOfParallelism">
-/// 同时读取索引的 package 数上限；<see langword="null"/> 使用
-/// <see cref="PackageConflictScanner.DefaultMaxDegreeOfParallelism"/>。
+/// 同时读取索引的 package 数上限；显式值优先。
+/// 为 null 时，有 Options 按快照策略选择，否则使用 <see cref="PackageConflictScanner.DefaultMaxDegreeOfParallelism"/>。
 /// </param>
 public sealed record PackageConflictScanRequest(
     IReadOnlyList<ScanSource> Sources,
-    int? MaxDegreeOfParallelism = null);
+    int? MaxDegreeOfParallelism = null)
+{
+    public ConflictScanOptions? Options { get; init; }
+}
 
 public enum PackageConflictScanPhase
 {
