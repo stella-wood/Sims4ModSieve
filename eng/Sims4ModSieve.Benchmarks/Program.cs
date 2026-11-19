@@ -15,6 +15,7 @@ internal static class Program
         {
             Console.WriteLine("grouping-memory <originals> <shared-resources: 1..63> (two copies, 64 resources/file; fresh process per run)");
             Console.WriteLine("generate --output <new-corpus-directory>");
+            Console.WriteLine("raw-reuse-stats --source <directory> [--source <directory> ...] --output <new-directory>");
             Console.WriteLine("run --source <directory> [--source <directory> ...] --output <new-directory>");
             Console.WriteLine("    --sample-id <id> [--runs 3] [--mods-root <directory>] [--baseline <previous-output>]");
             Console.WriteLine("    [--cancel-after-ms <milliseconds>] [--revision <commit>] [--storage <description>]");
@@ -27,6 +28,14 @@ internal static class Program
         {
             if (args[0] == "grouping-memory") return GroupingMemoryBenchmark.Run(args[1..]);
             var options = Parse(args);
+            if (args[0] == "raw-reuse-stats")
+            {
+                if (options.Keys.Any(key => key is not ("--source" or "--output")))
+                    throw new ArgumentException("raw-reuse-stats only accepts --source and --output.");
+                if (!options.TryGetValue("--source", out var paths) || paths.Count == 0)
+                    throw new ArgumentException("At least one --source is required.");
+                return await RawReuseStats.RunAsync(paths, One(options, "--output", required: true)!);
+            }
             if (args[0] == "generate")
             {
                 if (options.Keys.Any(key => key != "--output")) throw new ArgumentException("generate only accepts --output.");
