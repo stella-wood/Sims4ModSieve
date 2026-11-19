@@ -13,6 +13,7 @@ public sealed class ScanPerformance(string scanKind) : IDisposable
     private readonly ScanPerformance? previous = Ambient.Value;
     private readonly Stopwatch total = Stopwatch.StartNew();
     private readonly List<Stage> stages = [];
+    private readonly List<string> diagnostics = [];
     private readonly DateTimeOffset startedAt = DateTimeOffset.Now;
 
     public static ScanPerformance Start(string scanKind)
@@ -32,6 +33,7 @@ public sealed class ScanPerformance(string scanKind) : IDisposable
     }
 
     public static Stage? CurrentStage => ActiveStage.Value;
+    public static void RecordDiagnostic(string text) => Ambient.Value?.diagnostics.Add(text);
     public IReadOnlyList<Stage> Stages => stages;
 
     public string Finish(string outcome, string storage)
@@ -43,6 +45,7 @@ public sealed class ScanPerformance(string scanKind) : IDisposable
         text.AppendLine($"机器：逻辑 CPU {Environment.ProcessorCount}；{RuntimeInformation.OSDescription}；{RuntimeInformation.ProcessArchitecture}");
         text.AppendLine($"CPU：{Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER") ?? "未知"}");
         text.AppendLine($"存储：{storage}");
+        foreach (var diagnostic in diagnostics) text.AppendLine(diagnostic);
         var discovery = stages.LastOrDefault(stage => stage.Name == "整文件核对 · 枚举目录和文件信息")
             ?? stages.FirstOrDefault(stage => stage.Name.EndsWith("枚举目录和文件信息", StringComparison.Ordinal));
         var index = stages.FirstOrDefault(stage => stage.Name == "Package · 排序和读取索引");

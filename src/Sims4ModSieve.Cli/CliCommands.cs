@@ -1,5 +1,6 @@
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Settings;
+using Sims4ModSieve.Core.Conflicts;
 
 namespace Sims4ModSieve.Cli;
 
@@ -9,7 +10,8 @@ internal static class CliCommands
         "本次目录来自已保存的设置。如果这次对话还没跟玩家确认过，请先确认这是不是要查的文件夹。";
 
     internal static async Task<int> RunAsync(string[] args, DuplicateSettingsStore settings,
-        TextWriter output, TextWriter error, string? documentsDirectory = null)
+        TextWriter output, TextWriter error, string? documentsDirectory = null,
+        long conflictResourceMatchLimit = ConflictGroupingSize.DefaultResourceMatchLimit)
     {
         if (args is [] or ["-h" or "--help"])
         {
@@ -66,7 +68,7 @@ internal static class CliCommands
                     await output.WriteLineAsync($"已保存默认 Mods：{path}");
                     return 0;
                 case "scan-conflicts" or "scan-scripts" or "scan-duplicates":
-                    return await ScanAsync(command, operands, settings, output, error, documentsDirectory);
+                    return await ScanAsync(command, operands, settings, output, error, documentsDirectory, conflictResourceMatchLimit);
                 default:
                     throw new ArgumentException($"未知命令或参数：{string.Join(' ', args)}。请运行 --help。");
             }
@@ -85,7 +87,7 @@ internal static class CliCommands
     }
 
     private static async Task<int> ScanAsync(string command, string[] args, DuplicateSettingsStore settings,
-        TextWriter output, TextWriter error, string? documentsDirectory)
+        TextWriter output, TextWriter error, string? documentsDirectory, long conflictResourceMatchLimit)
     {
         var options = ParseScanOptions(command, args);
         var explicitSources = options.Sources.Count > 0;
@@ -121,7 +123,11 @@ internal static class CliCommands
         if (!explicitSources) await error.WriteLineAsync(SettingsNotice);
         await error.WriteLineAsync("正在扫描…");
         var scan = new CliScanReport(command, explicitSources ? "argument" : "settings",
-            explicitSources ? null : SettingsNotice, ignored, options);
+            explicitSources ? null : SettingsNotice, ignored, options, conflictResourceMatchLimit, size =>
+            {
+                error.WriteLine(size.DiagnosticText);
+                if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);
+            });
         await scan.RunAsync(sources, modsRoot, extensions);
         var hasSources = scan.Sources.Count > 0;
         if (hasSources)

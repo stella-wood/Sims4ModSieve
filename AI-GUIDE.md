@@ -36,6 +36,7 @@ Get-Content -LiteralPath "<报告文件路径>" -Encoding utf8 -TotalCount 80
 - `version` 是程序版本，`schemaVersion` 是输出结构版本。
 - `groupCount` 是完整结果的组数，`visibleGroupCount` 是这份 JSON 列出的组数。`severityCounts` 按完整结果统计四级数量（结果组与读取问题合计），`issueCount` 是完整的扫描和读取问题数。已有的 `abnormalCount` 是异常组与异常读取问题合计，`incompleteCount` 只统计未分析的读取问题。
 - `groups` 列出结果组，`issues` 给出扫描和读取问题。文件字段 `path` 是完整路径，`sha256` 是整个文件的哈希。为 `null` 时没有可用哈希。
+- `scan-conflicts` 在分组规模超限时不生成部分组，`complete=false`、退出码为 `1`。扫描问题 `code=conflict-grouping-too-large` 的 `reason` 为 `duplicate-copies`（建议先重复检测）或 `too-many-shared-resources`（建议分批检测），附 `resourceMatchCount`、`collapsedResourceMatchCount`、`resourceMatchLimit`，副本原因另附多余副本数 `redundantCopyCount`。该问题的 `kind=read_incomplete`、`severity=incomplete`，沿用下文筛选及省略计数规则；中文提示与两个估算值、上限始终写入标准错误。估算规则见[分组规模限制](docs/design/冲突检测分组方案-v2.md#44-性能)。
 - `severity` 有四级：`abnormal` 异常，`risk` 有隐患，`no_effect` 不影响，`incomplete` 未分析。`certainty` 单独标出确定（`confirmed`）和可能（`possible`）。`kind` 标识结果的具体类型。
 - 相同内容、已经比较出差异和未比完要分开说明。部分内容不同时仍可能有未比完的条目。覆盖时只能说游戏会使用其中一份，报告没有判定哪份会生效。
 - `ignored: true` 表示玩家以前忽略过此文件。默认会显示，`--hide-ignored` 可隐藏。汇总的 `ignoredCount` 按结果中不同的文件路径计数。

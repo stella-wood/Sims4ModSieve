@@ -1,4 +1,5 @@
 using System.Windows;
+using Sims4ModSieve.Core.Conflicts;
 
 namespace Sims4ModSieve.Desktop.Services;
 
@@ -9,10 +10,21 @@ public interface IFileActionDialogService
     bool ConfirmFiles(string title, string message);
 
     void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures);
+
+    bool ShowConflictGroupingWarning(ConflictGroupingSize size) => false;
 }
 
 public sealed class FileActionDialogService : IFileActionDialogService
 {
+    public bool ShowConflictGroupingWarning(ConflictGroupingSize size)
+    {
+        var dialog = new MultiFileConfirmationWindow(size)
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+        return dialog.ShowDialog() == true;
+    }
+
     public bool ConfirmDeletion(FileDeletionPreflight preflight)
     {
         return ConfirmFiles("删除文件", MultiFileConfirmationWindow.ConfirmationMessage(

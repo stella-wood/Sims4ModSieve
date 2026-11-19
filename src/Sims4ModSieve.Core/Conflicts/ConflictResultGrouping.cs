@@ -8,10 +8,13 @@ public static class ConflictResultGrouping
     public static (PackageConflictGroupingInput Input, PackageConflictGroupingResult Result,
         IReadOnlySet<string> ChangedPaths, IReadOnlyList<DuplicateFile> StampMismatches) BuildPackages(
         PackageConflictScanReport packages, ResourceContentComparisonReport contents, ScriptModuleScanReport scripts,
-        DuplicateReport? duplicates, CancellationToken cancellationToken = default)
+        DuplicateReport? duplicates, CancellationToken cancellationToken = default,
+        long resourceMatchLimit = ConflictGroupingSize.DefaultResourceMatchLimit,
+        Action<ConflictGroupingSize>? sizeObserved = null)
     {
-        var groupingBuilder = new PackageConflictGroupingBuilder();
-        var prepared = groupingBuilder.Prepare(packages, contents, cancellationToken: cancellationToken);
+        var groupingBuilder = new PackageConflictGroupingBuilder(resourceMatchLimit);
+        var prepared = groupingBuilder.Prepare(packages, contents, cancellationToken: cancellationToken,
+            duplicates: duplicates, scripts: scripts, sizeObserved: sizeObserved);
         var stampMismatches = duplicates?.Groups.SelectMany(group => group.Files)
             .Where(file => !MatchesScannedStamp(file, packages, scripts))
             .DistinctBy(file => file.Path, StringComparer.OrdinalIgnoreCase).ToArray() ?? [];

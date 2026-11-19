@@ -1,4 +1,5 @@
 using System.Windows;
+using Sims4ModSieve.Core.Conflicts;
 
 namespace Sims4ModSieve.Desktop;
 
@@ -9,6 +10,23 @@ public partial class MultiFileConfirmationWindow : Window
         InitializeComponent();
         Title = title;
         MessageText.Text = message;
+    }
+
+    public MultiFileConfirmationWindow(ConflictGroupingSize size) : this("扫描没有完成", size.WarningMessage)
+    {
+        Width = 400;
+        Height = 160;
+        CancelButton.Content = "关闭";
+        CancelButton.Width = 56;
+        CancelButton.IsCancel = true;
+        ConfirmButton.Content = "前往重复检测";
+        ConfirmButton.Width = 112;
+        ConfirmButton.IsDefault = true;
+        if (size.Reason != "duplicate-copies")
+        {
+            ConfirmButton.Visibility = Visibility.Collapsed;
+            CancelButton.Margin = new Thickness(0);
+        }
     }
 
     public static string ConfirmationMessage(string action, int count, bool closeGame) =>
