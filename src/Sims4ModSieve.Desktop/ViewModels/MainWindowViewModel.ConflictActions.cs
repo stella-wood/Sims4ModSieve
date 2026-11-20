@@ -167,6 +167,8 @@ public sealed partial class MainWindowViewModel
         if (IsBusy || row.File?.Stamp is not { } stamp || !conflictSession.Cards.Any(card => card.Key == row.OwnerKey
             && card.Files.Any(file => PathRulesEqual(file.Path, row.File.Path)))
             && !conflictSession.Problems.Any(problem => PathRulesEqual(problem.Path, row.File.Path))) return;
+        var originalRows = conflictRows;
+        var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
         if ((await RefreshMissingResultMembersAsync([row.File.Path], fromConflicts: true)).Count == 0) return;
         if (DisabledRecordFor(row) is { } disabled)
         {
@@ -178,7 +180,7 @@ public sealed partial class MainWindowViewModel
         var duplicateHash = session.Cards.FirstOrDefault(card => card.Key == row.OwnerKey)?.Duplicate?.Sha256;
         var duplicateGeneration = resultGeneration;
         var duplicateSnapshot = Groups.Select(group => group.Model).ToArray();
-        var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
+        if (!ReferenceEquals(conflictRows, originalRows)) restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
         IsBusy = true;
         try
         {

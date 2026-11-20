@@ -135,6 +135,8 @@ public sealed partial class MainWindowViewModel
     {
         if (IsBusy || !IsConflictComplete || !IsConflictMultiSelect) return;
         var selected = ConflictSelectionCandidates();
+        var originalRows = conflictRows;
+        var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
         var remaining = await RefreshMissingResultMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
         var candidates = selected.Where(candidate => remaining.Contains(candidate.Path)).Select(candidate =>
         {
@@ -149,7 +151,7 @@ public sealed partial class MainWindowViewModel
         var session = conflictSession;
         var duplicateGeneration = resultGeneration;
         var duplicateSnapshot = Groups.Select(group => group.Model).ToArray();
-        var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
+        if (!ReferenceEquals(conflictRows, originalRows)) restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
         IsBusy = true;
         try
         {
