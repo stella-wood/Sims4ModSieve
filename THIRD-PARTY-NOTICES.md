@@ -50,6 +50,34 @@
 
 升级目标框架后，`System.Collections.Immutable` 由 .NET 10 运行时提供，不再分发单独的 8.0.0 NuGet 程序集。
 
+## 独立缓存存储依赖
+
+`Sims4ModSieve.Caching` 独立引用以下包，版本取自该项目的 `packages.lock.json`。
+桌面程序与 CLI 尚未引用该项目，当前产品未携带 SQLite 二进制。
+
+| 包 | 版本 | 许可证 |
+|---|---|---|
+| `Microsoft.Data.Sqlite` | 10.0.15 | MIT |
+| `Microsoft.Data.Sqlite.Core` | 10.0.15 | MIT |
+| `SQLitePCLRaw.bundle_e_sqlite3` | 2.1.13 | Apache-2.0 |
+| `SQLitePCLRaw.core` | 2.1.13 | Apache-2.0 |
+| `SQLitePCLRaw.provider.e_sqlite3` | 2.1.13 | Apache-2.0 |
+| `SQLitePCLRaw.lib.e_sqlite3` | 2.1.13 | Apache-2.0（包与构建）；原生 SQLite 3.53.3 为 Public Domain |
+
+- Microsoft 两包 nuspec 指向 dotnet/dotnet 提交 `8e0f8ed2312954727f8919d7d1c2f78b483b4ee7`，
+  完整 MIT 文本取自该提交的 [efcore/LICENSE.txt](https://github.com/dotnet/dotnet/blob/8e0f8ed2312954727f8919d7d1c2f78b483b4ee7/src/efcore/LICENSE.txt)，
+  保存为 `licenses/Microsoft.Data.Sqlite-10.0.15-MIT.txt`；保留 .NET Foundation and Contributors 版权。
+- SQLitePCLRaw 四包 nuspec 均声明 Apache-2.0、Copyright 2014-2024 SourceGear, LLC。
+  上游没有 2.1.13 标签，授权与完整 NOTICE 取自 [v2.1.12](https://github.com/ericsink/SQLitePCL.raw/tree/v2.1.12)，
+  保存为 `licenses/SQLitePCLRaw-Apache-2.0.txt`、`licenses/SQLitePCLRaw-NOTICE.txt`，未作修改。
+  NOTICE 中保留上游其他可选构建的说明，不代表本项目引入了 SQLCipher 或 OpenSSL。
+- `SQLitePCLRaw.lib.e_sqlite3` 的 Linux x64 原生库实际报告 SQLite 3.53.3；
+  SQLite 核心的完整授权声明取自 [version-3.53.3/LICENSE.md](https://github.com/sqlite/sqlite/blob/version-3.53.3/LICENSE.md)，
+  保存为 `licenses/SQLite-3.53.3-Public-Domain.txt`。包装包的 Apache 许可与 SQLite 核心的 Public Domain 声明分别保留。
+
+根目录 `licenses/` 已由现有发布规则随安装包复制；缓存产品接入时仍须验证 win-x64 原生库的实际分发。
+缓存还通过 Core 引用既有 SharpZipLib 1.4.2，授权见上文，没有新增其他运行时传递依赖。
+
 ## Source Han Sans CN Light — SIL Open Font License 1.1
 
 `Assets/Fonts/SourceHanSansCN-Light.otf` is bundled only for related filenames in the conflict file relationship dialog.
