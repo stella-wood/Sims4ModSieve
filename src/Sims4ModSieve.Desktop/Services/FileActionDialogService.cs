@@ -21,7 +21,7 @@ public sealed class FileActionDialogService : IFileActionDialogService
 {
     public void ShowResultRefreshNotice(int changedGroupCount)
     {
-        new WarningDialog("提示", "所选组文件有变动", closeLabel: "确定")
+        new WarningDialog("提示", "相关组文件有变动，点击刷新", closeLabel: "刷新", primaryCloseButton: true)
         {
             Owner = Application.Current?.MainWindow,
         }.ShowDialog();

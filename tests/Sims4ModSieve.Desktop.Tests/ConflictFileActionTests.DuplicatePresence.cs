@@ -182,7 +182,7 @@ public sealed partial class ConflictFileActionTests
     });
 
     [TestMethod]
-    public Task RefreshNoticeShowsOnlyConfirmButtonAndClosesOnClick() => WpfTestHost.RunAsync(() =>
+    public Task RefreshNoticeShowsOnlyRefreshButtonAndClosesOnClick() => WpfTestHost.RunAsync(() =>
     {
         var owner = new Window();
         WpfTestHost.ShowOffScreen(owner);
@@ -199,11 +199,11 @@ public sealed partial class ConflictFileActionTests
                 dialog.UpdateLayout();
                 Assert.AreSame(owner, dialog.Owner);
                 Assert.AreEqual("提示", dialog.Title);
-                Assert.AreEqual("所选组文件有变动",
+                Assert.AreEqual("相关组文件有变动，点击刷新",
                     ((TextBlock)dialog.FindName("MessageText")).Text);
                 var button = Descendants<Button>(dialog).Single(item => item.IsVisible);
                 Assert.AreSame(dialog.FindName("CloseButton"), button);
-                Assert.AreEqual("确定", button.Content);
+                Assert.AreEqual("刷新", button.Content);
                 Assert.IsTrue(button.IsDefault && button.IsCancel);
                 Assert.IsTrue(button.IsVisible && button.IsEnabled);
                 var hit = dialog.InputHitTest(button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), dialog));
