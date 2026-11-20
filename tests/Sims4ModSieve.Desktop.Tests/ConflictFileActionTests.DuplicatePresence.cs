@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -236,7 +237,7 @@ public sealed partial class ConflictFileActionTests
         adapter = new TestRecycleBin();
         return new(new RecordingDuplicateRun(report), new NoPicker(), new Settings(files.Root),
             new FileActionService(adapter, new PhysicalFileMetadataAccess(), store, disable), dialogs,
-            resultSession: duplicates, modDisableService: disable, fileManagementStore: store);
+            resultSession: duplicates, modDisableService: disable, fileManagementStore: store, unexpectedErrorHandler: dialogs);
     }
 
     private static async Task<ConflictResultSession> PresenceSessionAsync(MainWindowViewModel model, DuplicateReport report)
@@ -264,13 +265,15 @@ public sealed partial class ConflictFileActionTests
         _ => model.ToggleConflictFileEnabledAsync(model.ConflictRows.Single(row => row.IsSelectableFile && row.File!.Path == path)),
     };
 
-    private sealed class PresenceDialogs : IFileActionDialogService
+    private sealed class PresenceDialogs : IFileActionDialogService, IUnexpectedErrorHandler
     {
         public List<string> Events { get; } = [];
         public Action? OnConfirm { get; set; }
         public void ShowResultRefreshNotice(int count) => Events.Add($"refresh:{count}");
         public bool ConfirmDeletion(FileDeletionPreflight preflight) => ConfirmFiles("", "");
         public bool ConfirmFiles(string title, string message) { Events.Add("confirm"); OnConfirm?.Invoke(); return true; }
-        public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures) => Assert.Fail(title);
+        public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures) =>
+            Assert.Fail(title + "\n" + string.Join("\n", failures.Select(failure => failure.Message)));
+        public void Report(string title, Exception exception) => ExceptionDispatchInfo.Throw(exception);
     }
 }

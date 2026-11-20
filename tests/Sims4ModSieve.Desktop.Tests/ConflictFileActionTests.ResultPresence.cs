@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Desktop.ViewModels;
 using static Sims4ModSieve.Desktop.Tests.ConflictResultSessionTests;
@@ -147,7 +148,7 @@ public sealed partial class ConflictFileActionTests
         var model = PresenceModel(files, report, dialogs, out var adapter);
         var scripts = ConflictPresenceSession(files, "script", 3).Cards.Single().Files.Select(file => file.Path).ToArray();
         var session = V2([Resource(1, (files.A, "x"), (files.C, "y"))], [(files.A, 100), (files.C, 100)], report,
-            Scripts([Collision("kit.common", scripts.Select((path, index) => (path, (string?)index.ToString())).ToArray())]));
+            ScriptPresenceReport(scripts));
         Assert.AreEqual(3, session.Cards.Count);
         await PreparePresenceSessionAsync(model, session);
         SelectPresenceFiles(model, files.B, files.C, scripts[0], scripts[1]);
@@ -223,9 +224,22 @@ public sealed partial class ConflictFileActionTests
                 File.WriteAllBytes(path, new byte[10]);
                 File.SetLastWriteTimeUtc(path, Stamp.LastWriteTimeUtc);
             }
-            return V2([], [], scripts: Scripts([Collision("kit.common", paths.Select((path, index) => (path, (string?)index.ToString())).ToArray())]));
+            return V2([], [], scripts: ScriptPresenceReport(paths));
         }
         return V2([Resource(1, paths.Select((path, index) => (path, (string?)index.ToString())).ToArray())], paths.Select(path => (path, 100)).ToArray());
+    }
+
+    private static ScriptModuleScanReport ScriptPresenceReport(string[] paths)
+    {
+        var metadata = new PhysicalFileMetadataAccess();
+        var collision = Collision("kit.common", paths.Select((path, index) => (path, (string?)index.ToString())).ToArray());
+        return Scripts([collision with
+        {
+            ContentGroups = collision.ContentGroups.Select(group => group with
+            {
+                Occurrences = group.Occurrences.Select(item => item with { ArchiveStamp = metadata.GetFileStamp(item.ArchivePath) }).ToArray(),
+            }).ToArray(),
+        }]);
     }
 
     private static async Task PreparePresenceSessionAsync(MainWindowViewModel model, ConflictResultSession session)
