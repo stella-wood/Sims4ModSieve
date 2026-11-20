@@ -12,17 +12,17 @@ public interface IFileActionDialogService
 
     void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures);
 
-    bool ConfirmDuplicateGroupRefresh(int changedGroupCount) => false;
+    bool ConfirmResultRefresh(int changedGroupCount) => false;
 
     bool ShowConflictGroupingWarning(ConflictGroupingSize size) => false;
 }
 
 public sealed class FileActionDialogService : IFileActionDialogService
 {
-    public bool ConfirmDuplicateGroupRefresh(int changedGroupCount)
+    public bool ConfirmResultRefresh(int changedGroupCount)
     {
-        var dialog = new WarningDialog("重复文件有变动",
-            $"有 {changedGroupCount} 组重复文件发生变动。\n部分文件已不存在，刷新后继续确认剩余文件的操作。", "刷新结果")
+        var dialog = new WarningDialog("文件有变动",
+            $"有 {changedGroupCount} 组结果里的部分文件已不存在。刷新结果后，再继续确认剩下的文件。", "刷新结果")
         {
             Owner = Application.Current?.MainWindow,
         };

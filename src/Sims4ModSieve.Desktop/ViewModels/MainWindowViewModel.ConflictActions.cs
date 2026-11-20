@@ -127,7 +127,7 @@ public sealed partial class MainWindowViewModel
         var record = DisabledRecordFor(row);
         if (record is null)
         {
-            if ((await RefreshMissingDuplicateMembersAsync([row.File.Path], fromConflicts: true)).Count == 0) return;
+            if ((await RefreshMissingResultMembersAsync([row.File.Path], fromConflicts: true)).Count == 0) return;
             await DisableFilesAsync([row.File.Path],
                 new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase) { [row.File.Path] = stamp });
         }
@@ -167,7 +167,7 @@ public sealed partial class MainWindowViewModel
         if (IsBusy || row.File?.Stamp is not { } stamp || !conflictSession.Cards.Any(card => card.Key == row.OwnerKey
             && card.Files.Any(file => PathRulesEqual(file.Path, row.File.Path)))
             && !conflictSession.Problems.Any(problem => PathRulesEqual(problem.Path, row.File.Path))) return;
-        if ((await RefreshMissingDuplicateMembersAsync([row.File.Path], fromConflicts: true)).Count == 0) return;
+        if ((await RefreshMissingResultMembersAsync([row.File.Path], fromConflicts: true)).Count == 0) return;
         if (DisabledRecordFor(row) is { } disabled)
         {
             await DeleteDisabledFileAsync(disabled.Id);
@@ -230,13 +230,13 @@ public sealed partial class MainWindowViewModel
     }
 
     private async Task UpdateConflictFilePathsAsync(ConflictResultSession session, IReadOnlyList<string> paths, bool restore,
-        Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null, bool refreshMissingDuplicates = false)
+        Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null, bool refreshMissingMembers = false)
     {
         var prepared = session.ProjectionSnapshot();
         await Task.Run(() =>
         {
             if (restore) prepared.ApplyRestoredPaths(paths);
-            else if (refreshMissingDuplicates) prepared.ApplyMissingDuplicatePaths(paths);
+            else if (refreshMissingMembers) prepared.ApplyMissingPaths(paths);
             else prepared.ApplyDeletedPaths(paths);
         });
         if (!ReferenceEquals(session, conflictSession) || !IsConflictComplete) return;

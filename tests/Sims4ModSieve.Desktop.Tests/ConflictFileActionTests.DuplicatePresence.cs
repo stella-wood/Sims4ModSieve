@@ -197,7 +197,11 @@ public sealed partial class ConflictFileActionTests
             {
                 dialog.UpdateLayout();
                 Assert.AreSame(owner, dialog.Owner);
-                Assert.IsFalse(string.IsNullOrWhiteSpace(((TextBlock)dialog.FindName("MessageText")).Text));
+                Assert.AreEqual("文件有变动", dialog.Title);
+                Assert.AreEqual("有 2 组结果里的部分文件已不存在。刷新结果后，再继续确认剩下的文件。",
+                    ((TextBlock)dialog.FindName("MessageText")).Text);
+                Assert.AreEqual("刷新结果", ((Button)dialog.FindName("ActionButton")).Content);
+                Assert.AreEqual("关闭", Descendants<Button>(dialog).Single(item => item.IsCancel).Content);
                 var button = refresh ? (Button)dialog.FindName("ActionButton")
                     : Descendants<Button>(dialog).Single(item => item.IsCancel);
                 Assert.IsTrue(button.IsVisible && button.IsEnabled);
@@ -209,7 +213,7 @@ public sealed partial class ConflictFileActionTests
             }
             catch (Exception exception) { failure = exception; dialog.Close(); }
         }, DispatcherPriority.ApplicationIdle);
-        var result = new FileActionDialogService().ConfirmDuplicateGroupRefresh(2);
+        var result = new FileActionDialogService().ConfirmResultRefresh(2);
         if (failure is not null) throw failure;
         Assert.IsTrue(inspected);
         Assert.AreEqual(refresh, result);
@@ -264,7 +268,7 @@ public sealed partial class ConflictFileActionTests
         public List<string> Events { get; } = [];
         public bool AcceptRefresh { get; init; } = true;
         public Action? OnConfirm { get; set; }
-        public bool ConfirmDuplicateGroupRefresh(int count) { Events.Add($"refresh:{count}"); return AcceptRefresh; }
+        public bool ConfirmResultRefresh(int count) { Events.Add($"refresh:{count}"); return AcceptRefresh; }
         public bool ConfirmDeletion(FileDeletionPreflight preflight) => ConfirmFiles("", "");
         public bool ConfirmFiles(string title, string message) { Events.Add("confirm"); OnConfirm?.Invoke(); return true; }
         public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures) => Assert.Fail(title);

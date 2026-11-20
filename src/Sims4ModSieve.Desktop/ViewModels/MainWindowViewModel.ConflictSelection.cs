@@ -135,7 +135,7 @@ public sealed partial class MainWindowViewModel
     {
         if (IsBusy || !IsConflictComplete || !IsConflictMultiSelect) return;
         var selected = ConflictSelectionCandidates();
-        var remaining = await RefreshMissingDuplicateMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
+        var remaining = await RefreshMissingResultMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
         var candidates = selected.Where(candidate => remaining.Contains(candidate.Path)).Select(candidate =>
         {
             var disabled = disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, candidate.Path)
@@ -193,7 +193,7 @@ public sealed partial class MainWindowViewModel
     {
         if (IsBusy || !IsConflictComplete || !IsConflictMultiSelect) return;
         var selected = ConflictSelectionCandidates();
-        var remaining = await RefreshMissingDuplicateMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
+        var remaining = await RefreshMissingResultMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
         if (remaining.Count == 0) return;
         var candidates = selected.Where(candidate => remaining.Contains(candidate.Path))
             .Where(candidate => !disabledRecords.Any(record => PathRulesEqual(record.OriginalPath, candidate.Path)
