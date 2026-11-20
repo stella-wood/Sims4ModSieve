@@ -32,6 +32,7 @@ public sealed class ScanPerformance(string scanKind) : IDisposable
         return stage;
     }
 
+    public static bool HasSession => Ambient.Value is not null;
     public static Stage? CurrentStage => ActiveStage.Value;
     public static void RecordDiagnostic(string text) => Ambient.Value?.diagnostics.Add(text);
     public IReadOnlyList<Stage> Stages => stages;
@@ -51,7 +52,7 @@ public sealed class ScanPerformance(string scanKind) : IDisposable
         var index = stages.FirstOrDefault(stage => stage.Name == "Package · 排序和读取索引");
         var content = stages.FirstOrDefault(stage => stage.Name == "资源内容 · 复核索引、读取、解压和哈希");
         text.AppendLine($"扫描范围：文件={discovery?.Files ?? 0}；总字节={discovery?.Bytes ?? 0}；索引资源条目={index?.Entries ?? 0}；候选比较条目={content?.Entries ?? 0}；未进入候选比较={Math.Max(0, (index?.Entries ?? 0) - (content?.Entries ?? 0))}");
-        text.AppendLine($"解压合计：尝试={stages.Sum(stage => stage.DecompressionAttempts)}；成功={stages.Sum(stage => stage.DecompressionCompleted)}；原始字节相同跳过=0（当前流程无此捷径）");
+        text.AppendLine($"解压合计：尝试={stages.Sum(stage => stage.DecompressionAttempts)}；成功={stages.Sum(stage => stage.DecompressionCompleted)}；原始字节相同跳过={stages.Sum(stage => stage.ContentReuse?.SavedDecompressions ?? 0)}；按大小跳过=0");
         text.AppendLine("口径：阶段为墙钟耗时，并发为配置上限；输入字节为涉及文件大小，处理字节为成功哈希字节或内容预算消耗，并非磁盘实际读取量。非内容阶段解压计数为 0；取消时规模可能尚未汇齐。");
         foreach (var stage in stages)
         {
@@ -73,8 +74,24 @@ public sealed class ScanPerformance(string scanKind) : IDisposable
         private long decompressionAttempts;
         private long decompressionCompleted;
         private long observedEntries;
+        private long contentInputBytes;
+        private long contentOutputBytes;
+        private long compressedCandidates;
+        private long declaredCompressedOutput;
         private bool disposed;
 
+        public long CompressedCandidates => Interlocked.Read(ref compressedCandidates);
+        public long DeclaredCompressedOutput => Interlocked.Read(ref declaredCompressedOutput);
+        public void ObserveCompressedCandidate(long declared)
+        {
+            Interlocked.Increment(ref compressedCandidates);
+            Interlocked.Add(ref declaredCompressedOutput, declared);
+        }
+        public Conflicts.ResourceContentReuseDiagnostics? ContentReuse { get; set; }
+        public long ContentInputBytes => Interlocked.Read(ref contentInputBytes);
+        public long ContentOutputBytes => Interlocked.Read(ref contentOutputBytes);
+        public void AddContentInput(long count) => Interlocked.Add(ref contentInputBytes, count);
+        public void AddContentOutput(long count) => Interlocked.Add(ref contentOutputBytes, count);
         public string Name { get; } = name;
         public int Parallelism { get; } = parallelism;
         public TimeSpan Elapsed { get; private set; }

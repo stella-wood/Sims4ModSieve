@@ -132,6 +132,7 @@ internal static class CliCommands
                 storageProfile ?? new WindowsStorageProfile())
             {
                 ConcurrencyDecided = decision => error.WriteLine(decision.DiagnosticText),
+                ContentReuseObserved = diagnostic => error.WriteLine(diagnostic.DiagnosticText),
             });
         await scan.RunAsync(sources, modsRoot, extensions);
         var hasSources = scan.Sources.Count > 0;

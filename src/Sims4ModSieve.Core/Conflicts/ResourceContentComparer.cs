@@ -44,6 +44,7 @@ public sealed class ResourceContentComparer(IResourceContentHasher hasher) : IRe
             ArgumentOutOfRangeException.ThrowIfLessThan(explicitLimit, 1, nameof(request.MaxDegreeOfParallelism));
 
         cancellationToken.ThrowIfCancellationRequested();
+        using var localPerformance = ScanPerformance.HasSession ? null : ScanPerformance.Start("资源内容");
         var startedAt = DateTime.UtcNow;
         var budget = new ResourceContentBudget(limits.MaxTotalProcessedBytes);
         var reporter = new ProgressReporter(progress, budget);
@@ -82,8 +83,39 @@ public sealed class ResourceContentComparer(IResourceContentHasher hasher) : IRe
             contentTiming.Bytes = bytes;
             contentTiming.Entries = total;
         }
-        var outcomes = await HashBatchesAsync(batches, limits, budget, reporter, total, cancellationToken)
-            .ConfigureAwait(false);
+        var reuse = new ResourceContentReuseDiagnostics { Requested = request.Options?.ContentReuse ?? ResourceContentReuseMode.Off };
+        var bypass = ReuseBypassReason(request.Options, limits, batches, cancellationToken);
+        BatchOutcome[] outcomes;
+        IReadOnlyList<ResourceContentBatchResult>? reused = null;
+        if (bypass is null)
+        {
+            var requests = batches.Select(batch => new ResourceContentBatchRequest(batch.Path, batch.Stamp, batch.Targets, limits)).ToArray();
+            reused = await hasher.TryHashBatchesWithReuseAsync(requests, budget, value => reuse = value with { Requested = reuse.Requested }, cancellationToken)
+                .ConfigureAwait(false);
+            if (reused is null) bypass = reuse.BypassReason ?? "读取器不支持跨包复用";
+        }
+        if (reused is null)
+            outcomes = await HashBatchesAsync(batches, limits, budget, reporter, total, cancellationToken).ConfigureAwait(false);
+        else
+        {
+            outcomes = batches.Select((batch, index) => reused.Count == batches.Count
+                ? ValidateResult(batch, reused[index]) : InvalidResult(batch)).ToArray();
+            reporter.Report(ResourceContentComparisonPhase.ReadingContents, $"正在读取资源内容（{total}/{total}）", total, total);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        reuse = reuse with
+        {
+            BypassReason = bypass,
+            NeedsDecompressionResources = bypass is null ? reuse.NeedsDecompressionResources : contentTiming?.CompressedCandidates ?? 0,
+            DeclaredOutputBytes = bypass is null ? reuse.DeclaredOutputBytes : contentTiming?.DeclaredCompressedOutput ?? 0,
+            DecompressionAttempts = contentTiming?.DecompressionAttempts ?? 0,
+            DecompressionCompleted = contentTiming?.DecompressionCompleted ?? 0,
+            ActualInputBytes = contentTiming?.ContentInputBytes ?? 0,
+            ActualOutputBytes = contentTiming?.ContentOutputBytes ?? 0,
+        };
+        if (contentTiming is not null) contentTiming.ContentReuse = reuse;
+        ScanPerformance.RecordDiagnostic(reuse.DiagnosticText);
+        request.Options?.ContentReuseObserved?.Invoke(reuse);
 
         if (contentTiming is not null)
         {
@@ -224,19 +256,39 @@ public sealed class ResourceContentComparer(IResourceContentHasher hasher) : IRe
                 $"{exception.GetType().FullName}: {exception.Message}"));
         }
 
-        // 结果必须与请求一一对应；对不上就不能信任其中任何一条，否则可能把 A 的哈希记到 B 头上。
-        if (result is null
-            || result.Results is null
-            || result.Results.Count != batch.Targets.Count
-            || result.Results.Where((item, index) => item is null || item.Target != batch.Targets[index]).Any())
-        {
-            return FailAll(batch, new ResourceContentIssue(
-                ResourceContentIssueCode.UnexpectedError,
-                ResourceContentStage.Unexpected,
-                "读取器返回的结果与请求对不上，这个 package 的比较结果已作废。"));
-        }
+        return ValidateResult(batch, result);
+    }
 
+    private static BatchOutcome ValidateResult(Batch batch, ResourceContentBatchResult? result)
+    {
+        if (result is null || !PathRules.Comparer.Equals(result.PackagePath, batch.Path)
+            || result.Results is null || result.Results.Count != batch.Targets.Count
+            || result.Results.Where((item, index) => item is null || item.Target != batch.Targets[index]).Any())
+            return InvalidResult(batch);
         return new BatchOutcome(result.StampAfterRead, result.Results);
+    }
+
+    private static BatchOutcome InvalidResult(Batch batch) => FailAll(batch, new ResourceContentIssue(
+        ResourceContentIssueCode.UnexpectedError, ResourceContentStage.Unexpected,
+        "读取器返回的结果与请求对不上，这个 package 的比较结果已作废。"));
+
+    private static string? ReuseBypassReason(ConflictScanOptions? options, ResourceContentLimits limits,
+        IReadOnlyList<Batch> batches, CancellationToken cancellationToken)
+    {
+        if (options is null || options.ContentReuse == ResourceContentReuseMode.Off) return "默认关闭";
+        if (limits.MaxTotalProcessedBytes < long.MaxValue) return "有限总预算：保留原读取路径";
+        if (batches.Count == 0) return "没有内容候选";
+        // Auto 并发必须确认存储；手动并发下 Auto 复用仍需单独确认 SSD。
+        if (options.Concurrency == DuplicateHashConcurrency.Auto || options.ContentReuse == ResourceContentReuseMode.Auto)
+        {
+            foreach (var root in batches.Select(batch => Path.GetDirectoryName(batch.Path) ?? batch.Path).Distinct(PathRules.Comparer))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var volume = options.StorageProfile?.GetVolume(root);
+                if (volume?.IncursSeekPenalty != false) return "自动档遇到 HDD 或存储未知";
+            }
+        }
+        return null;
     }
 
     private static BatchOutcome FailAll(Batch batch, ResourceContentIssue issue) => new(

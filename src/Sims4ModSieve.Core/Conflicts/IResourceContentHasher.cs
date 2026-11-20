@@ -44,6 +44,14 @@ public sealed record ResourceContentBatchResult(
 /// </remarks>
 public interface IResourceContentHasher
 {
+    // 可选跨包协调；null 表示由调用方完整走原单包路径。
+    Task<IReadOnlyList<ResourceContentBatchResult>?> TryHashBatchesWithReuseAsync(
+        IReadOnlyList<ResourceContentBatchRequest> requests,
+        ResourceContentBudget budget,
+        Action<ResourceContentReuseDiagnostics> observed,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ResourceContentBatchResult>?>(null);
+
     Task<ResourceContentBatchResult> HashAsync(
         ResourceContentBatchRequest request,
         ResourceContentBudget budget,

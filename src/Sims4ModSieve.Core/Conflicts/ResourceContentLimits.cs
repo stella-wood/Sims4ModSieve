@@ -37,8 +37,8 @@ public sealed record ResourceContentLimits(
     public const long DefaultMaxTotalProcessedBytes = long.MaxValue;
 
     /// <summary>
-    /// 2。比较以顺序读磁盘为主，解压与哈希的 CPU 开销不大；
-    /// 并发过高只会让机械硬盘来回寻道。
+    /// 2。无扫描选项的旧调用默认值；生产快照在全 SSD 时采用 min(CPU,8)，
+    /// HDD 时采用 1，有限总预算保留调用者原值。
     /// </summary>
     public const int DefaultMaxDegreeOfParallelism = 2;
 

@@ -11,7 +11,8 @@ namespace Sims4ModSieve.Benchmarks;
 
 internal sealed record StageMeasurement(string Name, double Milliseconds, int Parallelism,
     long Files, long Bytes, long Entries, long ProcessedBytes, long FailedEntries,
-    long ReadEntries, long DecompressionAttempts, long DecompressionCompleted);
+    long ReadEntries, long DecompressionAttempts, long DecompressionCompleted,
+    ResourceContentReuseDiagnostics? ContentReuse);
 
 internal sealed record RunMeasurement(string Outcome, string? Error, double Milliseconds, double? CancellationLatencyMs,
     long AllocatedBytes, long ProcessLifetimePeakWorkingSetBytes, int? HandlesBefore, int? HandlesAfter,
@@ -22,7 +23,8 @@ internal static class BenchmarkRunner
     internal static async Task<string> CaptureAsync(IReadOnlyList<ScanSource> sources, string? modsRoot,
         CancellationToken cancellationToken, string snapshotPath, string scope = "all",
         DuplicateHashConcurrency hashConcurrency = DuplicateHashConcurrency.Auto, IStorageProfile? storage = null,
-        DuplicateHashConcurrency? indexConcurrency = null, DuplicateHashConcurrency? contentConcurrency = null)
+        DuplicateHashConcurrency? indexConcurrency = null, DuplicateHashConcurrency? contentConcurrency = null,
+        ResourceContentReuseMode contentReuse = ResourceContentReuseMode.Off)
     {
         var duplicateRequest = new DuplicateScanRequest(sources, modsRoot, [".package", ".ts4script"])
         {
@@ -44,7 +46,8 @@ internal static class BenchmarkRunner
         var contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault())
             .CompareAsync(new(packages.Candidates)
             {
-                Options = contentConcurrency is { } content ? new(content, storage) : null,
+                Options = contentConcurrency is not null || contentReuse != ResourceContentReuseMode.Off
+                    ? new(contentConcurrency ?? DuplicateHashConcurrency.Auto, storage) { ContentReuse = contentReuse } : null,
             }, cancellationToken: cancellationToken);
         var scripts = await new ScriptModuleScanner(new PhysicalFileSystemAccess())
             .ScanAsync(new(sources), cancellationToken: cancellationToken);
@@ -113,7 +116,7 @@ internal static class BenchmarkRunner
         var stages = performance.Stages.Select(stage => new StageMeasurement(stage.Name,
             stage.Elapsed.TotalMilliseconds, stage.Parallelism, stage.Files, stage.Bytes, stage.Entries,
             stage.ProcessedBytes, stage.FailedEntries, stage.ReadEntries,
-            stage.DecompressionAttempts, stage.DecompressionCompleted)).ToArray();
+            stage.DecompressionAttempts, stage.DecompressionCompleted, stage.ContentReuse)).ToArray();
         process.Refresh();
         return new RunMeasurement(outcome, error, Stopwatch.GetElapsedTime(started, stopped).TotalMilliseconds,
             requested == 0 || outcome != "cancelled" ? null : Stopwatch.GetElapsedTime(requested, stopped).TotalMilliseconds,

@@ -9,4 +9,6 @@ public sealed record ConflictScanOptions(
     IStorageProfile? StorageProfile = null)
 {
     public Action<ScanConcurrencyDecision>? ConcurrencyDecided { get; init; }
+    public ResourceContentReuseMode ContentReuse { get; init; } = ResourceContentReuseMode.Off;
+    public Action<ResourceContentReuseDiagnostics>? ContentReuseObserved { get; init; }
 }

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Desktop.Services;
 
 namespace Sims4ModSieve.Benchmarks;
@@ -22,6 +23,7 @@ internal static class Program
             Console.WriteLine("    [--scope all|duplicates] (default: all)");
             Console.WriteLine("    [--hash-concurrency auto|1|2|4|8] (default: auto)");
             Console.WriteLine("    [--index-concurrency auto|1|2|4|8] [--content-concurrency auto|1|2|4|8] (default: legacy calls)");
+            Console.WriteLine("    [--content-reuse off|auto|on] (default: off)");
             return 0;
         }
         try
@@ -71,6 +73,13 @@ internal static class Program
             ? (DuplicateHashConcurrency?)ParseConcurrency(indexLabel, "--index-concurrency") : null;
         var contentConcurrency = One(options, "--content-concurrency") is { } contentLabel
             ? (DuplicateHashConcurrency?)ParseConcurrency(contentLabel, "--content-concurrency") : null;
+        var contentReuse = (One(options, "--content-reuse") ?? "off") switch
+        {
+            "off" => ResourceContentReuseMode.Off,
+            "auto" => ResourceContentReuseMode.Auto,
+            "on" => ResourceContentReuseMode.On,
+            _ => throw new ArgumentException("--content-reuse must be off, auto or on."),
+        };
         BenchmarkInputs.ValidateOutput(output, sources.Select(source => source.Path));
         var before = InputManifest.Capture(sources.Select(source => source.Path));
         string? expected = null;
@@ -101,7 +110,7 @@ internal static class Program
                 var storage = new WindowsStorageProfile();
                 var measurement = await BenchmarkRunner.MeasureAsync(
                     token => BenchmarkRunner.CaptureAsync(sources, One(options, "--mods-root"), token, snapshotPath, scope,
-                        hashConcurrency, storage, indexConcurrency, contentConcurrency),
+                        hashConcurrency, storage, indexConcurrency, contentConcurrency, contentReuse),
                     cancelAfter, lifetime.Token, storage);
                 measurements.Add(measurement);
                 await File.WriteAllTextAsync(Path.Combine(output, $"run-{iteration:D2}.log"), measurement.TimingLog);
@@ -134,12 +143,14 @@ internal static class Program
             HashConcurrency = concurrencyLabel,
             IndexConcurrency = One(options, "--index-concurrency") ?? "legacy",
             ContentConcurrency = One(options, "--content-concurrency") ?? "legacy",
+            ContentReuse = contentReuse.ToString(),
             OS = RuntimeInformation.OSDescription, Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
             Runtime = RuntimeInformation.FrameworkDescription, LogicalCpuCount = Environment.ProcessorCount,
             Runs = measurements.Count, RequestedRuns = runs, CompletedRuns = completed.Length,
             CancelledRuns = measurements.Count(run => run.Outcome == "cancelled"),
             StableInput = stable, Difference = difference, Valid = valid,
             MedianMilliseconds = completed.Length == 0 ? (double?)null : BenchmarkRunner.Median(completed.Select(run => run.Milliseconds)),
+            RunMetrics = measurements.Select(run => new { run.Outcome, run.Milliseconds, run.ProcessLifetimePeakWorkingSetBytes, run.Stages }),
             StageMedians = completed.SelectMany(run => run.Stages).Select(stage => stage.Name).Distinct()
                 .Select(name => new
                 {
@@ -184,7 +195,7 @@ internal static class Program
     private static Dictionary<string, List<string>> Parse(string[] args)
     {
         string[] allowed = ["--source", "--output", "--sample-id", "--runs", "--mods-root", "--baseline",
-            "--cancel-after-ms", "--revision", "--storage", "--scope", "--hash-concurrency", "--index-concurrency", "--content-concurrency"];
+            "--cancel-after-ms", "--revision", "--storage", "--scope", "--hash-concurrency", "--index-concurrency", "--content-concurrency", "--content-reuse"];
         var options = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (var index = 1; index < args.Length; index += 2)
         {

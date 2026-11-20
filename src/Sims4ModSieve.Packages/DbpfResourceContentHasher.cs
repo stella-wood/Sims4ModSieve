@@ -15,22 +15,14 @@ namespace Sims4ModSieve.Packages;
 /// 流式解压并增量计算 SHA-256。
 /// </summary>
 /// <remarks>
-/// 为什么不用第三方库取内容：锁定版本的 LlamaLogic.Packages 3.8.2 在取资源时
-/// <list type="bullet">
-/// <item>按索引声明的解压大小直接分配整块内存（最大可声明到 4 GiB），而不是按实际输出；</item>
-/// <item>zlib 只调用一次 <c>Read</c> 就返回，读不满时静默返回前半截内容，不校验长度；</item>
-/// <item>RefPack 同样按头部声明大小预分配，回引用不做越界检查，不支持取消，结尾不核对长度；</item>
-/// <item>没有公开的流式读取入口。</item>
-/// </list>
-/// 以上是对 3.8.2 的核对结论；当前依赖已升到 4.9.0，这些行为没有在 4.9.0 上重新核对，改动本类前先复核。
-/// 这些行为都无法在调用前用声明值完全防住，所以内容读取由本类直接完成；
-/// 索引读取仍由 <see cref="LlamaLogicPackageIndexReader"/> 负责，本类只按同一布局复核目标记录。
+/// 资源内容由本类直接读取，以逐块执行项目的预算、取消、压缩流结束、输入耗尽与长度校验；
+/// 索引读取仍由 <see cref="LlamaLogicPackageIndexReader"/> 负责。
 /// <para>
 /// 支持边界：未压缩与 zlib。RefPack（Maxis 内部压缩，含 streamable 变体）本轮返回
 /// <see cref="ResourceContentIssueCode.UnsupportedCompression"/>，不调用无界解压。
 /// </para>
 /// </remarks>
-public sealed class DbpfResourceContentHasher(
+public sealed partial class DbpfResourceContentHasher(
     IFileSystemAccess fileSystem,
     PackageSafetyLimits? packageLimits = null) : IResourceContentHasher
 {
@@ -204,11 +196,10 @@ public sealed class DbpfResourceContentHasher(
 
     /// <summary>
     /// 复核 header，顺着索引走到每个目标 ordinal，取出它的位置、大小与压缩方式。
-    /// 布局与 LlamaLogic 3.8.2 <c>DataBasePackedFile.ParseIndex</c> 逐字段一致：
+    /// 沿用本项目 DBPF 2.1 定位布局：
     /// 位域 → 公共常量 → 每条 [Type][Group][InstanceHi][InstanceLo][Position][Size][MemSize]
     /// （公共常量对应的字段不逐条存储），Size 最高位置位时尾随 [Compression u16][Committed u16]。
-    /// 没有扩展字段的记录按未压缩处理，与该库相同。
-    /// 逐字段对照是按 3.8.2 做的；当前依赖已升到 4.9.0，未重新对照。
+    /// 没有扩展字段的记录按未压缩处理。定位与原始字节复用共用此解析器。
     /// </summary>
     private async Task<LocateResult> LocateAsync(
         Stream stream,
@@ -359,62 +350,9 @@ public sealed class DbpfResourceContentHasher(
         ResourceContentBudget budget,
         CancellationToken cancellationToken)
     {
-        // 不能只凭 TGI 找资源：ordinal 处的键必须与候选扫描时一致，否则说明索引已经不是那一份。
-        if (entry.Key != target.Key)
-        {
-            return ResourceContentResult.Failure(target, IndexMismatch(
-                target,
-                $"位置 {target.Ordinal} 上的资源键是 {entry.Key.Tgi}，候选扫描时是 {target.Key.Tgi}。"));
-        }
-
-        switch (entry.Compression)
-        {
-            case CompressionNone:
-            case CompressionZlib:
-                break;
-            case CompressionDeleted:
-                return Fail(target, ResourceContentIssueCode.Deleted, ResourceContentStage.Decompress,
-                    "这条资源在 package 里被标记为已删除，没有可比较的内容。");
-            case CompressionInternal:
-            case CompressionStreamable:
-                return Fail(target, ResourceContentIssueCode.UnsupportedCompression, ResourceContentStage.Decompress,
-                    "这条资源使用 Maxis 内部压缩（RefPack），本版本暂不支持比较它的内容。",
-                    $"compression 0x{entry.Compression:X4}");
-            default:
-                return Fail(target, ResourceContentIssueCode.UnsupportedCompression, ResourceContentStage.Decompress,
-                    "这条资源使用了不认识的压缩方式，无法比较内容。",
-                    $"compression 0x{entry.Compression:X4}");
-        }
-
-        // 声明值只用于提前拒绝。
-        if (entry.StoredSize > limits.MaxStoredBytesPerResource)
-        {
-            return Fail(target, ResourceContentIssueCode.StoredSizeExceedsLimit, ResourceContentStage.Read,
-                "这条资源的存储数据超出了单条读取上限。",
-                $"声明 {entry.StoredSize} 字节，上限 {limits.MaxStoredBytesPerResource} 字节。");
-        }
-
-        if (entry.DeclaredSize > limits.MaxDecompressedBytesPerResource)
-        {
-            return Fail(target, ResourceContentIssueCode.DecompressedSizeExceedsLimit, ResourceContentStage.Decompress,
-                "这条资源解压后的大小超出了单条上限。",
-                $"声明 {entry.DeclaredSize} 字节，上限 {limits.MaxDecompressedBytesPerResource} 字节。");
-        }
-
-        if (entry.Compression == CompressionNone && entry.StoredSize != entry.DeclaredSize)
-        {
-            return Fail(target, ResourceContentIssueCode.LengthMismatch, ResourceContentStage.Read,
-                "这条未压缩资源的两个长度字段对不上，文件可能已损坏。",
-                $"存储 {entry.StoredSize} 字节，声明内容 {entry.DeclaredSize} 字节。");
-        }
-
-        var end = (ulong)entry.Position + entry.StoredSize;
-        if (entry.Position < DbpfPrecheck.HeaderLength || end > (ulong)fileLength)
-        {
-            return Fail(target, ResourceContentIssueCode.OutOfBounds, ResourceContentStage.Read,
-                "这条资源的位置超出了文件范围，文件可能已损坏或被截断。",
-                $"位置 {entry.Position}、长度 {entry.StoredSize}，文件长度 {fileLength}。");
-        }
+        var validation = ValidateEntry(fileLength, target, entry, limits);
+        if (validation is not null) return ResourceContentResult.Failure(target, validation);
+        if (entry.Compression == CompressionZlib) ScanPerformance.CurrentStage?.ObserveCompressedCandidate(entry.DeclaredSize);
 
         try
         {
@@ -457,6 +395,69 @@ public sealed class DbpfResourceContentHasher(
                 "读取这条资源时出错。",
                 $"{exception.GetType().Name}: {exception.Message}");
         }
+    }
+
+    private static ResourceContentIssue? ValidateEntry(long fileLength, ResourceContentTarget target,
+        IndexEntry entry, ResourceContentLimits limits)
+    {
+        // 不能只凭 TGI 找资源：ordinal 处的键必须与候选扫描时一致，否则说明索引已经不是那一份。
+        if (entry.Key != target.Key)
+        {
+            return IndexMismatch(
+                target,
+                $"位置 {target.Ordinal} 上的资源键是 {entry.Key.Tgi}，候选扫描时是 {target.Key.Tgi}。");
+        }
+
+        switch (entry.Compression)
+        {
+            case CompressionNone:
+            case CompressionZlib:
+                break;
+            case CompressionDeleted:
+                return new ResourceContentIssue(ResourceContentIssueCode.Deleted, ResourceContentStage.Decompress,
+                    "这条资源在 package 里被标记为已删除，没有可比较的内容。");
+            case CompressionInternal:
+            case CompressionStreamable:
+                return new ResourceContentIssue(ResourceContentIssueCode.UnsupportedCompression, ResourceContentStage.Decompress,
+                    "这条资源使用 Maxis 内部压缩（RefPack），本版本暂不支持比较它的内容。",
+                    $"compression 0x{entry.Compression:X4}");
+            default:
+                return new ResourceContentIssue(ResourceContentIssueCode.UnsupportedCompression, ResourceContentStage.Decompress,
+                    "这条资源使用了不认识的压缩方式，无法比较内容。",
+                    $"compression 0x{entry.Compression:X4}");
+        }
+
+        // 声明值只用于提前拒绝。
+        if (entry.StoredSize > limits.MaxStoredBytesPerResource)
+        {
+            return new ResourceContentIssue(ResourceContentIssueCode.StoredSizeExceedsLimit, ResourceContentStage.Read,
+                "这条资源的存储数据超出了单条读取上限。",
+                $"声明 {entry.StoredSize} 字节，上限 {limits.MaxStoredBytesPerResource} 字节。");
+        }
+
+        if (entry.DeclaredSize > limits.MaxDecompressedBytesPerResource)
+        {
+            return new ResourceContentIssue(ResourceContentIssueCode.DecompressedSizeExceedsLimit, ResourceContentStage.Decompress,
+                "这条资源解压后的大小超出了单条上限。",
+                $"声明 {entry.DeclaredSize} 字节，上限 {limits.MaxDecompressedBytesPerResource} 字节。");
+        }
+
+        if (entry.Compression == CompressionNone && entry.StoredSize != entry.DeclaredSize)
+        {
+            return new ResourceContentIssue(ResourceContentIssueCode.LengthMismatch, ResourceContentStage.Read,
+                "这条未压缩资源的两个长度字段对不上，文件可能已损坏。",
+                $"存储 {entry.StoredSize} 字节，声明内容 {entry.DeclaredSize} 字节。");
+        }
+
+        var end = (ulong)entry.Position + entry.StoredSize;
+        if (entry.Position < DbpfPrecheck.HeaderLength || end > (ulong)fileLength)
+        {
+            return new ResourceContentIssue(ResourceContentIssueCode.OutOfBounds, ResourceContentStage.Read,
+                "这条资源的位置超出了文件范围，文件可能已损坏或被截断。",
+                $"位置 {entry.Position}、长度 {entry.StoredSize}，文件长度 {fileLength}。");
+        }
+
+        return null;
     }
 
     /// <summary>未压缩：存储数据就是内容。读满声明长度才算成功。</summary>
@@ -546,7 +547,9 @@ public sealed class DbpfResourceContentHasher(
                     finally
                     {
                         // 即使本次调用在校验和处抛错，也结算已交付的输出。
-                        reservation.Complete(checked((int)(inflater.TotalOut - outputBefore)));
+                        var output = checked((int)(inflater.TotalOut - outputBefore));
+                        reservation.Complete(output);
+                        ScanPerformance.CurrentStage?.AddContentOutput(output);
                     }
                 }
 
@@ -695,6 +698,8 @@ public sealed class DbpfResourceContentHasher(
                 throw new EndOfStreamException();
             }
 
+            ScanPerformance.CurrentStage?.AddContentInput(read);
+            if (bytesPerUnit == 2) ScanPerformance.CurrentStage?.AddContentOutput(read);
             Consumed += read;
             return read;
         }
@@ -722,6 +727,8 @@ public sealed class DbpfResourceContentHasher(
                 throw new EndOfStreamException();
             }
 
+            ScanPerformance.CurrentStage?.AddContentInput(read);
+            if (bytesPerUnit == 2) ScanPerformance.CurrentStage?.AddContentOutput(read);
             Consumed += read;
             return read;
         }
