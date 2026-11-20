@@ -12,11 +12,21 @@ public interface IFileActionDialogService
 
     void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures);
 
+    void ShowResultRefreshNotice(int changedGroupCount) { }
+
     bool ShowConflictGroupingWarning(ConflictGroupingSize size) => false;
 }
 
 public sealed class FileActionDialogService : IFileActionDialogService
 {
+    public void ShowResultRefreshNotice(int changedGroupCount)
+    {
+        new WarningDialog("提示", "相关组文件有变动，点击刷新", closeLabel: "刷新", primaryCloseButton: true)
+        {
+            Owner = Application.Current?.MainWindow,
+        }.ShowDialog();
+    }
+
     public bool ShowConflictGroupingWarning(ConflictGroupingSize size)
     {
         var duplicateCopies = size.Reason == "duplicate-copies";

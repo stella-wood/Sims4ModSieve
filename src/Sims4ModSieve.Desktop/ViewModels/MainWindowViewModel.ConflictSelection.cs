@@ -134,7 +134,11 @@ public sealed partial class MainWindowViewModel
     private async Task DeleteSelectedConflictFilesAsync()
     {
         if (IsBusy || !IsConflictComplete || !IsConflictMultiSelect) return;
-        var candidates = ConflictSelectionCandidates().Select(candidate =>
+        var selected = ConflictSelectionCandidates();
+        var originalRows = conflictRows;
+        var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
+        var remaining = await RefreshMissingResultMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
+        var candidates = selected.Where(candidate => remaining.Contains(candidate.Path)).Select(candidate =>
         {
             var disabled = disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, candidate.Path)
                 && record.Size == candidate.ExpectedSize && record.LastWriteTimeUtc == candidate.ExpectedLastWriteTimeUtc);
@@ -147,7 +151,7 @@ public sealed partial class MainWindowViewModel
         var session = conflictSession;
         var duplicateGeneration = resultGeneration;
         var duplicateSnapshot = Groups.Select(group => group.Model).ToArray();
-        var restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
+        if (!ReferenceEquals(conflictRows, originalRows)) restoreViewport = ConflictViewportCaptureRequested?.Invoke(false);
         IsBusy = true;
         try
         {
@@ -190,7 +194,10 @@ public sealed partial class MainWindowViewModel
     private async Task DisableSelectedConflictFilesAsync()
     {
         if (IsBusy || !IsConflictComplete || !IsConflictMultiSelect) return;
-        var candidates = ConflictSelectionCandidates()
+        var selected = ConflictSelectionCandidates();
+        var remaining = await RefreshMissingResultMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
+        if (remaining.Count == 0) return;
+        var candidates = selected.Where(candidate => remaining.Contains(candidate.Path))
             .Where(candidate => !disabledRecords.Any(record => PathRulesEqual(record.OriginalPath, candidate.Path)
                 && record.Size == candidate.ExpectedSize && record.LastWriteTimeUtc == candidate.ExpectedLastWriteTimeUtc))
             .ToArray();

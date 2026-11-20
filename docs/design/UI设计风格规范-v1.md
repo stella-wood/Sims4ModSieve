@@ -230,7 +230,7 @@ WPF 下拉选择框共用 [App.xaml](../../src/Sims4ModSieve.Desktop/App.xaml) �
 
 ### 警告弹窗
 
-新增警告弹窗复用 [`WarningDialog`](../../src/Sims4ModSieve.Desktop/Components/WarningDialog.xaml)。窗口为 352 × 192 DIP，纯白内容区内的黄黑图标与 14 DIP 正文整体居中，正文顶格自然换行。底部显示「关闭」，有下一步操作时在右侧使用紫底白字按钮。按钮为 12 DIP 常规字重。
+新增警告弹窗复用 [`WarningDialog`](../../src/Sims4ModSieve.Desktop/Components/WarningDialog.xaml)。窗口为 352 × 192 DIP，纯白内容区内的正文区水平及垂直居中，最小宽度使用 [`WarningDialogBodyMinWidth`](../../DESIGN.md#间距)。区内的黄黑图标与 14 DIP 正文靠左排列，正文顶格自然换行。底部默认显示「关闭」，右侧的主操作按钮为紫底白字。按钮为 12 DIP 常规字重。
 
 调用方传入标题、短正文及可选的主操作按钮文案，设置 `Owner` 后调用 `ShowDialog()`。返回 `true` 时执行主操作。「关闭」、Esc 和标题栏关闭均可退出弹窗。
 

@@ -912,6 +912,11 @@ public sealed class ModDisableViewModelTests
             new FileManagementStore(files.Store.DataDirectory), disabled);
         var model = Model(files, actions: service, disableService: disabled);
         var allPaths = paths.Concat(new[] { Path.Combine(mods, "other.package") }).ToArray();
+        if (folded)
+        {
+            File.WriteAllBytes(allPaths[^1], new byte[10]);
+            File.SetLastWriteTimeUtc(allPaths[^1], ConflictResultSessionTests.Stamp.LastWriteTimeUtc);
+        }
         var session = folded ? V2([ConflictResultSessionTests.Resource(1, allPaths.Select(path =>
             (path, (string?)(path == allPaths[^1] ? "different" : "same"))).ToArray())], allPaths.Select(path => (path, 1)).ToArray(), Duplicates(paths))
             : V2([], [], Duplicates(paths));

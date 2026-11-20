@@ -1,6 +1,7 @@
 <Window x:Class="Sims4ModSieve.Desktop.Components.WarningDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         Width="352"
         Height="192"
         ResizeMode="NoResize"
@@ -8,6 +9,7 @@
         ShowInTaskbar="False"
         Background="{StaticResource SurfaceBrush}">
     <Window.Resources>
+        <sys:Double x:Key="WarningDialogBodyMinWidth">300</sys:Double>
         <SolidColorBrush x:Key="WarningInkBrush" Color="#24221F" />
         <PathGeometry x:Key="WarningTriangle"
                       Figures="M11.20,3.73 A0.92,0.92 0 0 1 12.80,3.73 L21.95,19.59 A0.92,0.92 0 0 1 21.15,20.97 L2.85,20.97 A0.92,0.92 0 0 1 2.05,19.59 Z" />
@@ -49,7 +51,8 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Grid HorizontalAlignment="Center" VerticalAlignment="Center"
+              MinWidth="{StaticResource WarningDialogBodyMinWidth}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -62,7 +65,7 @@
         </Grid>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
-            <Button Width="56" Height="28" Content="关闭" IsCancel="True"
+            <Button x:Name="CloseButton" Width="56" Height="28" Content="关闭" IsCancel="True"
                     Cursor="Hand" Style="{StaticResource SecondaryButtonStyle}"
                     Padding="0" FontSize="12" FontWeight="Normal" Click="Close_Click" />
             <Button x:Name="ActionButton" MinWidth="112" Height="28" Margin="8,0,0,0"

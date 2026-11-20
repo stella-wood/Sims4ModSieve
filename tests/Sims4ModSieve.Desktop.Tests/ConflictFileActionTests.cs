@@ -22,7 +22,7 @@ using static Sims4ModSieve.Desktop.Tests.ConflictV2SessionTests;
 namespace Sims4ModSieve.Desktop.Tests;
 
 [TestClass]
-public sealed class ConflictFileActionTests
+public sealed partial class ConflictFileActionTests
 {
     [TestMethod]
     [DataRow(".ts4script", "stable")]
@@ -267,6 +267,7 @@ public sealed class ConflictFileActionTests
         duplicates.Replace(duplicates.PrepareGroups(report.Groups));
         var adapter = new TestRecycleBin();
         var model = Model(files.Root, new RecordingDuplicateRun(report), duplicates, adapter);
+        File.WriteAllBytes(files.C + ".other", new byte[10]);
         var session = V2([Resource(1, (files.A, "same"), (files.B, "same"), (files.C, "same"), (files.C + ".other", "other"))],
             [(files.A, 1), (files.B, 1), (files.C, 1), (files.C + ".other", 1)], report);
         var card = session.Cards.Single(card => card.Type == "suspected");
