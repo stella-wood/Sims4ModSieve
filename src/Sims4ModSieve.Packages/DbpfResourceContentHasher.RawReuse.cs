@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Diagnostics;
@@ -11,6 +12,7 @@ public sealed partial class DbpfResourceContentHasher
     internal int ReuseDescriptorLimit { get; init; } = 131_072;
     internal int ReuseCollisionSetLimit { get; init; } = 32;
     internal long ReuseConfirmationByteLimit { get; init; } = 32L * 1024 * 1024 * 1024;
+    internal int ReuseHandleLimit { get; init; } = 2048;
     internal Func<string, string>? RawDigestTransform { get; init; }
     internal Action<string, string, ResourceContentTarget?>? ReuseCheckpoint { get; init; }
 
@@ -21,6 +23,14 @@ public sealed partial class DbpfResourceContentHasher
         internal IndexEntry Entry { get; } = entry;
         internal string? Digest { get; set; }
         internal RawItem? Representative { get; set; }
+    }
+
+    private sealed class RawReadHandle(int batch)
+    {
+        internal int Batch { get; } = batch;
+        internal Stream? Stream { get; set; }
+        internal SemaphoreSlim Gate { get; } = new(1);
+        internal int Users { get; set; }
     }
 
     public async Task<IReadOnlyList<ResourceContentBatchResult>?> TryHashBatchesWithReuseAsync(
@@ -121,32 +131,88 @@ public sealed partial class DbpfResourceContentHasher
             catch (Exception exception) when (IsRawReadFailure(exception)) { disqualified[batch] = true; }
         }).ConfigureAwait(false);
 
-        var leftBuffer = ArrayPool<byte>.Shared.Rent(ChunkSize);
-        var rightBuffer = ArrayPool<byte>.Shared.Rent(ChunkSize);
+        var digestGroups = metadata.SelectMany(group => group.Where(item => item.Digest is not null)
+            .GroupBy(item => item.Digest).Select(group => group.ToArray())).Where(group => group.Length > 1).ToArray();
+        var potentialSavings = digestGroups.Sum(group => (long)group.Length - 1);
+        long disqualifiedLoss = 0, byteLimitLoss = 0, collisionLimitLoss = 0, byteMismatchLoss = 0, readFailureLoss = 0;
+        long handleOpens = 0, handleHits = 0, handleEvictions = 0, stampChecks = 0;
+        var confirmationFailed = new int[requests.Count];
+        var confirmationBatches = digestGroups.SelectMany(group => group).Select(item => item.Batch).Distinct().ToArray();
+        foreach (var batch in confirmationBatches)
+        {
+            stampChecks++;
+            if (!Stable(batch)) disqualified[batch] = true;
+        }
+        var confirmationGroups = digestGroups.Select(group =>
+        {
+            var stable = group.Where(item => !disqualified[item.Batch]).ToArray();
+            disqualifiedLoss += group.Length - 1 - Math.Max(0, stable.Length - 1);
+            return stable;
+        }).Where(group => group.Length > 1).ToArray();
+
+        // 先按固定组顺序分配正常确认量，再分配碰撞余量；额度归属不受 worker 抢占影响。
+        var allowances = new long[confirmationGroups.Length];
+        var remaining = ReuseConfirmationByteLimit;
+        for (var index = 0; index < confirmationGroups.Length; index++)
+        {
+            var group = confirmationGroups[index];
+            allowances[index] = Math.Min(remaining, 2L * (group.Length - 1) * group[0].Entry.StoredSize);
+            remaining -= allowances[index];
+        }
+        for (var index = 0; index < confirmationGroups.Length && remaining > 0; index++)
+        {
+            var group = confirmationGroups[index];
+            var comparisons = Enumerable.Range(1, group.Length - 1).Sum(n => (long)Math.Min(n, ReuseCollisionSetLimit));
+            var extra = Math.Min(remaining, 2L * comparisons * group[0].Entry.StoredSize - allowances[index]);
+            allowances[index] += extra;
+            remaining -= extra;
+        }
+
+        var handles = new Dictionary<int, LinkedListNode<RawReadHandle>>();
+        var recent = new LinkedList<RawReadHandle>();
+        var handleGate = new object();
+        var handleLimit = Math.Max(parallelism, ReuseHandleLimit);
+        var confirmationWatch = Stopwatch.StartNew();
         try
         {
-            foreach (var group in metadata)
+            await Parallel.ForEachAsync(Enumerable.Range(0, confirmationGroups.Length), new ParallelOptions
+            { MaxDegreeOfParallelism = parallelism, CancellationToken = cancellationToken }, async (index, token) =>
             {
-                foreach (var digestGroup in group.Where(item => item.Digest is not null && !disqualified[item.Batch]).GroupBy(item => item.Digest))
+                var leftBuffer = ArrayPool<byte>.Shared.Rent(ChunkSize);
+                var rightBuffer = ArrayPool<byte>.Shared.Rent(ChunkSize);
+                try
                 {
                     var representatives = new List<RawItem>();
-                    foreach (var item in digestGroup)
+                    long reserved = 0;
+                    foreach (var item in confirmationGroups[index])
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        if (disqualified[item.Batch]) continue;
+                        token.ThrowIfCancellationRequested();
                         var matched = false;
+                        var limited = false;
+                        var failed = false;
                         foreach (var representative in representatives)
                         {
-                            if (disqualified[representative.Batch]) continue;
-                            // 先检查整个比较的最大逻辑输入，超限只影响优化机会。
-                            if (2L * item.Entry.StoredSize > ReuseConfirmationByteLimit - confirmationBytes) break;
-                            digestCandidates++;
+                            var cost = 2L * item.Entry.StoredSize;
+                            if (cost > allowances[index] - reserved) { limited = true; break; }
+                            reserved += cost;
+                            Interlocked.Increment(ref digestCandidates);
                             try
                             {
-                                var equal = await EqualAsync(representative, item).ConfigureAwait(false);
+                                Checkpoint("confirm", item.Batch, requests[item.Batch].Targets[item.Slot]);
+                                long offset = 0;
+                                var equal = true;
+                                while (offset < item.Entry.StoredSize)
+                                {
+                                    token.ThrowIfCancellationRequested();
+                                    var count = (int)Math.Min(ChunkSize, item.Entry.StoredSize - offset);
+                                    await ReadBlock(representative, offset, leftBuffer.AsMemory(0, count), token).ConfigureAwait(false);
+                                    await ReadBlock(item, offset, rightBuffer.AsMemory(0, count), token).ConfigureAwait(false);
+                                    if (!leftBuffer.AsSpan(0, count).SequenceEqual(rightBuffer.AsSpan(0, count))) { equal = false; break; }
+                                    offset += count;
+                                }
                                 if (equal)
                                 {
-                                    confirmed++;
+                                    Interlocked.Increment(ref confirmed);
                                     item.Representative = representative;
                                     matched = true;
                                     break;
@@ -154,72 +220,97 @@ public sealed partial class DbpfResourceContentHasher
                             }
                             catch (Exception exception) when (IsRawReadFailure(exception))
                             {
-                                // 不猜 IO 发生在何种业务边界；两边各由原 reader 重新判定。
-                                disqualified[item.Batch] = true;
-                                disqualified[representative.Batch] = true;
+                                // 阶段结束统一作废，不让其他组的代表选择依赖失败发生的先后。
+                                Interlocked.Exchange(ref confirmationFailed[item.Batch], 1);
+                                Interlocked.Exchange(ref confirmationFailed[representative.Batch], 1);
+                                failed = true;
                                 break;
                             }
                         }
-                        if (!matched && !disqualified[item.Batch] && representatives.Count < ReuseCollisionSetLimit)
-                            representatives.Add(item);
+                        if (!matched)
+                        {
+                            if (representatives.Count > 0)
+                            {
+                                if (failed) Interlocked.Increment(ref readFailureLoss);
+                                else if (limited) Interlocked.Increment(ref byteLimitLoss);
+                                else if (representatives.Count >= ReuseCollisionSetLimit) Interlocked.Increment(ref collisionLimitLoss);
+                                else Interlocked.Increment(ref byteMismatchLoss);
+                            }
+                            if (!failed && representatives.Count < ReuseCollisionSetLimit) representatives.Add(item);
+                        }
                     }
                 }
-            }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(leftBuffer);
+                    ArrayPool<byte>.Shared.Return(rightBuffer);
+                }
+            }).ConfigureAwait(false);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(leftBuffer);
-            ArrayPool<byte>.Shared.Return(rightBuffer);
+            foreach (var handle in recent)
+            {
+                if (handle.Stream is not null) await handle.Stream.DisposeAsync().ConfigureAwait(false);
+                handle.Gate.Dispose();
+            }
+            confirmationWatch.Stop();
+        }
+        foreach (var batch in confirmationBatches)
+        {
+            Checkpoint("confirm-end", batch);
+            stampChecks++;
+            if (!Stable(batch) || confirmationFailed[batch] != 0) disqualified[batch] = true;
         }
 
-        async Task<bool> EqualAsync(RawItem left, RawItem right)
+        async Task ReadBlock(RawItem item, long offset, Memory<byte> buffer, CancellationToken token)
         {
-            Checkpoint("confirm", right.Batch, requests[right.Batch].Targets[right.Slot]);
-            if (!Stable(left.Batch) || !Stable(right.Batch))
-                throw new IOException("Raw comparison version changed.");
-            Stream? leftStream = null, rightStream = null;
+            RawReadHandle handle;
+            lock (handleGate)
+            {
+                if (handles.TryGetValue(item.Batch, out var node))
+                {
+                    recent.Remove(node);
+                    recent.AddFirst(node);
+                    handleHits++;
+                }
+                else
+                {
+                    if (handles.Count >= handleLimit)
+                    {
+                        // 每个 worker 只借一个句柄；容量至少为 worker 数，必有未借出的尾项。
+                        var victim = recent.Last!;
+                        while (victim.Value.Users != 0) victim = victim.Previous!;
+                        recent.Remove(victim);
+                        handles.Remove(victim.Value.Batch);
+                        victim.Value.Stream?.Dispose();
+                        victim.Value.Gate.Dispose();
+                        handleEvictions++;
+                    }
+                    node = recent.AddFirst(new RawReadHandle(item.Batch));
+                    handles.Add(item.Batch, node);
+                }
+                handle = node.Value;
+                handle.Users++;
+            }
             try
             {
-                if (parallelism > 1)
+                await handle.Gate.WaitAsync(token).ConfigureAwait(false);
+                try
                 {
-                    leftStream = fileSystem.OpenRead(requests[left.Batch].PackagePath);
-                    rightStream = fileSystem.OpenRead(requests[right.Batch].PackagePath);
+                    if (handle.Stream is null)
+                    {
+                        handle.Stream = fileSystem.OpenReadRandomAccess(requests[item.Batch].PackagePath);
+                        Interlocked.Increment(ref handleOpens);
+                    }
+                    handle.Stream.Seek(item.Entry.Position + offset, SeekOrigin.Begin);
+                    using var stored = new BoundedReadStream(handle.Stream, buffer.Length, budget, token);
+                    try { await stored.ReadExactlyAsync(buffer, token).ConfigureAwait(false); }
+                    finally { Interlocked.Add(ref confirmationBytes, stored.Consumed); }
                 }
-                long offset = 0;
-                while (offset < left.Entry.StoredSize)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var count = (int)Math.Min(ChunkSize, left.Entry.StoredSize - offset);
-                    await ReadBlock(left, leftStream, offset, leftBuffer.AsMemory(0, count)).ConfigureAwait(false);
-                    await ReadBlock(right, rightStream, offset, rightBuffer.AsMemory(0, count)).ConfigureAwait(false);
-                    if (!leftBuffer.AsSpan(0, count).SequenceEqual(rightBuffer.AsSpan(0, count))) return false;
-                    offset += count;
-                }
-                if (!Stable(left.Batch) || !Stable(right.Batch)) throw new IOException("Raw comparison version changed.");
-                return true;
+                finally { handle.Gate.Release(); }
             }
-            finally
-            {
-                if (leftStream is not null) await leftStream.DisposeAsync().ConfigureAwait(false);
-                if (rightStream is not null) await rightStream.DisposeAsync().ConfigureAwait(false);
-            }
-        }
-
-        async Task ReadBlock(RawItem item, Stream? opened, long offset, Memory<byte> buffer)
-        {
-            // 并发 1 不同时持有两个包句柄，每块交替重开并复核文件版本。
-            if (opened is null)
-            {
-                if (!Stable(item.Batch)) throw new IOException("Raw block version changed.");
-                await using var stream = fileSystem.OpenRead(requests[item.Batch].PackagePath);
-                await ReadBlock(item, stream, offset, buffer).ConfigureAwait(false);
-                if (!Stable(item.Batch)) throw new IOException("Raw block version changed.");
-                return;
-            }
-            opened.Seek(item.Entry.Position + offset, SeekOrigin.Begin);
-            using var stored = new BoundedReadStream(opened, buffer.Length, budget, cancellationToken);
-            try { await stored.ReadExactlyAsync(buffer, cancellationToken).ConfigureAwait(false); }
-            finally { confirmationBytes += stored.Consumed; }
+            finally { lock (handleGate) handle.Users--; }
         }
 
         // 对失稳包的所有直接依赖撤销。没有代表链，也没有 worker 等待其他 worker。
@@ -230,6 +321,9 @@ public sealed partial class DbpfResourceContentHasher
             { item.Representative = null; fallback.Add(item); revoked++; }
         }
 
+        var confirmationRejected = revoked;
+        long originalTargetsRead = 0, repeatedOriginalTargets = 0;
+        var originalReadSlots = requests.Select(request => new bool[request.Targets.Count]).ToArray();
         var representativeCount = ordered.LongCount(item => item.Digest is not null && item.Representative is null && !disqualified[item.Batch]);
         var pending = requests.Select(request => new ResourceContentResult?[request.Targets.Count]).ToArray();
         var versions = new ResourceContentBatchResult?[requests.Count];
@@ -239,6 +333,8 @@ public sealed partial class DbpfResourceContentHasher
         {
             var slots = Enumerable.Range(0, requests[batch].Targets.Count).Where(slot => !skippedSlots.Contains((batch, slot))).ToArray();
             if (slots.Length == 0) return;
+            Interlocked.Add(ref originalTargetsRead, slots.Length);
+            foreach (var slot in slots) originalReadSlots[batch][slot] = true;
             Checkpoint("read", batch);
             var result = await HashAsync(requests[batch] with { Targets = slots.Select(slot => requests[batch].Targets[slot]).ToArray() }, budget, token)
                 .ConfigureAwait(false);
@@ -273,6 +369,9 @@ public sealed partial class DbpfResourceContentHasher
                 await Parallel.ForEachAsync(retry, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = cancellationToken },
                     async (batch, token) =>
                     {
+                        Interlocked.Add(ref originalTargetsRead, requests[batch].Targets.Count);
+                        Interlocked.Add(ref repeatedOriginalTargets, originalReadSlots[batch].LongCount(read => read));
+                        Array.Fill(originalReadSlots[batch], true);
                         Checkpoint("fallback", batch);
                         var result = await HashAsync(requests[batch], budget, token).ConfigureAwait(false);
                         versions[batch] = result;
@@ -316,9 +415,30 @@ public sealed partial class DbpfResourceContentHasher
         {
             NeedsDecompressionResources = eligible.LongLength,
             DeclaredOutputBytes = eligible.Sum(item => (long)item.Entry.DeclaredSize),
+            StoredBytes = eligible.Sum(item => (long)item.Entry.StoredSize),
             SingletonMetadataResources = singletons,
             FingerprintedResources = fingerprinted, FingerprintPreReadBytes = fingerprintBytes,
             DigestCandidates = digestCandidates, ConfirmedComparisons = confirmed, ConfirmationReadBytes = confirmationBytes,
+            TargetResources = requests.Sum(request => (long)request.Targets.Count),
+            MetadataGroups = metadata.LongLength,
+            EstimatedConfirmationBytes = digestGroups.Sum(group => 2L * (group.Length - 1) * group[0].Entry.StoredSize),
+            OriginalTargetsRead = originalTargetsRead,
+            RepeatedOriginalTargets = repeatedOriginalTargets,
+            ConfirmationRejectedLoss = confirmationRejected,
+            ReaderFallbackLoss = reusedItems.LongCount(item => fullFallback[item.Batch] && !invalid[item.Batch]
+                && !invalid[item.Representative!.Batch]),
+            PublicationVersionLoss = confirmed - saved.LongLength - confirmationRejected
+                - reusedItems.LongCount(item => fullFallback[item.Batch] && !invalid[item.Batch] && !invalid[item.Representative!.Batch]),
+            DigestPotentialSavings = potentialSavings,
+            DisqualifiedBeforeConfirmationLoss = disqualifiedLoss,
+            ConfirmationByteLimitLoss = byteLimitLoss, CollisionSetLimitLoss = collisionLimitLoss,
+            ByteMismatchLoss = byteMismatchLoss, ConfirmationReadFailureLoss = readFailureLoss,
+            PostConfirmationLoss = confirmed - saved.LongLength,
+            DisqualifiedResources = ordered.LongCount(item => disqualified[item.Batch]),
+            FingerprintUnavailableResources = multiple.LongCount(item => item.Digest is null),
+            ConfirmationHandleOpens = handleOpens, ConfirmationHandleHits = handleHits, ConfirmationHandleEvictions = handleEvictions,
+            ConfirmationStampChecks = stampChecks, ConfirmationMilliseconds = confirmationWatch.Elapsed.TotalMilliseconds,
+            ConfirmationByteLimit = ReuseConfirmationByteLimit,
             Representatives = representativeCount,
             EquivalentSets = saved.Select(item => item.Representative).Distinct().LongCount(),
             SavedDecompressions = saved.LongLength, SavedOutputBytes = saved.Sum(item => final[item.Batch].Results[item.Slot].DecompressedLength!.Value),
@@ -330,6 +450,11 @@ public sealed partial class DbpfResourceContentHasher
         Array.Clear(ordered);
         Array.Clear(eligible);
         Array.Clear(metadata);
+        Array.Clear(digestGroups);
+        Array.Clear(confirmationGroups);
+        Array.Clear(originalReadSlots);
+        handles.Clear();
+        recent.Clear();
         Array.Clear(reusedItems);
         Array.Clear(saved);
         Array.Clear(pending);

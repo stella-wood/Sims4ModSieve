@@ -5,6 +5,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Benchmarks;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Packages;
+using Sims4ModSieve.Packages;
 using Sims4ModSieve.Core.Tests;
 using Sims4ModSieve.Core.Tests.Packages;
 
@@ -233,6 +235,78 @@ public sealed class RawReuseStatsTests
         Assert.AreEqual(2L, stats.ValidatedDecompressionResources);
         Assert.AreEqual(1L, stats.SavedDecompressions);
         Assert.AreEqual(0L, stats.SkippedResources);
+    }
+
+    [TestMethod]
+    public async Task StatisticsAndProductionUseIdenticalMetadataAndDigestGroups()
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        WritePair(source, DbpfFixtureBuilder.Zlib(Content));
+        WritePackage(source, "bad-a.package", [0x78, 0x9c, 0], 3);
+        WritePackage(source, "bad-b.package", [0x78, 0x9c, 0], 4);
+        WritePackage(source, "none.package", Content, 5, DbpfFixtureBuilder.CompressionNone);
+        var stats = await Collect(source);
+        var packages = await new PackageConflictScanner(new PhysicalFileSystemAccess(), LlamaLogicPackageIndexReader.CreateDefault())
+            .ScanAsync(new([new("source", source)]));
+        foreach (var concurrency in new[] { 1, 2, 4, 8 })
+        {
+            ResourceContentReuseDiagnostics? actual = null;
+            await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault()).CompareAsync(new(packages.Candidates)
+            { Options = new((DuplicateHashConcurrency)concurrency)
+                { ContentReuse = ResourceContentReuseMode.On, ContentReuseObserved = value => actual = value } });
+            Assert.IsNotNull(actual);
+            Assert.AreEqual(stats.CandidateResources, actual.TargetResources);
+            Assert.AreEqual(stats.NeedsDecompressionResources, actual.NeedsDecompressionResources);
+            Assert.AreEqual(stats.StoredBytes, actual.StoredBytes);
+            Assert.AreEqual(stats.MetadataGroups, actual.MetadataGroups);
+            Assert.AreEqual(stats.SingletonMetadataResources, actual.SingletonMetadataResources);
+            Assert.AreEqual(stats.DigestPotentialSavings, actual.DigestPotentialSavings);
+            Assert.AreEqual(stats.ConfirmationReadBytes, actual.EstimatedConfirmationBytes);
+            Assert.AreEqual(stats.SavedDecompressions, actual.SavedDecompressions);
+            Assert.AreEqual(1L, actual.PostConfirmationLoss);
+            Assert.AreEqual(stats.InvalidContentSavingsExcluded, actual.PostConfirmationLoss);
+            Assert.AreEqual(actual.DigestPotentialSavings, actual.AccountedSavings);
+        }
+    }
+
+    [TestMethod]
+    public async Task WholeBatchFallbackAccountsForLostSavingsAndRepeatedReads()
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        for (var package = 0; package < 3; package++)
+        {
+            var builder = new DbpfFixtureBuilder();
+            for (uint key = 1; key <= 2; key++)
+                builder.AddContent(DbpfFixtureBuilder.Zlib(Content), DbpfFixtureBuilder.CompressionZlib, (uint)Content.Length, instanceLo: key);
+            builder.AddContent([0x78, 0x9c, 0], DbpfFixtureBuilder.CompressionZlib, 1000, instanceLo: 3);
+            builder.AddContent(DbpfFixtureBuilder.Zlib(Enumerable.Repeat((byte)package, 1000).ToArray()),
+                DbpfFixtureBuilder.CompressionZlib, 1000, instanceLo: 4);
+            File.WriteAllBytes(Path.Combine(source, $"{package}.package"), builder.Build());
+        }
+        var stats = await Collect(source);
+        var packages = await new PackageConflictScanner(new PhysicalFileSystemAccess(), LlamaLogicPackageIndexReader.CreateDefault())
+            .ScanAsync(new([new("source", source)]));
+        foreach (var concurrency in new[] { 1, 2, 4, 8 })
+        {
+            ResourceContentReuseDiagnostics? off = null, on = null;
+            await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault()).CompareAsync(new(packages.Candidates)
+            { Options = new((DuplicateHashConcurrency)concurrency) { ContentReuseObserved = value => off = value } });
+            await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault()).CompareAsync(new(packages.Candidates)
+            { Options = new((DuplicateHashConcurrency)concurrency)
+                { ContentReuse = ResourceContentReuseMode.On, ContentReuseObserved = value => on = value } });
+            Assert.IsNotNull(off);
+            Assert.IsNotNull(on);
+            Assert.AreEqual(4L, stats.SavedDecompressions);
+            Assert.AreEqual(0L, on.SavedDecompressions);
+            Assert.AreEqual(6L, on.ReaderFallbackLoss);
+            Assert.AreEqual(2L, stats.InvalidContentSavingsExcluded);
+            Assert.AreEqual(2L, on.RepeatedOriginalTargets);
+            Assert.AreEqual(off.DecompressionAttempts + 2, on.DecompressionAttempts);
+            Assert.AreEqual(stats.SavedDecompressions - on.SavedDecompressions,
+                on.ReaderFallbackLoss - stats.InvalidContentSavingsExcluded);
+        }
     }
 
     private static Task<RawReuseReport> Collect(string source) => RawReuseStats.CollectAsync([new ScanSource("source", source)]);

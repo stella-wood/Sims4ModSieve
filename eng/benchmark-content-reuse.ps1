@@ -22,6 +22,7 @@ if ($LASTEXITCODE -ne 0) { throw '构建失败' }
 $Baseline = $null
 $Rows = @()
 $Round = 0
+$OnDiagnostics = @()
 foreach ($Mode in @('off', 'on', 'off', 'on', 'off', 'on')) {
     $Round++
     $Output = Join-Path $OutputRoot "$Mode-r$Round"
@@ -39,9 +40,23 @@ foreach ($Mode in @('off', 'on', 'off', 'on', 'off', 'on')) {
     $Stage = @($Run.stages | Where-Object { $null -ne $_.contentReuse })[0]
     if ($null -eq $Stage) { throw '缺少资源内容指标' }
     $Stats = $Stage.contentReuse
+    if ($Mode -eq 'on') {
+        if ($Stats.bypassReason) { throw "On 被旁路：$($Stats.bypassReason)" }
+        if ($Stats.digestPotentialSavings -ne $Stats.accountedSavings) { throw '复用损失计数不闭合' }
+        $OnDiagnostics += $Stats
+    }
     $Rows += [pscustomobject]@{
         Mode = $Mode; Round = $Round; TotalMs = [double]$Run.milliseconds
         ContentMs = [double]$Stage.milliseconds; Decompressions = [long]$Stage.decompressionAttempts
+        ConfirmMs = [double]$Stats.confirmationMilliseconds
+        ConfirmOpens = [long]$Stats.confirmationHandleOpens; ConfirmStamps = [long]$Stats.confirmationStampChecks
+        HandleEvictions = [long]$Stats.confirmationHandleEvictions
+        DigestPotential = [long]$Stats.digestPotentialSavings
+        ByteLimitLoss = [long]$Stats.confirmationByteLimitLoss; CollisionLimitLoss = [long]$Stats.collisionSetLimitLoss
+        DisqualifiedLoss = [long]$Stats.disqualifiedBeforeConfirmationLoss
+        ReadFailureLoss = [long]$Stats.confirmationReadFailureLoss; ByteMismatchLoss = [long]$Stats.byteMismatchLoss
+        PostConfirmationLoss = [long]$Stats.postConfirmationLoss
+        RepeatedOriginalTargets = [long]$Stats.repeatedOriginalTargets
         Reused = [long]$Stats.savedDecompressions; AvoidedOutputBytes = [long]$Stats.savedOutputBytes
         ExtraReadGrossBytes = [long]$Stats.grossAdditionalReadBytes
         ExtraReadNetBytes = [long]$Stats.netAdditionalReadBytes
@@ -71,4 +86,39 @@ $Table = foreach ($Mode in @('off', 'on')) {
 }
 $Table | Export-Csv -LiteralPath (Join-Path $OutputRoot 'medians.csv') -NoTypeInformation -Encoding UTF8
 $Table | Format-Table -AutoSize | Out-String -Width 240 | Write-Host
-Write-Host "六轮业务快照一致。结果：$OutputRoot"
+# 额外统计放在六轮计时之外，用同一份来源核对预测口径和损失。
+$StatsOutput = Join-Path $OutputRoot 'raw-reuse-stats'
+& $Dotnet $Binary 'raw-reuse-stats' '--source' $Source '--output' $StatsOutput
+if ($LASTEXITCODE -ne 0) { throw "只读预测统计失败：$StatsOutput" }
+$Prediction = Get-Content -LiteralPath (Join-Path $StatsOutput 'stats.json') -Raw | ConvertFrom-Json
+$Accounting = foreach ($Stats in $OnDiagnostics) {
+    $ScopeMatches = $Prediction.candidateResources -eq $Stats.targetResources -and `
+        $Prediction.needsDecompressionResources -eq $Stats.needsDecompressionResources -and `
+        $Prediction.storedBytes -eq $Stats.storedBytes -and `
+        $Prediction.metadataGroups -eq $Stats.metadataGroups -and `
+        $Prediction.singletonMetadataResources -eq $Stats.singletonMetadataResources -and `
+        $Prediction.digestPotentialSavings -eq $Stats.digestPotentialSavings
+    $DigestDelta = [long]$Prediction.digestPotentialSavings - [long]$Stats.digestPotentialSavings
+    $Gap = [long]$Prediction.savedDecompressions - [long]$Stats.savedDecompressions
+    $Loss = [long]$Stats.accountedSavings - [long]$Stats.savedDecompressions
+    $Excluded = [long]$Prediction.invalidContentSavingsExcluded
+    if ($Gap -ne ($DigestDelta + $Loss - $Excluded)) { throw '预测差额计数不闭合' }
+    [pscustomobject]@{
+        ScopeMatches = $ScopeMatches
+        Predicted = [long]$Prediction.savedDecompressions; Saved = [long]$Stats.savedDecompressions; Gap = $Gap
+        DigestPotentialDelta = $DigestDelta; InvalidContentAlreadyExcludedByStats = $Excluded
+        DisqualifiedBeforeConfirmation = [long]$Stats.disqualifiedBeforeConfirmationLoss
+        ConfirmationByteLimit = [long]$Stats.confirmationByteLimitLoss
+        CollisionSetLimit = [long]$Stats.collisionSetLimitLoss; ByteMismatch = [long]$Stats.byteMismatchLoss
+        ConfirmationReadFailure = [long]$Stats.confirmationReadFailureLoss
+        ConfirmationRejected = [long]$Stats.confirmationRejectedLoss
+        ReaderFallback = [long]$Stats.readerFallbackLoss; PublicationVersion = [long]$Stats.publicationVersionLoss
+        RepeatedOriginalTargets = [long]$Stats.repeatedOriginalTargets
+    }
+}
+$Accounting | Export-Csv -LiteralPath (Join-Path $OutputRoot 'reuse-accounting.csv') -NoTypeInformation -Encoding UTF8
+$Accounting | Format-Table -AutoSize | Out-String -Width 260 | Write-Host
+if (@($Accounting | Where-Object { !$_.ScopeMatches }).Count -gt 0) {
+    Write-Warning '预测和 On 的候选/元数据/摘要口径未对齐，查看 JSON；差额不能全归因于确认上限。'
+}
+Write-Host "六轮业务快照一致。结果和复用差额对账：$OutputRoot"

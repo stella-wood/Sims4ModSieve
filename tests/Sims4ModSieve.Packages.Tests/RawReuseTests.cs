@@ -14,7 +14,7 @@ using Sims4ModSieve.Core.Tests.Packages;
 namespace Sims4ModSieve.Packages.Tests;
 
 [TestClass]
-public sealed class RawReuseTests
+public sealed partial class RawReuseTests
 {
     private static readonly byte[] Content = Enumerable.Range(0, 160_000).Select(i => (byte)(i % 251)).ToArray();
     private static readonly ResourceKey Key = new(0x0904DF10, 0, 1);
@@ -43,7 +43,9 @@ public sealed class RawReuseTests
         Assert.AreEqual(stats.ActualInputBytes + stats.ActualOutputBytes, consumed);
         Assert.AreEqual(Convert.ToHexString(SHA256.HashData(Content)), actual[2].Results[0].Sha256);
         Assert.AreEqual(0, fs.OpenStreams);
-        Assert.IsTrue(fs.PeakStreams <= concurrency);
+        // 读取并发与缓存句柄分别有界；单 worker 可以保留两侧只读句柄。
+        Assert.IsTrue(fs.PeakStreams <= Math.Max(concurrency, requests.Length));
+        Assert.AreEqual(3L, stats.ConfirmationHandleOpens);
     }
 
     [TestMethod]
@@ -416,6 +418,12 @@ public sealed class RawReuseTests
             }
             result = originals;
         }
+        if (reuse && stats.BypassReason is null)
+        {
+            Assert.AreEqual(stats.DigestPotentialSavings, stats.AccountedSavings, "摘要潜在节省必须逐项对账");
+            Assert.AreEqual(stats.PostConfirmationLoss, stats.ConfirmationRejectedLoss + stats.ReaderFallbackLoss + stats.PublicationVersionLoss);
+            Assert.IsTrue(stats.RepeatedOriginalTargets >= 0);
+        }
         stats = stats with { DecompressionAttempts = stage.DecompressionAttempts, ActualInputBytes = stage.ContentInputBytes, ActualOutputBytes = stage.ContentOutputBytes };
         return (result, stats, budget.ConsumedBytes);
     }
@@ -427,7 +435,7 @@ public sealed class RawReuseTests
     {
         private readonly PhysicalFileSystemAccess inner = new();
         private readonly ConcurrentDictionary<string, string> phases = new();
-        internal readonly HashSet<string> Changed = [];
+        internal readonly ConcurrentBag<string> Changed = [];
         internal Func<string, string, bool>? Fail;
         internal Func<string, string, bool>? FailOpen;
         internal Action<string, string>? ClosedRead;

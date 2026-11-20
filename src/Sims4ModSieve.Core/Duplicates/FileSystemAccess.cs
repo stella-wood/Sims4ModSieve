@@ -12,6 +12,8 @@ public interface IFileSystemAccess
 
     Stream OpenRead(string path);
 
+    Stream OpenReadRandomAccess(string path) => OpenRead(path);
+
     /// <summary>联接或符号链接指向的最终位置；不是链接或读不到时返回 null。</summary>
     string? GetLinkTarget(string path) => null;
 }
@@ -38,6 +40,10 @@ public sealed class PhysicalFileSystemAccess : IFileSystemAccess
         FileShare.ReadWrite | FileShare.Delete,
         bufferSize: 128 * 1024,
         FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+    public Stream OpenReadRandomAccess(string path) => new FileStream(
+        path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
+        bufferSize: 1, FileOptions.Asynchronous | FileOptions.RandomAccess);
 
     public string? GetLinkTarget(string path)
     {

@@ -23,6 +23,9 @@ internal sealed class RawReuseReport
     public long StoredBytes { get; init; }
     public long DeclaredOutputBytes { get; init; }
     public long ValidatedDecompressionResources { get; init; }
+    public long MetadataGroups { get; init; }
+    public long DigestPotentialSavings { get; init; }
+    public long InvalidContentSavingsExcluded => DigestPotentialSavings - SavedDecompressions;
     public long EquivalentSets { get; init; }
     public long EquivalentResources { get; init; }
     public long SavedDecompressions { get; init; }
@@ -281,6 +284,9 @@ internal static class RawReuseStats
             StoredBytes = compressed.Sum(item => (long)item.Descriptor!.Value.StoredSize),
             DeclaredOutputBytes = compressed.Sum(item => (long)item.Descriptor!.Value.DeclaredSize),
             ValidatedDecompressionResources = compressed.LongCount(item => item.Skip is null),
+            MetadataGroups = compressed.GroupBy(item => (item.Target.Key, item.Descriptor!.Value.Compression,
+                item.Descriptor.Value.StoredSize, item.Descriptor.Value.DeclaredSize)).LongCount(),
+            DigestPotentialSavings = rawSets.Sum(group => (long)group.Count() - 1),
             EquivalentSets = successfulSets.Length,
             EquivalentResources = successfulSets.Sum(group => (long)group.Length),
             SavedDecompressions = successfulSets.Sum(group => (long)group.Length - 1),
@@ -349,6 +355,8 @@ internal static class RawReuseStats
         Row("单成员元数据桶资源（无预读）", stats.SingletonMetadataResources);
         Row("估算：指纹预读字节", stats.FingerprintPreReadBytes);
         Row("估算：逐字节确认读取字节", stats.ConfirmationReadBytes);
+        Row("元数据桶 / 未排除坏内容的摘要潜在节省", $"{stats.MetadataGroups} / {stats.DigestPotentialSavings}");
+        Row("坏内容排除的潜在节省", stats.InvalidContentSavingsExcluded);
         Row("估算：额外读取毛额", stats.GrossAdditionalReadBytes);
         Row("估算：可省原路径读取字节", stats.AvoidedOriginalReadBytes);
         Row("估算：净额外读取字节", stats.NetAdditionalReadBytes);
