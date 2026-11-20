@@ -195,10 +195,10 @@ public sealed partial class ConflictFileActionTests
     [TestMethod]
     [DataRow("resource")]
     [DataRow("script")]
-    public Task ClosingConflictRefreshKeepsResultsAndSelection(string kind) => WpfTestHost.RunAsync(async () =>
+    public Task ConflictRefreshNoticeAlwaysRefreshesResultsAndSelection(string kind) => WpfTestHost.RunAsync(async () =>
     {
         using var files = new TemporaryFiles();
-        var dialogs = new PresenceDialogs { AcceptRefresh = false };
+        var dialogs = new PresenceDialogs();
         var model = PresenceModel(files, Duplicates(files.A, files.B), dialogs, out var adapter);
         var session = ConflictPresenceSession(files, kind, 2);
         var paths = session.Cards.Single().Files.Select(file => file.Path).ToArray();
@@ -207,8 +207,8 @@ public sealed partial class ConflictFileActionTests
         File.Delete(paths[0]);
         await RunPresenceActionAsync(model, "delete", paths[1]);
         CollectionAssert.AreEqual(new[] { "refresh:1" }, dialogs.Events);
-        Assert.AreEqual(2, session.Cards.Single().Files.Count);
-        Assert.AreEqual(1, model.ConflictSelectedCount);
+        Assert.AreEqual(0, session.Cards.Count);
+        Assert.AreEqual(0, model.ConflictSelectedCount);
         Assert.AreEqual(0, adapter.Deleted.Count);
     });
 

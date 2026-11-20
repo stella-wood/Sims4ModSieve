@@ -148,20 +148,20 @@ public sealed partial class ConflictFileActionTests
     });
 
     [TestMethod]
-    public Task ClosingRefreshWarningLeavesResultsAndSelectionUnchanged() => WpfTestHost.RunAsync(async () =>
+    public Task RefreshNoticeAlwaysRefreshesResultsAndSelection() => WpfTestHost.RunAsync(async () =>
     {
         using var files = new TemporaryFiles();
         var report = Duplicates(files.A, files.B);
-        var dialogs = new PresenceDialogs { AcceptRefresh = false };
+        var dialogs = new PresenceDialogs();
         var model = PresenceModel(files, report, dialogs, out var adapter);
         var session = await PresenceSessionAsync(model, report);
         SelectPresenceFiles(model, files.B);
         File.Delete(files.A);
         await model.DeleteSelectedCommand.ExecuteAsync();
         CollectionAssert.AreEqual(new[] { "refresh:1" }, dialogs.Events);
-        Assert.AreEqual(2, model.Groups.Single().Files.Count);
-        Assert.AreEqual(2, session.Cards.Single().Files.Count);
-        Assert.AreEqual(1, model.SelectedFileCount);
+        Assert.AreEqual(0, model.Groups.Count);
+        Assert.AreEqual(0, session.Cards.Count);
+        Assert.AreEqual(0, model.SelectedFileCount);
         Assert.AreEqual(0, adapter.Deleted.Count);
     });
 
@@ -181,29 +181,29 @@ public sealed partial class ConflictFileActionTests
     });
 
     [TestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
-    public Task RefreshWarningUsesWarningDialogAndWorkingButtons(bool refresh) => WpfTestHost.RunAsync(() =>
+    public Task RefreshNoticeShowsOnlyConfirmButtonAndClosesOnClick() => WpfTestHost.RunAsync(() =>
     {
         var owner = new Window();
         WpfTestHost.ShowOffScreen(owner);
         Application.Current.MainWindow = owner;
         Exception? failure = null;
         var inspected = false;
+        WarningDialog? notice = null;
         owner.Dispatcher.BeginInvoke(() =>
         {
             var dialog = Application.Current.Windows.OfType<WarningDialog>().Single();
+            notice = dialog;
             try
             {
                 dialog.UpdateLayout();
                 Assert.AreSame(owner, dialog.Owner);
-                Assert.AreEqual("文件有变动", dialog.Title);
-                Assert.AreEqual("有 2 组结果里的部分文件已不存在。刷新结果后，再继续确认剩下的文件。",
+                Assert.AreEqual("提示", dialog.Title);
+                Assert.AreEqual("所选组文件有变动",
                     ((TextBlock)dialog.FindName("MessageText")).Text);
-                Assert.AreEqual("刷新结果", ((Button)dialog.FindName("ActionButton")).Content);
-                Assert.AreEqual("关闭", Descendants<Button>(dialog).Single(item => item.IsCancel).Content);
-                var button = refresh ? (Button)dialog.FindName("ActionButton")
-                    : Descendants<Button>(dialog).Single(item => item.IsCancel);
+                var button = Descendants<Button>(dialog).Single(item => item.IsVisible);
+                Assert.AreSame(dialog.FindName("CloseButton"), button);
+                Assert.AreEqual("确定", button.Content);
+                Assert.IsTrue(button.IsDefault && button.IsCancel);
                 Assert.IsTrue(button.IsVisible && button.IsEnabled);
                 var hit = dialog.InputHitTest(button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), dialog));
                 Assert.IsNotNull(hit);
@@ -213,10 +213,11 @@ public sealed partial class ConflictFileActionTests
             }
             catch (Exception exception) { failure = exception; dialog.Close(); }
         }, DispatcherPriority.ApplicationIdle);
-        var result = new FileActionDialogService().ConfirmResultRefresh(2);
+        new FileActionDialogService().ShowResultRefreshNotice(2);
         if (failure is not null) throw failure;
         Assert.IsTrue(inspected);
-        Assert.AreEqual(refresh, result);
+        Assert.IsNotNull(notice);
+        Assert.IsFalse(notice.IsVisible);
     });
 
     private static Button? AncestorButton(DependencyObject? node)
@@ -266,9 +267,8 @@ public sealed partial class ConflictFileActionTests
     private sealed class PresenceDialogs : IFileActionDialogService
     {
         public List<string> Events { get; } = [];
-        public bool AcceptRefresh { get; init; } = true;
         public Action? OnConfirm { get; set; }
-        public bool ConfirmResultRefresh(int count) { Events.Add($"refresh:{count}"); return AcceptRefresh; }
+        public void ShowResultRefreshNotice(int count) => Events.Add($"refresh:{count}");
         public bool ConfirmDeletion(FileDeletionPreflight preflight) => ConfirmFiles("", "");
         public bool ConfirmFiles(string title, string message) { Events.Add("confirm"); OnConfirm?.Invoke(); return true; }
         public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures) => Assert.Fail(title);

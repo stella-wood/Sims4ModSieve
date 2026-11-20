@@ -12,21 +12,19 @@ public interface IFileActionDialogService
 
     void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures);
 
-    bool ConfirmResultRefresh(int changedGroupCount) => false;
+    void ShowResultRefreshNotice(int changedGroupCount) { }
 
     bool ShowConflictGroupingWarning(ConflictGroupingSize size) => false;
 }
 
 public sealed class FileActionDialogService : IFileActionDialogService
 {
-    public bool ConfirmResultRefresh(int changedGroupCount)
+    public void ShowResultRefreshNotice(int changedGroupCount)
     {
-        var dialog = new WarningDialog("文件有变动",
-            $"有 {changedGroupCount} 组结果里的部分文件已不存在。刷新结果后，再继续确认剩下的文件。", "刷新结果")
+        new WarningDialog("提示", "所选组文件有变动", closeLabel: "确定")
         {
             Owner = Application.Current?.MainWindow,
-        };
-        return dialog.ShowDialog() == true;
+        }.ShowDialog();
     }
 
     public bool ShowConflictGroupingWarning(ConflictGroupingSize size)

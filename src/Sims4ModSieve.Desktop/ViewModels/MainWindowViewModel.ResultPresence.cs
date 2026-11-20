@@ -33,7 +33,8 @@ public sealed partial class MainWindowViewModel
             if (!IsCurrent()) return [];
             if (missing.Count == 0) return selected;
             var changed = groups.Where(group => group.Any(file => missing.Contains(file.Path))).ToArray();
-            if (!fileActionDialogs.ConfirmResultRefresh(changed.Length) || !IsCurrent()) return [];
+            fileActionDialogs.ShowResultRefreshNotice(changed.Length);
+            if (!IsCurrent()) return [];
 
             var excluded = changed.SelectMany(group => group.Count(file => !missing.Contains(file.Path)) < 2
                     ? group.Select(file => file.Path) : group.Where(file => missing.Contains(file.Path)).Select(file => file.Path))
