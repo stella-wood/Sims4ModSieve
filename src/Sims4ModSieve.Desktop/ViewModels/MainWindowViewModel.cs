@@ -603,9 +603,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private async Task DeleteSelectedCoreAsync()
     {
         if (IsBusy) return;
+        var remaining = await RefreshMissingDuplicateMembersAsync(
+            Groups.SelectMany(group => group.Files).Where(file => file.IsSelected).Select(file => file.Path), fromConflicts: false);
+        if (remaining.Count == 0) return;
         var selectedFiles = Groups
             .SelectMany(group => group.Files
-                .Where(file => file.IsSelected)
+                .Where(file => file.IsSelected && remaining.Contains(file.Path))
                 .Select(file => new FileDeletionCandidate(
                     file.Path,
                     file.Size,

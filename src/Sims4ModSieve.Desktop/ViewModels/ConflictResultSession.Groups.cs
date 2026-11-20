@@ -62,6 +62,7 @@ public sealed partial class ConflictResultSession
     private IReadOnlyList<PackageConflictPairSummary> originalResources = [];
     private IReadOnlyList<ScriptConflictPairSummary> originalScripts = [];
     private IReadOnlyList<ConflictCard> originalCards = [];
+    private readonly HashSet<string> expiredDuplicateKeys = new(StringComparer.Ordinal);
     private readonly HashSet<string> removedPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> ignoredGroups = new(StringComparer.Ordinal);
     private readonly HashSet<string> ignoredFiles = new(StringComparer.OrdinalIgnoreCase);
@@ -84,6 +85,7 @@ public sealed partial class ConflictResultSession
         Grouping = null;
         Cards = [];
         removedPaths.Clear();
+        expiredDuplicateKeys.Clear();
         ignoredGroups.Clear();
         groupNumbers.Clear();
     }
@@ -140,6 +142,7 @@ public sealed partial class ConflictResultSession
         snapshot.ignoredGroups.UnionWith(ignoredGroups);
         snapshot.ignoredFiles.UnionWith(ignoredFiles);
         snapshot.removedPaths.UnionWith(removedPaths);
+        snapshot.expiredDuplicateKeys.UnionWith(expiredDuplicateKeys);
         foreach (var entry in groupNumbers) snapshot.groupNumbers.Add(entry.Key, entry.Value);
         return snapshot;
     }
@@ -158,6 +161,16 @@ public sealed partial class ConflictResultSession
         RebuildActiveGroups();
     }
 
+    public void ApplyMissingDuplicatePaths(IEnumerable<string> paths)
+    {
+        var missing = paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        removedPaths.UnionWith(missing);
+        expiredDuplicateKeys.UnionWith(originalCards.Where(card => card.Duplicate is not null
+            && card.Files.Any(file => missing.Contains(file.Path))
+            && card.Files.Count(file => !removedPaths.Contains(file.Path)) < 2).Select(card => card.Key));
+        RebuildActiveGroups();
+    }
+
     public void ApplyRestoredPaths(IEnumerable<string> paths)
     {
         removedPaths.ExceptWith(paths);
@@ -166,6 +179,8 @@ public sealed partial class ConflictResultSession
 
     public void AcceptFileChanges(ConflictResultSession prepared)
     {
+        expiredDuplicateKeys.Clear();
+        expiredDuplicateKeys.UnionWith(prepared.expiredDuplicateKeys);
         removedPaths.Clear();
         removedPaths.UnionWith(prepared.removedPaths);
         foreach (var entry in prepared.groupNumbers) groupNumbers[entry.Key] = entry.Value;
@@ -253,7 +268,8 @@ public sealed partial class ConflictResultSession
                 Title = modules is null ? card.Title : ScriptPriority(modules) == ConflictPairPriority.CanOrganize ? "重复模块（脚本）" : "脚本冲突",
                 Explanation = $"已移除 {card.Files.Count - files.Length} 个文件，剩余 {files.Length} 个文件",
             };
-        }).Where(card => card.Files.Count > 0).ToArray();
+        }).Where(card => card.Files.Count > 0
+            && (card.Duplicate is null || card.Files.Count > 1 || !expiredDuplicateKeys.Contains(card.Key))).ToArray();
         Cards = Cards.Where(card => card.Modules is null).Concat(Cards.Where(card => card.Modules is not null)
             .GroupBy(card => ConflictResultGrouping.ScriptGroupIdentity(card.Modules![0].TopLevelName, card.Files.Select(file => file.Path)), StringComparer.Ordinal)
             .Select(group =>

@@ -22,7 +22,7 @@ using static Sims4ModSieve.Desktop.Tests.ConflictV2SessionTests;
 namespace Sims4ModSieve.Desktop.Tests;
 
 [TestClass]
-public sealed class ConflictFileActionTests
+public sealed partial class ConflictFileActionTests
 {
     [TestMethod]
     [DataRow(".ts4script", "stable")]

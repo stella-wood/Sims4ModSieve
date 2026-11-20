@@ -134,7 +134,9 @@ public sealed partial class MainWindowViewModel
     private async Task DeleteSelectedConflictFilesAsync()
     {
         if (IsBusy || !IsConflictComplete || !IsConflictMultiSelect) return;
-        var candidates = ConflictSelectionCandidates().Select(candidate =>
+        var selected = ConflictSelectionCandidates();
+        var remaining = await RefreshMissingDuplicateMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
+        var candidates = selected.Where(candidate => remaining.Contains(candidate.Path)).Select(candidate =>
         {
             var disabled = disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, candidate.Path)
                 && record.Size == candidate.ExpectedSize && record.LastWriteTimeUtc == candidate.ExpectedLastWriteTimeUtc);
@@ -190,7 +192,10 @@ public sealed partial class MainWindowViewModel
     private async Task DisableSelectedConflictFilesAsync()
     {
         if (IsBusy || !IsConflictComplete || !IsConflictMultiSelect) return;
-        var candidates = ConflictSelectionCandidates()
+        var selected = ConflictSelectionCandidates();
+        var remaining = await RefreshMissingDuplicateMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
+        if (remaining.Count == 0) return;
+        var candidates = selected.Where(candidate => remaining.Contains(candidate.Path))
             .Where(candidate => !disabledRecords.Any(record => PathRulesEqual(record.OriginalPath, candidate.Path)
                 && record.Size == candidate.ExpectedSize && record.LastWriteTimeUtc == candidate.ExpectedLastWriteTimeUtc))
             .ToArray();
