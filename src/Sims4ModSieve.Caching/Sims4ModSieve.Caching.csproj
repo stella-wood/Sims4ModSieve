@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />
+    <ProjectReference Include="..\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
+  </ItemGroup>
+</Project>

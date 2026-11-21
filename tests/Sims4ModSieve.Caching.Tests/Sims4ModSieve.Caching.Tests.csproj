@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="MSTest" Version="4.3.3" />
+    <ProjectReference Include="..\..\src\Sims4ModSieve.Caching\Sims4ModSieve.Caching.csproj" />
+    <Compile Include="..\Sims4ModSieve.Core.Tests\TempDirectory.cs" Link="Shared\TempDirectory.cs" />
+  </ItemGroup>
+</Project>

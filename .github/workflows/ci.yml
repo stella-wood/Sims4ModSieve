@@ -106,10 +106,10 @@ jobs:
       - name: Build Release
         run: dotnet build Sims4ModSieve.sln -c Release --no-restore --nologo
 
-      - name: Run Core, Packages and Benchmarks tests
+      - name: Run Core, Packages, Benchmarks and Caching tests
         run: |
           $failed = $false
-          foreach ($project in 'Core', 'Packages', 'Benchmarks') {
+          foreach ($project in 'Core', 'Packages', 'Benchmarks', 'Caching') {
             dotnet test "tests/Sims4ModSieve.$project.Tests" -c Release --no-build --no-restore --nologo --logger trx --results-directory "artifacts/ci/test-results/$project"
             if ($LASTEXITCODE -ne 0) { $failed = $true }
           }
