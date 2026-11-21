@@ -135,7 +135,7 @@ pwsh -NoProfile -File .\eng\package-installer.ps1
 
 CLI 提供只读扫描、报告和默认 Mods 目录设置。整文件哈希、package 索引和资源内容共用已保存的扫描并发设置；没有可读并发设置时用自动档。存储探测和有限预算规则见[自动并发](docs/architecture/性能优化与缓存架构.md#41-自动并发)。标准错误输出各读取阶段的并发决定，JSON 报告字段保持原样。运行 `Sims4ModSieve.Cli.exe --help` 查看命令，运行 `guide` 查看随程序嵌入的 AI 指南。
 
-桌面程序和 CLI 的扫描可复用未变化文件的整文件 SHA-256。排查结果时，CLI 加 `--no-cache` 可直接计算。缓存位置和提交规则见[缓存项目说明](src/Sims4ModSieve.Caching/README.md)。
+桌面程序和 CLI 的扫描可复用未变化文件的整文件及 package 资源 SHA-256。排查结果时，CLI 加 `--no-cache` 可直接计算。缓存位置和提交规则见[缓存项目说明](src/Sims4ModSieve.Caching/README.md)。
 
 ```powershell
 .\eng\dotnet.cmd run --project .\src\Sims4ModSieve.Cli\Sims4ModSieve.Cli.csproj -c Release -- `

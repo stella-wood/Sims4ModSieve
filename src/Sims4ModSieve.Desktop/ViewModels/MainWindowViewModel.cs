@@ -88,8 +88,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         this.unexpectedErrorHandler = unexpectedErrorHandler ?? new UnexpectedErrorHandler();
         this.packageConflictScanner = packageConflictScanner ?? new PackageConflictScanner(
             new PhysicalFileSystemAccess(), Sims4ModSieve.Packages.LlamaLogicPackageIndexReader.CreateDefault());
-        this.resourceContentComparer = resourceContentComparer ?? new ResourceContentComparer(
-            Sims4ModSieve.Packages.DbpfResourceContentHasher.CreateDefault());
+        this.resourceContentComparer = resourceContentComparer;
         this.scriptModuleScanner = scriptModuleScanner ?? new ScriptModuleScanner(new PhysicalFileSystemAccess());
         this.resultSession.PropertyChanged += OnResultSessionPropertyChanged;
 

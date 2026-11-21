@@ -112,7 +112,11 @@ internal static class Program
                             scope, hashConcurrency, storage, indexConcurrency, contentConcurrency, cache);
                     },
                     cancelAfter, lifetime.Token, storage);
-                measurement = measurement with { CacheHits = hasher?.Hits ?? 0, CacheMisses = hasher?.Misses ?? 0 };
+                measurement = measurement with
+                {
+                    CacheHits = hasher?.Hits ?? 0, CacheMisses = hasher?.Misses ?? 0,
+                    ResourceCacheHits = hasher?.ResourceHits ?? 0, ResourceCacheMisses = hasher?.ResourceMisses ?? 0,
+                };
                 measurements.Add(measurement);
                 await File.WriteAllTextAsync(Path.Combine(output, $"run-{iteration:D2}.log"), measurement.TimingLog);
                 await WriteJsonAsync(Path.Combine(output, $"run-{iteration:D2}.json"), measurement);
