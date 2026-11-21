@@ -9,7 +9,9 @@ namespace Sims4ModSieve.Caching;
 public sealed class SqliteSha256Cache
 {
     private const int SchemaVersion = 1;
-    private const int PathKeyVersion = 1;
+    private const int PathKeyVersion = 2;
+    // A normalized absolute path cannot start with this marker.
+    private const char ExactPathMarker = ':';
     private const string TableDefinition = """
         (generation TEXT NOT NULL, path_key TEXT COLLATE ORDINAL_IGNORE_CASE NOT NULL, path TEXT NOT NULL,
          length INTEGER NOT NULL, write_ticks INTEGER NOT NULL, identity TEXT NOT NULL,
@@ -85,39 +87,44 @@ public sealed class SqliteSha256Cache
         try
         {
             using var connection = OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                SELECT CASE WHEN length(path) <= 32768 THEN path END,
-                       CASE WHEN typeof(sha256) = 'blob' AND length(sha256) = 32 THEN sha256 END,
-                       CASE WHEN typeof(checksum) = 'blob' AND length(checksum) = 32 THEN checksum END
-                FROM hashes WHERE generation = $generation AND path_key = $key AND length = $length
-                AND write_ticks = $ticks AND identity = $identity
-                AND EXISTS(SELECT 1 FROM metadata WHERE id = 1 AND generation = $generation);
-                """;
-            BindKey(command, key);
-            using var reader = command.ExecuteReader();
-            if (!reader.Read()) return null;
-            if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2)
-                || !StringComparer.OrdinalIgnoreCase.Equals(reader.GetString(0), key.Path))
-            {
-                _available = false;
-                return null;
-            }
-            var hash = (byte[])reader.GetValue(1);
-            var storedKey = key with { Path = reader.GetString(0) };
-            if (!CryptographicOperations.FixedTimeEquals(storedKey.Checksum(hash), (byte[])reader.GetValue(2)))
-            {
-                _available = false;
-                return null;
-            }
-            cancellationToken.ThrowIfCancellationRequested();
-            return Convert.ToHexString(hash);
+            return ReadSha256(connection, key, cancellationToken);
         }
         catch (Exception ex) when (IsStorageFailure(ex))
         {
             _available = false;
             return null;
         }
+    }
+
+    private string? ReadSha256(SqliteConnection connection, FileKey key, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT CASE WHEN length(path) <= 32768 THEN path END,
+                   CASE WHEN typeof(sha256) = 'blob' AND length(sha256) = 32 THEN sha256 END,
+                   CASE WHEN typeof(checksum) = 'blob' AND length(checksum) = 32 THEN checksum END
+            FROM main.hashes WHERE generation = $generation AND path_key = $key AND length = $length
+            AND write_ticks = $ticks AND identity = $identity
+            AND EXISTS(SELECT 1 FROM main.metadata WHERE id = 1 AND generation = $generation);
+            """;
+        BindKey(command, key);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return null;
+        if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2)
+            || !key.PathComparer.Equals(reader.GetString(0), key.Path))
+        {
+            _available = false;
+            return null;
+        }
+        var hash = (byte[])reader.GetValue(1);
+        var storedKey = key with { Path = reader.GetString(0) };
+        if (!CryptographicOperations.FixedTimeEquals(storedKey.Checksum(hash), (byte[])reader.GetValue(2)))
+        {
+            _available = false;
+            return null;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return Convert.ToHexString(hash);
     }
 
     public Scan BeginScan()
@@ -149,16 +156,28 @@ public sealed class SqliteSha256Cache
         try
         {
             connection.Open();
-            connection.CreateCollation("ORDINAL_IGNORE_CASE", StringComparer.OrdinalIgnoreCase.Compare);
+            // The v1 schema names this collation, and its unmarked keys keep their original order.
+            connection.CreateCollation("ORDINAL_IGNORE_CASE", ComparePathKeys);
             return connection;
         }
         catch { connection.Dispose(); throw; }
     }
 
+    private static int ComparePathKeys(string left, string right)
+    {
+        var leftIsExact = left.StartsWith(ExactPathMarker);
+        var rightIsExact = right.StartsWith(ExactPathMarker);
+        if (leftIsExact != rightIsExact) return leftIsExact ? -1 : 1;
+        return GetPathComparer(leftIsExact).Compare(left, right);
+    }
+
+    private static StringComparer GetPathComparer(bool exact) =>
+        exact ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+
     private void BindKey(SqliteCommand command, FileKey key)
     {
         command.Parameters.AddWithValue("$generation", _generation);
-        command.Parameters.AddWithValue("$key", key.Path);
+        command.Parameters.AddWithValue("$key", key.IndexedPath);
         command.Parameters.AddWithValue("$length", key.Length);
         command.Parameters.AddWithValue("$ticks", key.Ticks);
         command.Parameters.AddWithValue("$identity", key.Identity);
@@ -169,6 +188,10 @@ public sealed class SqliteSha256Cache
 
     private sealed record FileKey(string Path, long Length, long Ticks, string Identity)
     {
+        private bool RequiresExactPath => Identity.Length == 0;
+        public string IndexedPath => RequiresExactPath ? ExactPathMarker + Path : Path;
+        public StringComparer PathComparer => GetPathComparer(RequiresExactPath);
+
         public static FileKey Create(string path, FileStamp stamp)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(stamp.Length);
@@ -196,6 +219,27 @@ public sealed class SqliteSha256Cache
         {
             _owner = owner;
             _connection = connection;
+        }
+
+        public string? GetSha256(string path, FileStamp stamp, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var key = FileKey.Create(path, stamp);
+            lock (_gate)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!_owner._available || _connection is null) return null;
+                try
+                {
+                    return _owner.ReadSha256(_connection, key, cancellationToken);
+                }
+                catch (Exception ex) when (IsStorageFailure(ex))
+                {
+                    _owner._available = false;
+                    Dispose();
+                    return null;
+                }
+            }
         }
 
         public bool Stage(string path, FileStamp stamp, string sha256, CancellationToken cancellationToken = default)

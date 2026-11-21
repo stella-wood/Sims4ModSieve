@@ -11,6 +11,7 @@ namespace Sims4ModSieve.Caching.Tests;
 public sealed class SqliteSha256CacheTests
 {
     internal static readonly FileStamp Stamp = new(123, new DateTime(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc));
+    private static readonly FileStamp IdentifiedStamp = Stamp with { Identity = new FileIdentity(1, 2, 3) };
     internal static readonly string Hash = Convert.ToHexString(SHA256.HashData("first"u8));
     private static readonly string OtherHash = Convert.ToHexString(SHA256.HashData("second"u8));
 
@@ -24,14 +25,14 @@ public sealed class SqliteSha256CacheTests
         var path = Path.Combine(temp.Path, "中文 Mods", "Étage-Σ-𐐀.package");
         using (var scan = cache.BeginScan())
         {
-            Assert.IsTrue(scan.Stage(path, Stamp, Hash.ToLowerInvariant()));
+            Assert.IsTrue(scan.Stage(path, IdentifiedStamp, Hash.ToLowerInvariant()));
             Assert.IsTrue(scan.Commit());
         }
         var reopened = new SqliteSha256Cache(database, "app-1");
-        Assert.AreEqual(Hash, reopened.GetSha256(path.ToLowerInvariant(), Stamp));
-        Assert.AreEqual(Hash, reopened.GetSha256(Path.Combine(Path.GetDirectoryName(path)!, ".", Path.GetFileName(path)), Stamp));
-        Assert.AreEqual(Hash, reopened.GetSha256(path + Path.DirectorySeparatorChar, Stamp));
-        Assert.IsNull(reopened.GetSha256(path + ".off", Stamp));
+        Assert.AreEqual(Hash, reopened.GetSha256(path.ToLowerInvariant(), IdentifiedStamp));
+        Assert.AreEqual(Hash, reopened.GetSha256(Path.Combine(Path.GetDirectoryName(path)!, ".", Path.GetFileName(path)), IdentifiedStamp));
+        Assert.AreEqual(Hash, reopened.GetSha256(path + Path.DirectorySeparatorChar, IdentifiedStamp));
+        Assert.IsNull(reopened.GetSha256(path + ".off", IdentifiedStamp));
     }
 
     [TestMethod]
@@ -53,10 +54,44 @@ public sealed class SqliteSha256CacheTests
         var longS = Path.Combine(temp.Path, "ſ.package");
         var asciiS = Path.Combine(temp.Path, "S.package");
         Assert.IsFalse(StringComparer.OrdinalIgnoreCase.Equals(longS, asciiS));
-        Save(cache, longS, Stamp, Hash);
-        Save(cache, asciiS, Stamp, OtherHash);
-        Assert.AreEqual(Hash, cache.GetSha256(longS, Stamp));
-        Assert.AreEqual(OtherHash, cache.GetSha256(asciiS.ToLowerInvariant(), Stamp));
+        Save(cache, longS, IdentifiedStamp, Hash);
+        Save(cache, asciiS, IdentifiedStamp, OtherHash);
+        Assert.AreEqual(Hash, cache.GetSha256(longS, IdentifiedStamp));
+        Assert.AreEqual(OtherHash, cache.GetSha256(asciiS.ToLowerInvariant(), IdentifiedStamp));
+    }
+
+    [TestMethod]
+    public void UnidentifiedCaseVariantsWithEqualFileMetadataKeepSeparateHashes()
+    {
+        using var temp = new TempDirectory();
+        var cache = CreateCache(temp);
+        var lowerPath = temp.WriteFile("sample.package", "abc");
+        var upperPath = Path.Combine(temp.Path, "SAMPLE.package");
+        var lowerHash = Convert.ToHexString(SHA256.HashData("abc"u8));
+        var upperHash = Convert.ToHexString(SHA256.HashData("xyz"u8));
+        var stamp = new FileStamp(3, Stamp.LastWriteTimeUtc);
+        if (!File.Exists(upperPath))
+        {
+            temp.WriteFile("SAMPLE.package", "xyz");
+            File.SetLastWriteTimeUtc(lowerPath, stamp.LastWriteTimeUtc);
+            File.SetLastWriteTimeUtc(upperPath, stamp.LastWriteTimeUtc);
+            var fileSystem = new PhysicalFileSystemAccess();
+            Assert.AreEqual(stamp, fileSystem.GetFileStamp(lowerPath) with { Identity = null });
+            Assert.AreEqual(stamp, fileSystem.GetFileStamp(upperPath) with { Identity = null });
+            Assert.AreEqual(lowerHash, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(lowerPath))));
+            Assert.AreEqual(upperHash, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(upperPath))));
+        }
+
+        Save(cache, lowerPath, stamp, lowerHash);
+        Assert.IsNull(cache.GetSha256(upperPath, stamp));
+        using var scan = cache.BeginScan();
+        Assert.IsTrue(scan.Stage(lowerPath, stamp, lowerHash));
+        Assert.IsTrue(scan.Stage(upperPath, stamp, upperHash));
+        Assert.IsTrue(scan.Commit());
+
+        var reopened = CreateCache(temp);
+        Assert.AreEqual(lowerHash, reopened.GetSha256(lowerPath, stamp));
+        Assert.AreEqual(upperHash, reopened.GetSha256(upperPath, stamp));
     }
 
     [TestMethod]
@@ -97,12 +132,19 @@ public sealed class SqliteSha256CacheTests
         var second = Path.Combine(temp.Path, "b.package");
         Save(cache, first, Stamp, Hash);
         using var scan = cache.BeginScan();
+        using var readerScan = reader.BeginScan();
         Assert.IsTrue(scan.Stage(first, Stamp, OtherHash));
         Assert.IsTrue(scan.Stage(second, Stamp, OtherHash));
         Assert.AreEqual(Hash, cache.GetSha256(first, Stamp));
+        Assert.AreEqual(Hash, scan.GetSha256(first, Stamp));
+        Assert.IsNull(scan.GetSha256(second, Stamp));
         Assert.AreEqual(Hash, reader.GetSha256(first, Stamp));
         Assert.IsNull(reader.GetSha256(second, Stamp));
+        Assert.IsNull(readerScan.GetSha256(second, Stamp));
         Assert.IsTrue(scan.Commit());
+        Assert.IsNull(scan.GetSha256(first, Stamp));
+        Assert.AreEqual(OtherHash, readerScan.GetSha256(first, Stamp));
+        Assert.AreEqual(OtherHash, readerScan.GetSha256(second, Stamp));
         Assert.AreEqual(OtherHash, reader.GetSha256(first, Stamp));
         Assert.AreEqual(OtherHash, reader.GetSha256(second, Stamp));
         Assert.IsFalse(scan.Commit());
@@ -168,6 +210,36 @@ public sealed class SqliteSha256CacheTests
         Assert.AreEqual(OtherHash, current.GetSha256(path, Stamp));
         var switchedBack = new SqliteSha256Cache(database, "app-1");
         Assert.IsNull(switchedBack.GetSha256(path, Stamp));
+    }
+
+    [TestMethod]
+    public void PreviousPathKeyVersionDiscardsOldHashes()
+    {
+        using var temp = new TempDirectory();
+        var database = Path.Combine(temp.Path, "cache.sqlite3");
+        var cache = CreateCache(temp);
+        var path = Path.Combine(temp.Path, "Old.package");
+        Save(cache, path, Stamp, Hash);
+        using (var connection = new SqliteConnection($"Data Source={database};Pooling=False"))
+        {
+            connection.Open();
+            connection.CreateCollation("ORDINAL_IGNORE_CASE", StringComparer.OrdinalIgnoreCase.Compare);
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE hashes SET path_key = path; UPDATE metadata SET path_key_version = 1;";
+            command.ExecuteNonQuery();
+        }
+
+        var reopened = CreateCache(temp);
+        Assert.IsTrue(reopened.IsAvailable);
+        using (var connection = new SqliteConnection($"Data Source={database};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT count(*) FROM hashes NOT INDEXED;";
+            Assert.AreEqual(0L, command.ExecuteScalar());
+        }
+        Save(reopened, path, Stamp, OtherHash);
+        Assert.AreEqual(OtherHash, reopened.GetSha256(path, Stamp));
     }
 
     [TestMethod]
@@ -269,6 +341,39 @@ public sealed class SqliteSha256CacheTests
         var reopened = new SqliteSha256Cache(database, "app-1");
         Assert.AreEqual(Hash, reopened.GetSha256(first, Stamp));
         Assert.IsNull(reopened.GetSha256(second, Stamp));
+    }
+
+    [TestMethod]
+    public void CommitTimesOutWhileAnotherConnectionHoldsWriterLockAndPublishesNothing()
+    {
+        using var temp = new TempDirectory();
+        var database = Path.Combine(temp.Path, "cache.sqlite3");
+        var cache = CreateCache(temp);
+        var first = Path.Combine(temp.Path, "old.package");
+        var second = Path.Combine(temp.Path, "new-1.package");
+        var third = Path.Combine(temp.Path, "new-2.package");
+        Save(cache, first, Stamp, Hash);
+        using var scan = cache.BeginScan();
+        using (var writer = new SqliteConnection($"Data Source={database};Pooling=False"))
+        {
+            writer.Open();
+            using var transaction = writer.BeginTransaction(deferred: false);
+            Assert.AreEqual(Hash, scan.GetSha256(first, Stamp));
+            Assert.IsTrue(scan.Stage(first, Stamp, OtherHash));
+            Assert.IsTrue(scan.Stage(second, Stamp, OtherHash));
+            Assert.IsTrue(scan.Stage(third, Stamp, Hash));
+            var start = Stopwatch.GetTimestamp();
+            Assert.IsFalse(scan.Commit());
+            Assert.IsTrue(Stopwatch.GetElapsedTime(start) >= TimeSpan.FromMilliseconds(500));
+            Assert.IsFalse(cache.IsAvailable);
+            transaction.Rollback();
+        }
+
+        var reopened = CreateCache(temp);
+        Assert.IsTrue(reopened.IsAvailable);
+        Assert.AreEqual(Hash, reopened.GetSha256(first, Stamp));
+        Assert.IsNull(reopened.GetSha256(second, Stamp));
+        Assert.IsNull(reopened.GetSha256(third, Stamp));
     }
 
     [TestMethod]
