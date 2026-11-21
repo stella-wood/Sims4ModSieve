@@ -30,10 +30,28 @@
             <Setter Property="Margin" Value="20,5,8,0" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="IsHitTestVisible" Value="False" />
             <Style.Triggers>
                 <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="SearchResultFlashStyle" TargetType="FrameworkElement">
+            <Style.Triggers>
+                <Trigger Property="IsHitTestVisible" Value="False"><Setter Property="Opacity" Value="0" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <ControlTemplate x:Key="SearchResultItemTemplate" TargetType="ListBoxItem">
+            <StackPanel>
+                <TextBlock x:Name="ResultCount" Style="{StaticResource SearchResultCountStyle}" Margin="0,0,0,6" />
+                <ContentPresenter Style="{StaticResource SearchResultFlashStyle}" />
+            </StackPanel>
+            <ControlTemplate.Triggers>
+                <Trigger Property="ItemsControl.AlternationIndex" Value="0">
+                    <Setter TargetName="ResultCount" Property="Text" Value="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+        <sys:Int32 x:Key="SearchResultAlternationCount">2147483647</sys:Int32>
 
         <Style x:Key="ResultVerticalScrollBarStyle" TargetType="ScrollBar">
             <Setter Property="Width" Value="12" />

@@ -383,7 +383,6 @@
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
@@ -409,15 +408,16 @@
                             </Grid>
                         </Border>
 
-                        <TextBlock Grid.Row="1" Text="{Binding DuplicateSearchStatus}" Style="{StaticResource SearchResultCountStyle}" />
-                        <Grid x:Name="DuplicateResultsBody" Grid.Row="2" Background="Transparent" Focusable="True"
+                        <Grid x:Name="DuplicateResultsBody" Grid.Row="1" Background="Transparent" Focusable="True"
                               FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
+                            <TextBlock Text="{Binding DuplicateSearchStatus}" Style="{StaticResource SearchResultCountStyle}" VerticalAlignment="Top" Visibility="{Binding ShowDuplicatePlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                                         Visibility="{Binding ShowDuplicatePlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <TextBlock x:Name="DuplicatePlaceholderText" Text="{Binding DuplicatePlaceholderText}" Foreground="{StaticResource MutedBrush}" FontSize="15" HorizontalAlignment="Center" />
                             </StackPanel>
 
                             <ListBox x:Name="DuplicateGroupsList" ItemsSource="{Binding VisibleDuplicateGroups}"
+                                     Tag="{Binding DuplicateSearchStatus}" AlternationCount="{StaticResource SearchResultAlternationCount}"
                                      Padding="20,6,8,12"
                                      Background="Transparent"
                                      BorderThickness="0"
@@ -436,14 +436,7 @@
                                         <Setter Property="BorderThickness" Value="0" />
                                         <Setter Property="Focusable" Value="False" />
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Template">
-                                            <Setter.Value>
-                                                <ControlTemplate TargetType="ListBoxItem">
-                                                    <ContentPresenter Content="{TemplateBinding Content}"
-                                                                      ContentTemplate="{TemplateBinding ContentTemplate}" />
-                                                </ControlTemplate>
-                                            </Setter.Value>
-                                        </Setter>
+                                        <Setter Property="Template" Value="{StaticResource SearchResultItemTemplate}" />
                                     </Style>
                                 </ListBox.ItemContainerStyle>
                                 <ListBox.ItemTemplate>
@@ -549,7 +542,7 @@
                             </ListBox>
                         </Grid>
 
-                        <Border Grid.Row="3"
+                        <Border Grid.Row="2"
                                 Padding="20,11,36,11"
                                 BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="0,1,0,0"

@@ -1,11 +1,9 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Settings;
 using Sims4ModSieve.Core.Tests;
@@ -144,14 +142,19 @@ public sealed class ResultPathSearchTests
         var matches = Descendants<TextBlock>(window).Where(text => text.IsVisible)
             .SelectMany(text => text.Inlines.OfType<Run>()).Where(run => run.Background is not null).Select(run => run.Text).ToArray();
         CollectionAssert.IsSubsetOf(new[] { "Creator", "Mouth" }, matches);
+        var list = Descendants<ListBox>(window).Single(control => control.Name == (conflict ? "ConflictRowsList" : "DuplicateGroupsList"));
+        var presenter = Descendants<ScrollContentPresenter>(list).First();
+        var count = Descendants<TextBlock>(presenter).Single(text => text.Name == "ResultCount" && text.IsVisible);
+        Assert.AreEqual("找到 1 组", count.Text);
+        SendKey(Key.Enter);
+        Assert.AreEqual(0d, Descendants<ContentPresenter>(count.Parent).First().Opacity);
+        Assert.AreEqual(1d, count.Opacity);
         if (conflict)
         {
             for (var attempt = 0; attempt < 50 && !search.ResultSurface!.IsHitTestVisible; attempt++)
                 await Task.Delay(10);
             Assert.IsTrue(search.ResultSurface!.IsHitTestVisible);
-            var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
-            var panel = (FrameworkElement)((FrameworkElement)list.Parent).Parent;
-            SaveSearchPanel(window, (FrameworkElement)panel.Parent);
+            Save(window, "result-path-search.png", (FrameworkElement)search.ResultSurface.Parent);
         }
         model.GoHomeCommand.Execute(null);
         if (conflict)
@@ -168,6 +171,7 @@ public sealed class ResultPathSearchTests
         SendKey(Key.Enter);
         await Refresh();
         Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == "没找到相关文件"));
+        Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == "找到 0 组"));
         SendKey(Key.Escape);
         await Refresh();
         Assert.AreEqual("", input.Text);
@@ -182,22 +186,4 @@ public sealed class ResultPathSearchTests
         }
     });
 
-    private static void SaveSearchPanel(Window window, FrameworkElement panel)
-    {
-        var output = Environment.GetEnvironmentVariable("SIMS4_CONFLICT_REVIEW_DIR");
-        if (string.IsNullOrWhiteSpace(output)) return;
-        Directory.CreateDirectory(output);
-        var content = (FrameworkElement)window.Content;
-        var source = new Rect(panel.TranslatePoint(new Point(), content), panel.RenderSize);
-        var image = new DrawingVisual();
-        using (var drawing = image.RenderOpen())
-            drawing.DrawRectangle(new VisualBrush(content) { Viewbox = source, ViewboxUnits = BrushMappingMode.Absolute },
-                null, new Rect(panel.RenderSize));
-        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(source.Width), (int)Math.Ceiling(source.Height), 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(image);
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using var file = File.Create(Path.Combine(output, "result-path-search.png"));
-        encoder.Save(file);
-    }
 }

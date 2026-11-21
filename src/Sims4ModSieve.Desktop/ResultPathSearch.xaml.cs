@@ -123,7 +123,6 @@ public partial class ResultPathSearch : UserControl
         if (ResultSurface is { } surface)
         {
             flashDelay.Stop();
-            surface.Opacity = 0;
             surface.IsHitTestVisible = false;
             flashDelay.Start();
         }
@@ -134,7 +133,6 @@ public partial class ResultPathSearch : UserControl
     {
         flashDelay.Stop();
         if (ResultSurface is not { } surface) return;
-        surface.Opacity = 1;
         surface.IsHitTestVisible = true;
     }
 
