@@ -107,7 +107,7 @@ tests/
 ### 7.2 删除与撤回
 
 ```text
-ViewModel → IFileActionService → IRecycleBinAdapter → Windows IFileOperation
+ViewModel → IFileActionService → IRecycleBinAdapter → Windows Shell
 ```
 
 - UI 事件里不直接调用删除 API；只删用户明确指定的单个文件或当前勾选的真实文件。

@@ -1,6 +1,7 @@
-using System.Collections.Concurrent;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32;
 
 namespace Sims4ModSieve.FileOperations;
 
@@ -10,9 +11,8 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
     private const uint FofxEarlyFailure = 0x00100000;
     private const uint FofSilent = 0x0004;
     private const uint FofNoConfirmation = 0x0010;
-    private const uint FofAllowUndo = 0x0040;
     private const uint FofNoErrorUi = 0x0400;
-    private const uint FofxRecycleOnDelete = 0x00080000;
+    private const string RecycleBin = "shell:::{645FF040-5081-101B-9F08-00AA002F954E}";
 
     public bool CanRecycle(string path)
     {
@@ -76,95 +76,68 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
         IReadOnlyList<string> paths,
         CancellationToken cancellationToken)
     {
-        var normalizedPaths = paths
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var normalizedPaths = paths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var completed = new List<RecycleBinItem>();
         var failures = new List<FileActionFailure>();
-        var queuedItems = new List<IShellItem>();
-        IFileOperation? operation = null;
-        uint cookie = 0;
-        var sink = new FileOperationProgressSink();
+        for (var index = 0; index < normalizedPaths.Length; index++)
+        {
+            if (cancellationToken.IsCancellationRequested && completed.Count > 0)
+            {
+                failures.AddRange(normalizedPaths.Skip(index).Select(path => new FileActionFailure(path, "操作已取消，此文件未执行")));
+                break;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = normalizedPaths[index];
+            try { completed.Add(RecycleOne(path)); }
+            catch (Exception exception) when (exception is COMException or IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            { failures.Add(new(path, exception.Message)); }
+        }
+        return new(completed, failures);
+    }
 
+    private static RecycleBinItem RecycleOne(string path)
+    {
+        RequireRecycleEnabled(path);
+        IShellItem? item = null, bin = null, parent = null, recycled = null;
+        ITransferSource? transfer = null;
         try
         {
-            operation = CreateFileOperation();
-            ThrowIfFailed(operation.SetOperationFlags(
-                FofSilent | FofNoConfirmation | FofAllowUndo | FofNoErrorUi | FofxRecycleOnDelete));
-            ThrowIfFailed(operation.Advise(sink, out cookie));
-
-            foreach (var path in normalizedPaths)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    var item = CreateShellItem(path);
-                    queuedItems.Add(item);
-                    ThrowIfFailed(operation.DeleteItem(item, null));
-                }
-                catch (Exception exception) when (exception is COMException or IOException or UnauthorizedAccessException)
-                {
-                    failures.Add(new FileActionFailure(path, exception.Message));
-                }
-            }
-
-            if (queuedItems.Count > 0)
-            {
-                ThrowIfFailed(operation.PerformOperations());
-                ThrowIfFailed(operation.GetAnyOperationsAborted(out var aborted));
-                if (aborted)
-                {
-                    failures.Add(new FileActionFailure(string.Empty, "Windows 取消了部分回收站操作"));
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception exception) when (exception is COMException or IOException or UnauthorizedAccessException)
-        {
-            failures.Add(new FileActionFailure(string.Empty, exception.Message));
+            item = CreateShellItem(path);
+            bin = CreateShellItem(RecycleBin);
+            ThrowIfFailed(item.GetParent(out parent));
+            var handler = new Guid("D5E346A1-F753-4932-B403-4574800E2498"); // BHID_Transfer
+            var iid = typeof(ITransferSource).GUID;
+            ThrowIfFailed(parent.BindToHandler(IntPtr.Zero, ref handler, ref iid, out var pointer));
+            try { transfer = (ITransferSource)Marshal.GetObjectForIUnknown(pointer); }
+            finally { Marshal.Release(pointer); }
+            // This Shell operation can only recycle. DeleteItem can fall back to permanent deletion.
+            ThrowIfFailed(transfer.RecycleItem(item, bin, 0, out recycled));
+            if (recycled is null) throw new IOException("Windows 未返回可撤回的回收站文件");
+            return new(path, FileOperationProgressSink.GetAbsolutePidl(recycled), FileOperationProgressSink.GetFileSystemPath(recycled));
         }
         finally
         {
-            if (operation is not null && cookie != 0)
-            {
-                operation.Unadvise(cookie);
-            }
-
-            foreach (var item in queuedItems)
-            {
-                ReleaseComObject(item);
-            }
-
-            ReleaseComObject(operation);
+            ReleaseComObject(recycled);
+            ReleaseComObject(transfer);
+            ReleaseComObject(parent);
+            ReleaseComObject(bin);
+            ReleaseComObject(item);
         }
+    }
 
-        var completed = sink.DeletedItems
-            .GroupBy(item => item.OriginalPath, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.Last())
-            .ToArray();
-        var completedPaths = completed
-            .Select(item => item.OriginalPath)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var path in normalizedPaths)
-        {
-            if (completedPaths.Contains(path)
-                || failures.Any(failure => StringComparer.OrdinalIgnoreCase.Equals(failure.Path, path)))
-            {
-                continue;
-            }
-
-            failures.Add(new FileActionFailure(
-                path,
-                File.Exists(path)
-                    ? "文件未能移入 Windows 回收站"
-                    : "文件已移走，但没有取得可撤回的回收站记录"));
-        }
-
-        return new RecycleBinDeleteResult(completed, failures);
+    private static void RequireRecycleEnabled(string path)
+    {
+        using var policy = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer");
+        var volume = new StringBuilder(512);
+        var name = new StringBuilder(64);
+        if (!GetVolumePathName(path, volume, volume.Capacity) || !GetVolumeNameForVolumeMountPoint(volume.ToString(), name, name.Capacity))
+            throw new IOException("无法确定文件所在卷的回收站设置，未改动原文件");
+        var volumeId = name.ToString()[10..^1]; // \\?\Volume{guid}\ → {guid}
+        using var settings = Registry.CurrentUser.OpenSubKey($@"Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket\Volume\{volumeId}");
+        if (policy?.GetValue("NoRecycleFiles") is int and not 0 || settings?.GetValue("NukeOnDelete") is int and not 0)
+            throw new IOException("该卷的 Windows 回收站已禁用，未改动原文件");
+        if (settings?.GetValue("MaxCapacity") is int megabytes && new FileInfo(path).Length > (long)(uint)megabytes * 1024 * 1024)
+            throw new IOException("文件超过该卷的 Windows 回收站容量，未改动原文件");
     }
 
     private static FileActionBatchResult Restore(
@@ -321,14 +294,10 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
     }
 
     [ComVisible(true)]
-    private sealed class FileOperationProgressSink(string? restorePath = null) : IFileOperationProgressSink
+    private sealed class FileOperationProgressSink(string restorePath) : IFileOperationProgressSink
     {
-        private readonly ConcurrentBag<RecycleBinItem> deletedItems = [];
-
         public bool MoveCompleted { get; private set; }
         public string? MovedPath { get; private set; }
-
-        public IReadOnlyList<RecycleBinItem> DeletedItems => deletedItems.ToArray();
 
         public int StartOperations() => 0;
 
@@ -339,7 +308,7 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
         public int PostRenameItem(uint flags, IShellItem item, string newName, int result, IShellItem? newItem) => 0;
 
         public int PreMoveItem(uint flags, IShellItem item, IShellItem destinationFolder, string? newName) =>
-            restorePath is not null && (File.Exists(restorePath) || Directory.Exists(restorePath)) ? unchecked((int)0x80070050) : 0;
+            File.Exists(restorePath) || Directory.Exists(restorePath) ? unchecked((int)0x80070050) : 0;
 
         public int PostMoveItem(uint flags, IShellItem item, IShellItem destinationFolder, string? newName, int result, IShellItem? newItem)
         {
@@ -355,24 +324,8 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
 
         public int PostCopyItem(uint flags, IShellItem item, IShellItem destinationFolder, string? newName, int result, IShellItem? newItem) => 0;
 
-        public int PreDeleteItem(uint flags, IShellItem item) => 0;
-
-        public int PostDeleteItem(uint flags, IShellItem item, int result, IShellItem? newItem)
-        {
-            if (result >= 0 && newItem is not null)
-            {
-                try
-                {
-                    deletedItems.Add(new RecycleBinItem(GetFileSystemPath(item), GetAbsolutePidl(newItem), GetFileSystemPath(newItem)));
-                }
-                catch (Exception)
-                {
-                    // The caller verifies every queued path after the Shell operation.
-                }
-            }
-
-            return 0;
-        }
+        public int PreDeleteItem(uint flags, IShellItem item) => unchecked((int)0x800704C7);
+        public int PostDeleteItem(uint flags, IShellItem item, int result, IShellItem? newItem) => 0;
 
         public int PreNewItem(uint flags, IShellItem destinationFolder, string newName) => 0;
 
@@ -400,7 +353,7 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
             }
         }
 
-        private static byte[] GetAbsolutePidl(IShellItem item)
+        public static byte[] GetAbsolutePidl(IShellItem item)
         {
             ThrowIfFailed(SHGetIDListFromObject(item, out var pidl));
             try
@@ -415,6 +368,26 @@ public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
                 Marshal.FreeCoTaskMem(pidl);
             }
         }
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumePathName(string path, StringBuilder volumePath, int length);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumeNameForVolumeMountPoint(string volumePath, StringBuilder volumeName, int length);
+
+    [ComImport, Guid("00ADB003-BDE9-45C6-8E29-D09F9353E108"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface ITransferSource
+    {
+        // The preceding slots are unused. Keep them in SDK vtable order.
+        void Advise();
+        void Unadvise();
+        void SetProperties();
+        void OpenItem();
+        void MoveItem();
+        [PreserveSig] int RecycleItem(IShellItem item, IShellItem destination, uint flags, out IShellItem recycled);
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]

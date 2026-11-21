@@ -1,5 +1,8 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
+using Microsoft.Win32;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Cli;
 using Sims4ModSieve.Core.Duplicates;
@@ -230,6 +233,50 @@ public sealed class CliFileCommandsTests
             await bin.RestoreAsync(data.Deleted.Where(record => !File.Exists(record.Item.OriginalPath)).Select(record => record.Item).ToArray());
         }
     }
+
+    [TestMethod, DoNotParallelize, TestCategory("WindowsIntegration")]
+    [DataRow(1, 8, "已禁用")]
+    [DataRow(0, 1, "超过")]
+    public async Task CliPreservesOriginalWhenRecycleIsDisabledOrFileExceedsCapacity(int disabled, int capacityMb, string reason)
+    {
+        if (Environment.GetEnvironmentVariable("SIMS4_MOD_SIEVE_RUN_RECYCLE_BIN_TEST") != "1")
+            Assert.Inconclusive("Set SIMS4_MOD_SIEVE_RUN_RECYCLE_BIN_TEST=1 to run the real Recycle Bin test.");
+        using var temp = new TempDirectory();
+        var content = RandomNumberGenerator.GetBytes(2 * 1024 * 1024);
+        var path = temp.WriteBytes("保留原文件.package", content);
+        var volume = new StringBuilder(64);
+        Assert.IsTrue(GetVolumeNameForVolumeMountPoint(Path.GetPathRoot(path)!, volume, volume.Capacity));
+        var key = $@"Software\Sims4ModSieve-RecycleTest-{Guid.NewGuid():N}";
+        var currentUser = new IntPtr(unchecked((int)0x80000001));
+        try
+        {
+            using var isolated = Registry.CurrentUser.CreateSubKey(key);
+            using var settings = isolated.CreateSubKey(
+                $@"Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket\Volume\{volume.ToString()[10..^1]}");
+            settings.SetValue("NukeOnDelete", disabled);
+            settings.SetValue("MaxCapacity", capacityMb);
+            // Remap this test host only. Explorer and other applications keep the real settings.
+            Assert.AreEqual(0, RegOverridePredefKey(currentUser, isolated.Handle.DangerousGetHandle()));
+            try
+            {
+                var result = await Run(new DuplicateSettingsStore(temp.Path), new WindowsRecycleBinAdapter(),
+                    ["recycle", "--path", path, "--expect-sha256", Hash(path), "--apply"]);
+                Assert.AreEqual(3, result.ExitCode, result.Json.ToJsonString());
+                Assert.AreEqual("failed", result.Status(0));
+                StringAssert.Contains(result.File(0)["messages"]![0]!.GetValue<string>(), reason);
+                CollectionAssert.AreEqual(content, File.ReadAllBytes(path));
+            }
+            finally { Assert.AreEqual(0, RegOverridePredefKey(currentUser, IntPtr.Zero)); }
+        }
+        finally { Registry.CurrentUser.DeleteSubKeyTree(key, throwOnMissingSubKey: false); }
+    }
+
+    [DllImport("advapi32.dll")]
+    private static extern int RegOverridePredefKey(IntPtr original, IntPtr replacement);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumeNameForVolumeMountPoint(string root, StringBuilder volume, int length);
 
     private static async Task<FileActionService> DeleteWithDesktop(DuplicateSettingsStore settings, IRecycleBinAdapter bin, string path)
     {
