@@ -16,7 +16,8 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     IReadOnlySet<string> ignoredPaths, CliCommands.ScanOptions options,
     long? memoryBudgetBytes = null,
     Action<ConflictGroupingSize>? sizeObserved = null, Action<string>? memoryObserved = null,
-    ConflictScanOptions? scanOptions = null, IStableFileHasher? fileHasher = null)
+    ConflictScanOptions? scanOptions = null, IStableFileHasher? fileHasher = null,
+    IResourceContentHasher? resourceHasher = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -103,7 +104,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             {
                 packages = await new PackageConflictScanner(fileSystem, LlamaLogicPackageIndexReader.CreateDefault())
                     .ScanAsync(new(scanSources) { Options = snapshot });
-                contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault())
+                contents = await new ResourceContentComparer(resourceHasher ?? DbpfResourceContentHasher.CreateDefault())
                     .CompareAsync(new(packages.Candidates) { Options = snapshot });
             }
 

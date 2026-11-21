@@ -12,7 +12,7 @@ public sealed partial class MainWindowViewModel
 {
     private ConflictResultSession conflictSession = new();
     private readonly IPackageConflictScanner packageConflictScanner;
-    private readonly IResourceContentComparer resourceContentComparer;
+    private readonly IResourceContentComparer? resourceContentComparer;
     private readonly IScriptModuleScanner scriptModuleScanner;
     private CancellationTokenSource? conflictCancellation;
     private int conflictGeneration;
@@ -465,15 +465,24 @@ public sealed partial class MainWindowViewModel
             var results = await Task.Run(async () =>
             {
                 var packages = await packageConflictScanner.ScanAsync(new(sources) { Options = scanOptions }, packageProgress, cancellation.Token);
-                cancellation.Token.ThrowIfCancellationRequested();
-                Volatile.Write(ref activeStage, 1);
-                var contents = await resourceContentComparer.CompareAsync(new(packages.Candidates) { Options = scanOptions }, contentProgress, cancellation.Token);
-                cancellation.Token.ThrowIfCancellationRequested();
-                Volatile.Write(ref activeStage, 2);
-                var scripts = await scriptModuleScanner.ScanAsync(new(sources), scriptProgress, cancellation.Token);
-                cancellation.Token.ThrowIfCancellationRequested();
-                Volatile.Write(ref activeStage, 3);
-                var duplicates = await RunDuplicateScanAsync(duplicateInput, duplicateProgress, cache, cancellation.Token);
+                async Task<(ResourceContentComparisonReport, ScriptModuleScanReport, DuplicateReport)> ReadEvidenceAsync(
+                    IStableFileHasher? fileHasher, IResourceContentHasher contentHasher)
+                {
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    Volatile.Write(ref activeStage, 1);
+                    var comparer = resourceContentComparer ?? new ResourceContentComparer(contentHasher);
+                    var contents = await comparer.CompareAsync(new(packages.Candidates) { Options = scanOptions }, contentProgress, cancellation.Token);
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    Volatile.Write(ref activeStage, 2);
+                    var scripts = await scriptModuleScanner.ScanAsync(new(sources), scriptProgress, cancellation.Token);
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    Volatile.Write(ref activeStage, 3);
+                    var duplicates = await duplicateRunService.RunAsync(duplicateInput with { FileHasher = fileHasher }, duplicateProgress, cancellation.Token);
+                    return (contents, scripts, duplicates);
+                }
+                var contentHasher = Sims4ModSieve.Packages.DbpfResourceContentHasher.CreateDefault();
+                var (contents, scripts, duplicates) = cache is null
+                    ? await ReadEvidenceAsync(null, contentHasher) : await cache.RunAsync(contentHasher, ReadEvidenceAsync, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
                 Volatile.Write(ref activeStage, 4);
                 Report(4, "正在整理文件组…", 0, null);

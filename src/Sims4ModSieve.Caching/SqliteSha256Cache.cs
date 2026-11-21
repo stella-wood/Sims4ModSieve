@@ -6,9 +6,9 @@ using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Caching;
 
-public sealed class SqliteSha256Cache
+public sealed partial class SqliteSha256Cache
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const int PathKeyVersion = 2;
     // A normalized absolute path cannot start with this marker.
     private const char ExactPathMarker = ':';
@@ -46,7 +46,8 @@ public sealed class SqliteSha256Cache
                 (id INTEGER PRIMARY KEY CHECK(id = 1), generation TEXT NOT NULL,
                  algorithm_version TEXT NOT NULL,
                  schema_version INTEGER NOT NULL, path_key_version INTEGER NOT NULL) STRICT;
-                """ + "CREATE TABLE IF NOT EXISTS hashes " + TableDefinition + ";";
+                """ + "CREATE TABLE IF NOT EXISTS hashes " + TableDefinition + ";"
+                    + "CREATE TABLE IF NOT EXISTS resource_hashes " + ResourceTableDefinition + ";";
             command.ExecuteNonQuery();
             // Remove the obsolete version while keeping compatible hashes in the same generation.
             command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('metadata') WHERE name = 'application_version');";
@@ -68,6 +69,7 @@ public sealed class SqliteSha256Cache
             {
                 command.CommandText = """
                     DELETE FROM hashes;
+                    DELETE FROM resource_hashes;
                     INSERT OR REPLACE INTO metadata (id, generation, algorithm_version, schema_version, path_key_version)
                     VALUES(1, $generation, $algorithm, $schema, $path);
                     """;
@@ -140,7 +142,8 @@ public sealed class SqliteSha256Cache
                 connection = OpenConnection();
                 using var command = connection.CreateCommand();
                 // TEMP belongs to this connection and disappears even if the process is killed.
-                command.CommandText = "PRAGMA temp_store=FILE; CREATE TEMP TABLE staged " + TableDefinition + ";";
+                command.CommandText = "PRAGMA temp_store=FILE; CREATE TEMP TABLE staged " + TableDefinition + ";"
+                    + "CREATE TEMP TABLE staged_resources " + ResourceTableDefinition + ";";
                 command.ExecuteNonQuery();
             }
             catch (Exception ex) when (IsStorageFailure(ex))
@@ -207,12 +210,12 @@ public sealed class SqliteSha256Cache
             return new(normalized, stamp.Length, stamp.LastWriteTimeUtc.Ticks, identity);
         }
 
-        public byte[] Checksum(byte[] hash) => SHA256.HashData(Encoding.UTF8.GetBytes(
+        public byte[] Checksum(byte[] hash, string resource = "") => SHA256.HashData(Encoding.UTF8.GetBytes(
             string.Create(CultureInfo.InvariantCulture,
-                $"{Path}\n{Length}\n{Ticks}\n{Identity}\n{Convert.ToHexString(hash)}")));
+                $"{Path}\n{Length}\n{Ticks}\n{Identity}\n{Convert.ToHexString(hash)}{resource}")));
     }
 
-    public sealed class Scan : IDisposable
+    public sealed partial class Scan : IDisposable
     {
         private readonly SqliteSha256Cache _owner;
         private readonly object _gate = new();
@@ -308,7 +311,7 @@ public sealed class SqliteSha256Cache
                         DELETE FROM main.hashes WHERE generation = $generation
                         AND (path_key, path) IN (SELECT CASE WHEN identity = '' THEN path ELSE ':' || path END, path FROM temp.staged);
                         INSERT INTO main.hashes SELECT * FROM temp.staged;
-                        """;
+                        """ + PublishResourceHashes;
                     command.Parameters.AddWithValue("$generation", _owner._generation);
                     command.ExecuteNonQuery();
                     // Cancellation after this check may race with the complete atomic publication.

@@ -1,3 +1,4 @@
+using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Caching;
@@ -9,9 +10,12 @@ public sealed class CachingStableFileHasher(SqliteSha256Cache cache, IFileSystem
     private readonly SqliteSha256Cache.Scan _scan = cache.BeginScan();
     private int _hits;
     private int _misses;
+    private CachingResourceContentHasher? _resourceHasher;
 
     public int Hits => Volatile.Read(ref _hits);
     public int Misses => Volatile.Read(ref _misses);
+    public long ResourceHits => _resourceHasher?.Hits ?? 0;
+    public long ResourceMisses => _resourceHasher?.Misses ?? 0;
 
     public static CachingStableFileHasher Open(string dataDirectory) => new(
         new SqliteSha256Cache(Path.Combine(dataDirectory, "cache", "sha256.sqlite3")), new PhysicalFileSystemAccess());
@@ -48,7 +52,14 @@ public sealed class CachingStableFileHasher(SqliteSha256Cache cache, IFileSystem
         var result = await scan(this).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         // Discard results that depended on cache entries if a later operation found the cache unusable.
-        return Hits > 0 && !cache.IsAvailable ? await scan(_hasher).ConfigureAwait(false) : result;
+        return (Hits > 0 || ResourceHits > 0) && !cache.IsAvailable ? await scan(_hasher).ConfigureAwait(false) : result;
+    }
+
+    public Task<T> RunAsync<T>(IResourceContentHasher hasher,
+        Func<IStableFileHasher, IResourceContentHasher, Task<T>> scan, CancellationToken cancellationToken = default)
+    {
+        var resourceHasher = _resourceHasher = new CachingResourceContentHasher(_scan, fileSystem, hasher);
+        return RunAsync(fileHasher => scan(fileHasher, ReferenceEquals(fileHasher, this) ? resourceHasher : hasher), cancellationToken);
     }
 
     public bool Commit(CancellationToken cancellationToken = default) => _scan.Commit(cancellationToken);

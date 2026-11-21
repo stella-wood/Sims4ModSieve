@@ -20,6 +20,8 @@ internal sealed record RunMeasurement(string Outcome, string? Error, double Mill
 {
     public int CacheHits { get; init; }
     public int CacheMisses { get; init; }
+    public long ResourceCacheHits { get; init; }
+    public long ResourceCacheMisses { get; init; }
 }
 
 internal static class BenchmarkRunner
@@ -37,11 +39,9 @@ internal static class BenchmarkRunner
         };
         Task<DuplicateReport> ScanDuplicatesAsync(IStableFileHasher? hasher) =>
             DuplicateScanner.CreateDefault(hasher).ScanAsync(duplicateRequest, cancellationToken);
-        Task<DuplicateReport> RunDuplicateScanAsync() => cache is null
-            ? ScanDuplicatesAsync(null) : cache.RunAsync(ScanDuplicatesAsync, cancellationToken);
         if (scope == "duplicates")
         {
-            var duplicateReport = await RunDuplicateScanAsync();
+            var duplicateReport = cache is null ? await ScanDuplicatesAsync(null) : await cache.RunAsync(ScanDuplicatesAsync, cancellationToken);
             using (ScanPerformance.Measure("基准 · 生成一致性快照"))
                 await ResultSnapshot.WriteAsync(snapshotPath, ResultSnapshot.CreateDuplicates(duplicateReport), cancellationToken);
             cache?.Commit(cancellationToken);
@@ -52,14 +52,20 @@ internal static class BenchmarkRunner
             {
                 Options = indexConcurrency is { } index ? new(index, storage) : null,
             }, cancellationToken);
-        var contents = await new ResourceContentComparer(DbpfResourceContentHasher.CreateDefault())
-            .CompareAsync(new(packages.Candidates)
+        async Task<(ResourceContentComparisonReport, ScriptModuleScanReport, DuplicateReport)> ReadEvidenceAsync(
+            IStableFileHasher? fileHasher, IResourceContentHasher contentHasher)
+        {
+            var contents = await new ResourceContentComparer(contentHasher).CompareAsync(new(packages.Candidates)
             {
                 Options = contentConcurrency is { } content ? new(content, storage) : null,
             }, cancellationToken: cancellationToken);
-        var scripts = await new ScriptModuleScanner(new PhysicalFileSystemAccess())
-            .ScanAsync(new(sources), cancellationToken: cancellationToken);
-        var duplicates = await RunDuplicateScanAsync();
+            var scripts = await new ScriptModuleScanner(new PhysicalFileSystemAccess())
+                .ScanAsync(new(sources), cancellationToken: cancellationToken);
+            return (contents, scripts, await ScanDuplicatesAsync(fileHasher));
+        }
+        var contentHasher = DbpfResourceContentHasher.CreateDefault();
+        var (contents, scripts, duplicates) = cache is null
+            ? await ReadEvidenceAsync(null, contentHasher) : await cache.RunAsync(contentHasher, ReadEvidenceAsync, cancellationToken);
         PackageConflictGroupingResult grouping;
         using (ScanPerformance.Measure("基准 · 文件关系构建（无 WPF）"))
         {

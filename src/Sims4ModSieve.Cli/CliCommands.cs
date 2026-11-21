@@ -2,6 +2,7 @@ using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Settings;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Caching;
+using Sims4ModSieve.Packages;
 
 namespace Sims4ModSieve.Cli;
 
@@ -128,7 +129,7 @@ internal static class CliCommands
         {
             ConcurrencyDecided = decision => error.WriteLine(decision.DiagnosticText),
         };
-        async Task<CliScanReport> RunScanAsync(IStableFileHasher? hasher)
+        async Task<CliScanReport> RunScanAsync(IStableFileHasher? hasher, IResourceContentHasher resourceHasher)
         {
             var report = new CliScanReport(command, explicitSources ? "argument" : "settings",
                 explicitSources ? null : SettingsNotice, ignored, options, conflictGroupingMemoryBudgetBytes, size =>
@@ -136,11 +137,12 @@ internal static class CliCommands
                     error.WriteLine(size.DiagnosticText);
                     if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);
                 }, memoryObserved: error.WriteLine,
-                scanOptions: scanOptions, fileHasher: hasher);
+                scanOptions: scanOptions, fileHasher: hasher, resourceHasher: resourceHasher);
             await report.RunAsync(sources, modsRoot, extensions);
             return report;
         }
-        var scan = cache is null ? await RunScanAsync(null) : await cache.RunAsync(RunScanAsync);
+        var resourceHasher = DbpfResourceContentHasher.CreateDefault();
+        var scan = cache is null ? await RunScanAsync(null, resourceHasher) : await cache.RunAsync(resourceHasher, RunScanAsync);
         var hasSources = scan.Sources.Count > 0;
         if (hasSources)
             await summary.WriteLineAsync($"扫描目录（{(explicitSources ? "--source" : "设置")}）：{string.Join("、", scan.Sources.Select(source => source.Path))}");
@@ -304,7 +306,7 @@ internal static class CliCommands
             output.WriteLine("  --source <目录>  临时指定扫描目录，可重复指定。省略时使用默认 Mods");
             output.WriteLine("  --json <文件|->  写入 JSON 文件，或用 - 输出到标准输出。省略时写入当前目录并显示摘要");
             output.WriteLine("  --hide-ignored  隐藏已经忽略的文件");
-            output.WriteLine("  --no-cache  直接计算整文件 SHA-256，跳过缓存读写");
+            output.WriteLine("  --no-cache  跳过整文件与资源哈希缓存的读写");
             output.WriteLine("  --severity <级别>  筛选组和读取问题，可重复：abnormal、risk、no_effect、incomplete");
             output.WriteLine("  --kind <种类>  筛选组和读取问题，可重复；与 severity 同用时取交集");
             if (command is null or "scan-duplicates")
