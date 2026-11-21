@@ -1,7 +1,7 @@
 using System.IO;
 using Sims4ModSieve.Core.Duplicates;
 
-namespace Sims4ModSieve.Desktop.Services;
+namespace Sims4ModSieve.FileOperations;
 
 public sealed record FileDeletionCandidate(
     string Path,
@@ -114,7 +114,7 @@ public sealed class FileActionService(
     Action<string>? logProtectedPath = null) : IFileActionService
 {
     private readonly ApplicationDirectoryGuard applicationGuard = new(applicationDirectory,
-        logProtectedPath ?? UnexpectedErrorHandler.LogProtectedPath);
+        logProtectedPath);
     private readonly FileManagementStore historyStore = historyStore ?? new FileManagementStore();
     private readonly StableFileHasher verificationHasher = new(new MetadataFileSystem(metadata));
 
@@ -127,7 +127,6 @@ public sealed class FileActionService(
         public FileAttributes GetAttributes(string path) => throw new NotSupportedException();
     }
 
-    private List<DeletedFileRecord>? history;
     private IReadOnlyList<RecycleBinItem> lastDeletedItems = Array.Empty<RecycleBinItem>();
 
     public FileActionService()
@@ -216,7 +215,8 @@ public sealed class FileActionService(
         FileDeletionPreflight preflight,
         CancellationToken cancellationToken = default)
     {
-        EnsureHistory();
+        using var operation = historyStore.WriteLock.Enter();
+        var history = LoadHistory();
         var ready = new List<FileDeletionCandidate>();
         var preparationFailures = new List<FileActionFailure>();
         await Task.Run(async () =>
@@ -278,6 +278,7 @@ public sealed class FileActionService(
                 cancellationToken)
             .ConfigureAwait(false);
 
+        var deletedIds = new List<string>();
         if (result.CompletedItems.Count > 0)
         {
             lastDeletedItems = result.CompletedItems;
@@ -288,7 +289,8 @@ public sealed class FileActionService(
                     StringComparer.OrdinalIgnoreCase.Equals(candidate.Path, item.OriginalPath)).ExpectedSize, now,
                     ready.Single(candidate => StringComparer.OrdinalIgnoreCase.Equals(candidate.Path, item.OriginalPath)).ExpectedLastWriteTimeUtc,
                     ready.Single(candidate => StringComparer.OrdinalIgnoreCase.Equals(candidate.Path, item.OriginalPath)).DisabledMod);
-                history!.Add(deleted);
+                history.Add(deleted);
+                deletedIds.Add(deleted.Id);
                 if (deleted.DisabledMod is not null)
                 {
                     try { modDisableService!.RememberRecycled(deleted); }
@@ -299,7 +301,7 @@ public sealed class FileActionService(
         }
         return new FileActionBatchResult(
             result.CompletedItems.Select(item => item.OriginalPath).ToArray(),
-            result.Failures.Concat(preparationFailures).Concat(SaveHistory()).ToArray(),
+            result.Failures.Concat(preparationFailures).Concat(SaveHistory(history, deletedIds)).ToArray(),
             CanUndoLastDelete);
     }
 
@@ -312,7 +314,8 @@ public sealed class FileActionService(
             return new FileActionBatchResult([], [], false);
         }
 
-        EnsureHistory();
+        using var operation = historyStore.WriteLock.Enter();
+        var history = LoadHistory();
         var restoring = lastDeletedItems;
         var paths = new List<string>();
         var failures = new List<FileActionFailure>();
@@ -320,7 +323,7 @@ public sealed class FileActionService(
         for (var index = 0; index < restoring.Count; index++)
         {
             var item = restoring[index];
-            var record = history!.FirstOrDefault(entry => SameItem(item, entry.Item));
+            var record = history.FirstOrDefault(entry => SameItem(item, entry.Item));
             FileActionBatchResult restored;
             try { restored = await RestoreItemAsync(item, record?.DisabledMod, cancellationToken).ConfigureAwait(false); }
             catch (OperationCanceledException) when (paths.Count > 0)
@@ -336,25 +339,32 @@ public sealed class FileActionService(
             paths.AddRange(restored.CompletedPaths);
             failures.AddRange(restored.Failures);
             if (!restored.CompletedPaths.Contains(item.OriginalPath, StringComparer.OrdinalIgnoreCase)) continue;
-            if (record is not null) { restoredRecords.Add(record); history!.Remove(record); }
+            if (record is not null) { restoredRecords.Add(record); history.Remove(record); }
             lastDeletedItems = lastDeletedItems.Where(pending => !SameItem(pending, item)).ToArray();
-            failures.AddRange(SaveHistory());
+            failures.AddRange(SaveHistory(history));
         }
         return new FileActionBatchResult(paths, failures, CanUndoLastDelete, restoredRecords, paths);
     }
-    private void EnsureHistory()
+    private List<DeletedFileRecord> LoadHistory()
     {
-        if (history is not null) return;
         var records = historyStore.Load().Deleted.ToList();
         if (modDisableService is not null)
             foreach (var recovered in modDisableService.GetRecycledRecords())
                 if (!records.Any(record => SameItem(record.Item, recovered.Item))) records.Add(recovered);
-        history = records;
+        return records;
     }
 
-    private IReadOnlyList<FileActionFailure> SaveHistory()
+    private IReadOnlyList<FileActionFailure> SaveHistory(List<DeletedFileRecord> history, IReadOnlyList<string>? deletedIds = null)
     {
-        try { historyStore.Update(data => data with { Deleted = history!.ToArray() }); return []; }
+        try
+        {
+            historyStore.Update(data => data with
+            {
+                Deleted = history.ToArray(),
+                LastDeleteIds = deletedIds is { Count: > 0 } ? deletedIds : data.GetLastDeleteIds(),
+            });
+            return [];
+        }
         catch (Exception exception) when (IsHistoryException(exception))
         { return [new("", "删除记录未保存：" + exception.Message)]; }
     }
@@ -405,8 +415,9 @@ public sealed class FileActionService(
 
     public async Task<DeletedFilesResult> GetRecentlyDeletedAsync(CancellationToken cancellationToken = default)
     {
-        EnsureHistory();
-        if (history!.Count == 0) return new([], []);
+        using var operation = historyStore.WriteLock.Enter();
+        var history = LoadHistory();
+        if (history.Count == 0) return new([], []);
         var result = await recycleBin.QueryAsync(history.Select(record => record.Item).ToArray(), cancellationToken).ConfigureAwait(false);
         var failures = result.Failures.ToList();
         if (modDisableService is not null)
@@ -421,14 +432,15 @@ public sealed class FileActionService(
         }
         history.RemoveAll(record => result.MissingItems.Any(item => SameItem(item, record.Item)));
         lastDeletedItems = lastDeletedItems.Where(item => !result.MissingItems.Any(missing => SameItem(item, missing))).ToArray();
-        return new(history.OrderByDescending(record => record.DeletedAtUtc).ToArray(), failures.Concat(SaveHistory()).ToArray());
+        return new(history.OrderByDescending(record => record.DeletedAtUtc).ToArray(), failures.Concat(SaveHistory(history)).ToArray());
     }
 
     public async Task<FileActionBatchResult> RestoreDeletedAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        EnsureHistory();
-        var selected = history!.Where(record => ids.Contains(record.Id, StringComparer.Ordinal)).ToArray();
+        using var operation = historyStore.WriteLock.Enter();
+        var history = LoadHistory();
+        var selected = history.Where(record => ids.Contains(record.Id, StringComparer.Ordinal)).ToArray();
         var presence = await recycleBin.QueryAsync(selected.Select(record => record.Item).ToArray(), cancellationToken).ConfigureAwait(false);
         var completed = new List<string>();
         var failures = new List<FileActionFailure>();
@@ -455,9 +467,9 @@ public sealed class FileActionService(
             completed.Add(record.Item.OriginalPath);
             restoredRecords.Add(record);
             if (lastDeletedItems.Any(item => SameItem(item, record.Item))) restoredUndoPaths.Add(record.Item.OriginalPath);
-            history!.Remove(record);
+            history.Remove(record);
             lastDeletedItems = lastDeletedItems.Where(item => !SameItem(item, record.Item)).ToArray();
-            failures.AddRange(SaveHistory());
+            failures.AddRange(SaveHistory(history));
         }
         var missing = presence.MissingItems.Select(item => new FileActionFailure(item.OriginalPath, "找不到回收站中的文件"));
         return new(completed, failures.Concat(presence.Failures).Concat(missing).ToArray(), CanUndoLastDelete, restoredRecords, restoredUndoPaths);

@@ -77,11 +77,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         this.pickIgnoredFiles = pickIgnoredFiles ?? PickIgnoredFiles;
         this.modDisableService = modDisableService ?? new ModDisableService(
             settingsStore is DuplicateSettingsStore diskModSettings ? diskModSettings.DataDirectory
-                : Path.Combine(Path.GetTempPath(), "Sims4ModSieve", Guid.NewGuid().ToString("N")));
+                : Path.Combine(Path.GetTempPath(), "Sims4ModSieve", Guid.NewGuid().ToString("N")),
+            logProtectedPath: UnexpectedErrorHandler.LogProtectedPath);
         this.pickDisabledFiles = pickDisabledFiles ?? PickDisabledFiles;
         this.confirmModChange = confirmModChange;
         this.fileActionService = fileActionService ?? new FileActionService(new WindowsRecycleBinAdapter(),
-            new PhysicalFileMetadataAccess(), this.fileManagementStore, this.modDisableService);
+            new PhysicalFileMetadataAccess(), this.fileManagementStore, this.modDisableService,
+            logProtectedPath: UnexpectedErrorHandler.LogProtectedPath);
         this.fileActionDialogs = fileActionDialogs ?? new FileActionDialogService();
         this.conflictGroupingMemoryBudgetBytes = conflictGroupingMemoryBudgetBytes;
         this.scanCacheDirectory = scanCacheDirectory;

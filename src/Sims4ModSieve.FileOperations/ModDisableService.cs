@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sims4ModSieve.Core.Duplicates;
 
-namespace Sims4ModSieve.Desktop.Services;
+namespace Sims4ModSieve.FileOperations;
 
 public sealed record DisabledRecycleRecord(string Id, RecycleBinItem Item, DateTime DeletedAtUtc);
 
@@ -22,24 +22,30 @@ public sealed class ModDisableService(string? directory = null, string? applicat
     Action<string>? logProtectedPath = null)
 {
     private readonly ApplicationDirectoryGuard applicationGuard = new(applicationDirectory,
-        logProtectedPath ?? UnexpectedErrorHandler.LogProtectedPath);
-    private readonly object gate = new();
+        logProtectedPath);
+    private readonly FileManagementLock writeLock = new(directory ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve"));
     private readonly string ledgerPath = Path.Combine(directory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve"), "disabled-mods.json");
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public DisabledModsResult Load()
     {
-        lock (gate)
-        {
-            var state = ReadAndReconcile();
-            return state with { Records = state.Records.Where(record => !record.Recycled).ToArray() };
-        }
+        using var operation = writeLock.Enter();
+        return LoadActive(save: true);
+    }
+
+    internal DisabledModsResult LoadReadOnly() => LoadActive(save: false);
+
+    private DisabledModsResult LoadActive(bool save)
+    {
+        var state = ReadAndReconcile(save);
+        return state with { Records = state.Records.Where(record => !record.Recycled).ToArray() };
     }
 
     public void PrepareRecycle(IReadOnlyList<DisabledModRecord> selected)
     {
-        lock (gate)
+        using (writeLock.Enter())
         {
             var records = ReadRecords().ToList();
             foreach (var requested in selected)
@@ -57,7 +63,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
 
     public void PrepareRecycleRestore(DisabledModRecord record)
     {
-        lock (gate)
+        using (writeLock.Enter())
         {
             if (!IsValidRecord(record)) throw new InvalidDataException("禁用恢复记录格式无效");
             applicationGuard.EnsureAllowed(record.OriginalPath);
@@ -77,7 +83,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
 
     public void CompleteRecycleRestore(DisabledModRecord record)
     {
-        lock (gate)
+        using (writeLock.Enter())
         {
             RequireStamp(record.DisabledPath, record);
             var records = ReadAndReconcile().Records.ToList();
@@ -89,7 +95,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
 
     public void CancelRecycleRestore(string id)
     {
-        lock (gate)
+        using (writeLock.Enter())
         {
             var records = ReadRecords();
             Save(records.Select(record => record.Id == id ? record with { RestorePending = false } : record).ToArray());
@@ -98,7 +104,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
 
     public void RememberRecycled(DeletedFileRecord deleted)
     {
-        lock (gate)
+        using (writeLock.Enter())
         {
             var records = ReadRecords().ToList();
             var index = records.FindIndex(record => record.Id == deleted.DisabledMod!.Id);
@@ -111,7 +117,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
 
     public IReadOnlyList<DeletedFileRecord> GetRecycledRecords()
     {
-        lock (gate)
+        using (writeLock.Enter())
             return ReadAndReconcile().Records.Where(record => record.Recycled && record.RecycleEntry is not null)
                 .Select(record => new DeletedFileRecord(record.RecycleEntry!.Id, record.RecycleEntry.Item, record.Size,
                     record.RecycleEntry.DeletedAtUtc, record.LastWriteTimeUtc, record with { RecycleEntry = null })).ToArray();
@@ -119,7 +125,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
 
     public void ForgetRecycled(IReadOnlyList<string> ids)
     {
-        lock (gate)
+        using (writeLock.Enter())
         {
             var records = ReadRecords();
             var next = records.Where(record => !record.Recycled || record.RecycleEntry is null
@@ -131,7 +137,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
     public ModDisableBatchResult Disable(IReadOnlyList<string> paths,
         IReadOnlyDictionary<string, FileStamp>? expectedStamps = null)
     {
-        lock (gate)
+        using (writeLock.Enter())
         {
             var state = ReadAndReconcile();
             var records = state.Records.ToList();
@@ -191,7 +197,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
 
     public ModDisableBatchResult Restore(IReadOnlyList<string> ids)
     {
-        lock (gate)
+        using (writeLock.Enter())
         {
             var state = ReadAndReconcile();
             var records = state.Records.ToList();
@@ -224,7 +230,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
         }
     }
 
-    private DisabledModsResult ReadAndReconcile()
+    private DisabledModsResult ReadAndReconcile(bool save = true)
     {
         var records = ReadRecords();
         var current = new List<DisabledModRecord>();
@@ -263,7 +269,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
             catch (Exception exception) when (IsFileException(exception)) { failures.Add(new(record.OriginalPath, exception.Message)); }
             current.Add(record);
         }
-        if (!current.SequenceEqual(records))
+        if (save && !current.SequenceEqual(records))
         {
             try { Save(current); }
             catch (Exception exception) when (IsFileException(exception))
@@ -275,7 +281,12 @@ public sealed class ModDisableService(string? directory = null, string? applicat
     private DisabledModRecord[] ReadRecords()
     {
         string json;
-        try { json = File.ReadAllText(ledgerPath); }
+        try
+        {
+            using var stream = new FileStream(ledgerPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            json = reader.ReadToEnd();
+        }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException) { return []; }
         var records = JsonSerializer.Deserialize<DisabledModRecord[]>(json, JsonOptions)
             ?? throw new InvalidDataException("禁用清单为空");
@@ -287,7 +298,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
         return records;
     }
 
-    internal static bool IsValidRecord(DisabledModRecord record) => Guid.TryParseExact(record.Id, "N", out _)
+    public static bool IsValidRecord(DisabledModRecord record) => Guid.TryParseExact(record.Id, "N", out _)
         && !string.IsNullOrWhiteSpace(record.OriginalPath) && Path.IsPathFullyQualified(record.OriginalPath)
         && IsModPath(record.OriginalPath) && record.Size >= 0
         && StringComparer.OrdinalIgnoreCase.Equals(Path.GetFullPath(record.OriginalPath), record.OriginalPath)
@@ -308,7 +319,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    private static bool IsModPath(string path) => Path.GetExtension(path).Equals(".package", StringComparison.OrdinalIgnoreCase)
+    internal static bool IsModPath(string path) => Path.GetExtension(path).Equals(".package", StringComparison.OrdinalIgnoreCase)
         || Path.GetExtension(path).Equals(".ts4script", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsFileException(Exception exception) => exception is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException;

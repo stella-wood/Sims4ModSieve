@@ -310,6 +310,7 @@
         "dependencies": {
           "Sims4ModSieve.Caching": "[0.1.0-alpha.1, )",
           "Sims4ModSieve.Core": "[0.1.0-alpha.1, )",
+          "Sims4ModSieve.FileOperations": "[0.1.0-alpha.1, )",
           "Sims4ModSieve.Packages": "[0.1.0-alpha.1, )"
         }
       },
@@ -325,6 +326,7 @@
         "dependencies": {
           "Sims4ModSieve.Caching": "[0.1.0-alpha.1, )",
           "Sims4ModSieve.Core": "[0.1.0-alpha.1, )",
+          "Sims4ModSieve.FileOperations": "[0.1.0-alpha.1, )",
           "Sims4ModSieve.Packages": "[0.1.0-alpha.1, )"
         }
       },
@@ -332,6 +334,12 @@
         "type": "Project",
         "dependencies": {
           "SharpZipLib": "[1.4.2, )"
+        }
+      },
+      "sims4modsieve.fileoperations": {
+        "type": "Project",
+        "dependencies": {
+          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )"
         }
       },
       "sims4modsieve.packages": {

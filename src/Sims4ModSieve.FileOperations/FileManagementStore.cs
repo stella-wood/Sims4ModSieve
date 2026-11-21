@@ -2,17 +2,28 @@ using System.IO;
 using System.Text.Json;
 using Sims4ModSieve.Core.Settings;
 
-namespace Sims4ModSieve.Desktop.Services;
+namespace Sims4ModSieve.FileOperations;
 
 public sealed record DeletedFileRecord(string Id, RecycleBinItem Item, long Size, DateTime DeletedAtUtc,
     DateTime? LastWriteTimeUtc = null, DisabledModRecord? DisabledMod = null);
 public sealed record FileManagementData(IReadOnlyList<IgnoredFileRecord> Ignored,
-    IReadOnlyList<DeletedFileRecord> Deleted);
+    IReadOnlyList<DeletedFileRecord> Deleted, IReadOnlyList<string>? LastDeleteIds = null)
+{
+    internal IReadOnlyList<string> GetLastDeleteIds()
+    {
+        if (LastDeleteIds is not null) return LastDeleteIds;
+        if (Deleted.Count == 0) return [];
+        // Older versions used one timestamp for all files in a deletion batch.
+        var latest = Deleted.Max(record => record.DeletedAtUtc);
+        return Deleted.Where(record => record.DeletedAtUtc == latest).Select(record => record.Id).ToArray();
+    }
+}
 
 public sealed class FileManagementStore(string? directory = null)
 {
     private readonly object gate = new();
     private readonly string? path = directory is null ? null : IgnoredFileRecord.GetStorePath(directory);
+    internal FileManagementLock WriteLock { get; } = new(directory);
     private FileManagementData memory = new([], []);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -43,6 +54,7 @@ public sealed class FileManagementStore(string? directory = null)
 
     public FileManagementData Update(Func<FileManagementData, FileManagementData> update)
     {
+        using var operation = WriteLock.Enter();
         lock (gate)
         {
             var next = update(Load());
