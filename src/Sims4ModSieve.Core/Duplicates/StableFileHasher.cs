@@ -18,15 +18,20 @@ public sealed class StableFileHasher(
 {
     private readonly TimeSpan _retryDelay = retryDelay ?? TimeSpan.FromMilliseconds(50);
 
+    public Task<StableFileHash> HashAsync(string path, CancellationToken cancellationToken = default) =>
+        HashAsync(path, initialStamp: null, cancellationToken);
+
+    /// <summary>Uses a just-read stamp for the first attempt and verifies it after reading the file.</summary>
     public async Task<StableFileHash> HashAsync(
         string path,
-        CancellationToken cancellationToken = default)
+        FileStamp? initialStamp,
+        CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < 2; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var before = fileSystem.GetFileStamp(path);
+            var before = (attempt == 0 ? initialStamp : null) ?? fileSystem.GetFileStamp(path);
             await using var stream = fileSystem.OpenRead(path);
             var digest = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
             var after = fileSystem.GetFileStamp(path);

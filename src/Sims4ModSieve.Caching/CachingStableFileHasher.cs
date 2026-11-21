@@ -19,20 +19,26 @@ public sealed class CachingStableFileHasher(SqliteSha256Cache cache, IFileSystem
     public async Task<StableFileHash> HashAsync(string path, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        FileStamp? initialStamp = null;
         if (cache.IsAvailable)
         {
             var before = fileSystem.GetFileStamp(path);
+            initialStamp = before;
             var sha256 = _scan.GetSha256(path, before, cancellationToken);
-            if (sha256 is not null && before == fileSystem.GetFileStamp(path))
+            if (sha256 is not null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                Interlocked.Increment(ref _hits);
-                return new(sha256, before);
+                initialStamp = fileSystem.GetFileStamp(path);
+                if (before == initialStamp)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Interlocked.Increment(ref _hits);
+                    return new(sha256, before);
+                }
             }
             Interlocked.Increment(ref _misses);
         }
 
-        var result = await _hasher.HashAsync(path, cancellationToken).ConfigureAwait(false);
+        var result = await _hasher.HashAsync(path, initialStamp, cancellationToken).ConfigureAwait(false);
         if (cache.IsAvailable) _scan.Stage(path, result.Stamp, result.Sha256, cancellationToken);
         return result;
     }

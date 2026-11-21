@@ -36,8 +36,6 @@ public sealed class SqliteSha256Cache
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             using var connection = OpenConnection();
             using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA quick_check;";
-            if (!Equals(command.ExecuteScalar(), "ok")) return;
             command.CommandText = "PRAGMA journal_mode=WAL;";
             if (!string.Equals(command.ExecuteScalar() as string, "wal", StringComparison.OrdinalIgnoreCase))
                 return;

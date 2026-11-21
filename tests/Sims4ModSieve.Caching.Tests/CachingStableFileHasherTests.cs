@@ -21,6 +21,7 @@ public sealed class CachingStableFileHasherTests
         {
             await cold.HashAsync(path);
             Assert.AreEqual(1, cold.Misses);
+            Assert.AreEqual(2, fileSystem.StampReads);
             Assert.IsTrue(cold.Commit());
         }
         using (var warm = new CachingStableFileHasher(cache, fileSystem))
@@ -29,6 +30,7 @@ public sealed class CachingStableFileHasherTests
             Assert.AreEqual(initial, hit.Stamp);
             Assert.AreEqual(1, warm.Hits);
             Assert.AreEqual(1, fileSystem.Reads);
+            Assert.AreEqual(4, fileSystem.StampReads);
         }
 
         File.AppendAllText(path, "d");
@@ -123,10 +125,15 @@ public sealed class CachingStableFileHasherTests
     {
         private readonly PhysicalFileSystemAccess _physical = new();
         public int Reads { get; private set; }
+        public int StampReads { get; private set; }
         public bool DirectoryExists(string path) => _physical.DirectoryExists(path);
         public IReadOnlyList<string> EnumerateFileSystemEntries(string directory) => _physical.EnumerateFileSystemEntries(directory);
         public FileAttributes GetAttributes(string path) => _physical.GetAttributes(path);
-        public FileStamp GetFileStamp(string path) => _physical.GetFileStamp(path);
+        public FileStamp GetFileStamp(string path)
+        {
+            StampReads++;
+            return _physical.GetFileStamp(path);
+        }
         public Stream OpenRead(string path)
         {
             Reads++;
