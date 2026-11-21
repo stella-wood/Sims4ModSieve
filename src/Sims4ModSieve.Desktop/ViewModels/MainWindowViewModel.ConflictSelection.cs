@@ -114,16 +114,25 @@ public sealed partial class MainWindowViewModel
     private List<FileDeletionCandidate> ConflictSelectionCandidates()
     {
         var candidates = new List<FileDeletionCandidate>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var indexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var card in conflictSession.Cards)
             foreach (var file in card.Files)
             {
-                if (!conflictSelectedPaths.Contains(file.Path) || file.Stamp is not { } stamp || !seen.Add(file.Path)) continue;
-                candidates.Add(new(file.Path, stamp.Length, stamp.LastWriteTimeUtc, $"第 {card.GroupIndex} 组",
-                    ExpectedIdentity: stamp.Identity, ExpectedSha256: card.Duplicate?.Sha256));
+                if (!conflictSelectedPaths.Contains(file.Path) || file.Stamp is not { } stamp) continue;
+                var alreadySelected = indexes.TryGetValue(file.Path, out var index);
+                if (alreadySelected && card.Duplicate is null) continue;
+                var candidate = new FileDeletionCandidate(file.Path, stamp.Length, stamp.LastWriteTimeUtc, $"第 {card.GroupIndex} 组",
+                    ExpectedIdentity: stamp.Identity, ExpectedSha256: card.Duplicate?.Sha256);
+                // 重复卡片的文件戳和整文件哈希描述同一次读取，优先一起使用。
+                if (alreadySelected) candidates[index] = candidate;
+                else
+                {
+                    indexes.Add(file.Path, candidates.Count);
+                    candidates.Add(candidate);
+                }
             }
         foreach (var problem in conflictSession.Problems)
-            if (conflictSelectedPaths.Contains(problem.Path) && problem.Stamp is { } stamp && seen.Add(problem.Path))
+            if (conflictSelectedPaths.Contains(problem.Path) && problem.Stamp is { } stamp && indexes.TryAdd(problem.Path, candidates.Count))
                 candidates.Add(new(problem.Path, stamp.Length, stamp.LastWriteTimeUtc, "", ExpectedIdentity: stamp.Identity));
         return candidates;
     }

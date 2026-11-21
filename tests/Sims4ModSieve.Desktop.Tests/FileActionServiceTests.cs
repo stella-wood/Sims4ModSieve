@@ -1,5 +1,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Security.Cryptography;
+using Sims4ModSieve.Caching;
+using Sims4ModSieve.Core.Tests;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Services;
 
@@ -113,6 +115,37 @@ public sealed class FileActionServiceTests
         CollectionAssert.AreEqual(new[] { stable }, result.CompletedPaths.ToArray());
         Assert.AreEqual(changed, result.Failures.Single().Path);
         Assert.AreEqual(1, adapter.DeleteCalls);
+    }
+
+    [TestMethod]
+    public async Task DeleteRejectsContentChangeEvenWhenScanCacheHits()
+    {
+        using var temp = new TempDirectory();
+        var path = temp.WriteFile("Mods/copy.package", "AAAA");
+        var stampAccess = new PhysicalFileMetadataAccess();
+        StableFileHash original;
+        using (var cold = CachingStableFileHasher.Open(temp.Path))
+        {
+            original = await cold.HashAsync(path);
+            Assert.IsNotNull(original.Stamp.Identity);
+            Assert.IsTrue(cold.Commit());
+        }
+        File.WriteAllText(path, "BBBB");
+        File.SetLastWriteTimeUtc(path, original.Stamp.LastWriteTimeUtc);
+        Assert.AreEqual(original.Stamp, stampAccess.GetFileStamp(path));
+        using var warm = CachingStableFileHasher.Open(temp.Path);
+        Assert.AreEqual(original, await warm.HashAsync(path));
+        Assert.AreEqual(1, warm.Hits);
+
+        var bin = new FakeRecycleBinAdapter();
+        var actions = new FileActionService(bin, stampAccess, new FileManagementStore(temp.Path));
+        var preflight = actions.Preflight([new(path, original.Stamp.Length, original.Stamp.LastWriteTimeUtc, "第 1 组",
+            ExpectedIdentity: original.Stamp.Identity, ExpectedSha256: original.Sha256)], []);
+        Assert.IsTrue(preflight.CanExecute);
+        var result = await actions.DeleteAsync(preflight);
+        StringAssert.Contains(result.Failures.Single().Message, "文件内容在扫描后发生变化");
+        Assert.AreEqual(0, bin.DeleteCalls);
+        Assert.AreEqual("BBBB", File.ReadAllText(path));
     }
 
     [TestMethod]

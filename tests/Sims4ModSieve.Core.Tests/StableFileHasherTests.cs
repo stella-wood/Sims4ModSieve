@@ -22,6 +22,21 @@ public sealed class StableFileHasherTests
     }
 
     [TestMethod]
+    public async Task SuppliedStampStillChecksAfterReadingAndRefreshesBeforeRetry()
+    {
+        var initial = new FileStamp(3, DateTime.UnixEpoch);
+        var changed = new FileStamp(4, DateTime.UnixEpoch.AddSeconds(1));
+        var stable = new FileStamp(4, DateTime.UnixEpoch.AddSeconds(2));
+        var fileSystem = new SequencedStampFileSystem("data"u8.ToArray(), changed, stable, stable);
+        var hasher = new StableFileHasher(fileSystem, TimeSpan.Zero);
+
+        var result = await hasher.HashAsync("file.package", initial, CancellationToken.None);
+
+        Assert.AreEqual(stable, result.Stamp);
+        Assert.AreEqual(2, fileSystem.OpenCount);
+    }
+
+    [TestMethod]
     public async Task RejectsAFileThatChangesDuringBothAttempts()
     {
         var start = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);

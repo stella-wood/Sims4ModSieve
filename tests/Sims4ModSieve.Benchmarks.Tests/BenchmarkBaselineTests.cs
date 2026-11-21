@@ -14,6 +14,26 @@ namespace Sims4ModSieve.Benchmarks.Tests;
 public sealed class BenchmarkBaselineTests
 {
     [TestMethod]
+    public async Task CachedRunReportsColdMissesThenWarmHitsForIdenticalSnapshots()
+    {
+        using var temp = new TempDirectory();
+        temp.WriteFile("Mods/a.package", "same");
+        temp.WriteFile("Mods/b.package", "same");
+        var output = Path.Combine(temp.Path, "benchmark");
+
+        Assert.AreEqual(0, await Program.ExecuteAsync(["run", "--source", Path.Combine(temp.Path, "Mods"),
+            "--output", output, "--sample-id", "cache", "--scope", "duplicates", "--runs", "2", "--cache", "enabled"]));
+
+        var first = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(output, "run-01.json")))!;
+        var second = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(output, "run-02.json")))!;
+        Assert.AreEqual(0, first["cacheHits"]!.GetValue<int>());
+        Assert.AreEqual(2, first["cacheMisses"]!.GetValue<int>());
+        Assert.AreEqual(2, second["cacheHits"]!.GetValue<int>());
+        Assert.AreEqual(0, second["cacheMisses"]!.GetValue<int>());
+        Assert.IsTrue(JsonNode.DeepEquals(first["snapshot"], second["snapshot"]));
+    }
+
+    [TestMethod]
     public async Task SyntheticPipelineIsRepeatableAndPreservesFailuresWithoutWritingInputs()
     {
         using var temp = new TempDirectory();

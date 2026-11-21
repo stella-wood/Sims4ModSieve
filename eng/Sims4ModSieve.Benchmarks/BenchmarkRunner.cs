@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json.Serialization;
+using Sims4ModSieve.Caching;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
@@ -15,25 +16,35 @@ internal sealed record StageMeasurement(string Name, double Milliseconds, int Pa
 
 internal sealed record RunMeasurement(string Outcome, string? Error, double Milliseconds, double? CancellationLatencyMs,
     long AllocatedBytes, long ProcessLifetimePeakWorkingSetBytes, int? HandlesBefore, int? HandlesAfter,
-    IReadOnlyList<StageMeasurement> Stages, string TimingLog, [property: JsonIgnore] string? Snapshot);
+    IReadOnlyList<StageMeasurement> Stages, string TimingLog, [property: JsonIgnore] string? Snapshot)
+{
+    public int CacheHits { get; init; }
+    public int CacheMisses { get; init; }
+}
 
 internal static class BenchmarkRunner
 {
     internal static async Task<string> CaptureAsync(IReadOnlyList<ScanSource> sources, string? modsRoot,
         CancellationToken cancellationToken, string snapshotPath, string scope = "all",
         DuplicateHashConcurrency hashConcurrency = DuplicateHashConcurrency.Auto, IStorageProfile? storage = null,
-        DuplicateHashConcurrency? indexConcurrency = null, DuplicateHashConcurrency? contentConcurrency = null)
+        DuplicateHashConcurrency? indexConcurrency = null, DuplicateHashConcurrency? contentConcurrency = null,
+        CachingStableFileHasher? cache = null)
     {
         var duplicateRequest = new DuplicateScanRequest(sources, modsRoot, [".package", ".ts4script"])
         {
             HashConcurrency = hashConcurrency,
             StorageProfile = storage,
         };
+        Task<DuplicateReport> ScanDuplicatesAsync(IStableFileHasher? hasher) =>
+            DuplicateScanner.CreateDefault(hasher).ScanAsync(duplicateRequest, cancellationToken);
+        Task<DuplicateReport> RunDuplicateScanAsync() => cache is null
+            ? ScanDuplicatesAsync(null) : cache.RunAsync(ScanDuplicatesAsync, cancellationToken);
         if (scope == "duplicates")
         {
-            var duplicateReport = await DuplicateScanner.CreateDefault().ScanAsync(duplicateRequest, cancellationToken);
+            var duplicateReport = await RunDuplicateScanAsync();
             using (ScanPerformance.Measure("基准 · 生成一致性快照"))
                 await ResultSnapshot.WriteAsync(snapshotPath, ResultSnapshot.CreateDuplicates(duplicateReport), cancellationToken);
+            if (duplicateReport.Issues.Count == 0) cache?.Commit(cancellationToken);
             return snapshotPath;
         }
         var packages = await new PackageConflictScanner(new PhysicalFileSystemAccess(),
@@ -48,7 +59,7 @@ internal static class BenchmarkRunner
             }, cancellationToken: cancellationToken);
         var scripts = await new ScriptModuleScanner(new PhysicalFileSystemAccess())
             .ScanAsync(new(sources), cancellationToken: cancellationToken);
-        var duplicates = await DuplicateScanner.CreateDefault().ScanAsync(duplicateRequest, cancellationToken);
+        var duplicates = await RunDuplicateScanAsync();
         PackageConflictGroupingResult grouping;
         using (ScanPerformance.Measure("基准 · 文件关系构建（无 WPF）"))
         {
@@ -59,6 +70,9 @@ internal static class BenchmarkRunner
         cancellationToken.ThrowIfCancellationRequested();
         using (ScanPerformance.Measure("基准 · 生成一致性快照"))
             await ResultSnapshot.WriteAsync(snapshotPath, ResultSnapshot.Create(duplicates, packages, contents, scripts, grouping), cancellationToken);
+        if (duplicates.Issues.Count == 0 && packages.IncompletePackageCount == 0 && packages.Issues.Count == 0
+            && scripts.IncompleteArchiveCount == 0 && scripts.Issues.Count == 0
+            && !contents.Comparisons.Any(comparison => comparison.Uncompared.Count != 0)) cache?.Commit(cancellationToken);
         return snapshotPath;
     }
 

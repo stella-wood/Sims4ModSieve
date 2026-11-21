@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -6,6 +7,7 @@ using System.Windows.Threading;
 using Sims4ModSieve.Desktop.Components;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Desktop.ViewModels;
 using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
@@ -14,6 +16,71 @@ namespace Sims4ModSieve.Desktop.Tests;
 
 public sealed partial class ConflictFileActionTests
 {
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task CrossCardBatchDeleteChecksHashAndDisableChecksStamp(bool disable) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var scriptRoot = Directory.CreateDirectory(Path.Combine(files.Root, "scripts")).FullName;
+        var script = Path.Combine(scriptRoot, "first.ts4script");
+        var copy = Path.Combine(scriptRoot, "copy.ts4script");
+        WriteScript(script, "old");
+        File.Copy(script, copy);
+        WriteScript(Path.Combine(scriptRoot, "other.ts4script"), "new");
+        var fileSystem = new PhysicalFileSystemAccess();
+        var stamp = fileSystem.GetFileStamp(script);
+        var scripts = await new ScriptModuleScanner(fileSystem).ScanAsync(new([new("scripts", scriptRoot)]));
+        var report = Duplicates(script, copy);
+        var session = V2([], [], report, scripts);
+        Assert.AreEqual("script-conflict", session.Cards.First(card => card.Files.Any(file => file.Path == script)).Type);
+        var duplicateCard = session.Cards.Single(card => card.Duplicate is not null);
+        var dialogs = new PresenceDialogs { AllowProblems = !disable };
+        var model = PresenceModel(files, report, dialogs, out var adapter);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        await PreparePresenceSessionAsync(model, session);
+        model.SelectConflictViewCommand.Execute("duplicates");
+        await model.ConflictRowsRefreshTask;
+        model.IsConflictMultiSelect = true;
+        var window = OpenWindow(model);
+        await WpfTestHost.LayoutAsync(window);
+        var checkbox = Descendants<CheckBox>(window).Single(box => box.Name == "FileSelection"
+            && box.DataContext is ConflictResultRow row && row.OwnerKey == duplicateCard.Key && row.File?.Path == script);
+        Assert.IsTrue(checkbox.IsVisible && checkbox.IsEnabled);
+        var changed = File.ReadAllBytes(script);
+        changed[0] ^= 1;
+        File.WriteAllBytes(script, changed);
+        File.SetLastWriteTimeUtc(script, stamp.LastWriteTimeUtc);
+        Assert.AreEqual(stamp, fileSystem.GetFileStamp(script));
+
+        checkbox.SetCurrentValue(CheckBox.IsCheckedProperty, true);
+        checkbox.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
+        Assert.AreEqual(1, model.ConflictSelectedCount);
+        var command = disable ? model.DisableSelectedConflictFilesCommand : model.DeleteSelectedConflictFilesCommand;
+        var button = Descendants<Button>(window).Single(button => ReferenceEquals(button.Command, command));
+        Assert.IsTrue(button.IsEnabled);
+        await command.ExecuteAsync();
+
+        CollectionAssert.AreEqual(new[] { "confirm" }, dialogs.Events);
+        Assert.HasCount(0, adapter.Deleted);
+        Assert.AreEqual(!disable, File.Exists(script));
+        Assert.AreEqual(disable, File.Exists(script + ".off"));
+        if (disable) CollectionAssert.AreEqual(changed, File.ReadAllBytes(script + ".off"));
+        else
+        {
+            Assert.AreEqual(script, dialogs.Failures.Single().Path);
+            StringAssert.Contains(dialogs.Failures.Single().Message, "文件内容在扫描后发生变化");
+        }
+
+        static void WriteScript(string path, string content)
+        {
+            using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+            using var writer = new StreamWriter(archive.CreateEntry("kit/common.py").Open());
+            writer.Write(content);
+        }
+    });
+
     [TestMethod]
     [DataRow("duplicates")]
     [DataRow("delete")]
@@ -167,13 +234,16 @@ public sealed partial class ConflictFileActionTests
     });
 
     [TestMethod]
-    public Task ExistingKeepContentIsNotReadOrCompared() => WpfTestHost.RunAsync(async () =>
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task ExistingKeepContentIsNotReadOrCompared(bool applySuggestion) => WpfTestHost.RunAsync(async () =>
     {
         using var files = new TemporaryFiles();
         var report = Duplicates(files.A, files.B);
         var dialogs = new PresenceDialogs();
         var model = PresenceModel(files, report, dialogs, out var adapter);
-        SelectPresenceFiles(model, files.B);
+        if (applySuggestion) model.ApplySuggestionsCommand.Execute(null);
+        else SelectPresenceFiles(model, files.B);
         File.AppendAllText(files.A, "changed keep content and size");
         using var lockedKeep = File.Open(files.A, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         await model.DeleteSelectedCommand.ExecuteAsync();
@@ -268,12 +338,17 @@ public sealed partial class ConflictFileActionTests
     private sealed class PresenceDialogs : IFileActionDialogService, IUnexpectedErrorHandler
     {
         public List<string> Events { get; } = [];
+        public List<FileActionFailure> Failures { get; } = [];
+        public bool AllowProblems { get; init; }
         public Action? OnConfirm { get; set; }
         public void ShowResultRefreshNotice(int count) => Events.Add($"refresh:{count}");
         public bool ConfirmDeletion(FileDeletionPreflight preflight) => ConfirmFiles("", "");
         public bool ConfirmFiles(string title, string message) { Events.Add("confirm"); OnConfirm?.Invoke(); return true; }
-        public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures) =>
-            Assert.Fail(title + "\n" + string.Join("\n", failures.Select(failure => failure.Message)));
+        public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures)
+        {
+            if (AllowProblems) Failures.AddRange(failures);
+            else Assert.Fail(title + "\n" + string.Join("\n", failures.Select(failure => failure.Message)));
+        }
         public void Report(string title, Exception exception) => ExceptionDispatchInfo.Throw(exception);
     }
 }

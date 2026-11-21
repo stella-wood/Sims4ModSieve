@@ -461,6 +461,7 @@ public sealed partial class MainWindowViewModel
         var initialShowIgnored = showIgnoredConflicts;
         try
         {
+            using var cache = await OpenScanCacheAsync();
             var results = await Task.Run(async () =>
             {
                 var packages = await packageConflictScanner.ScanAsync(new(sources) { Options = scanOptions }, packageProgress, cancellation.Token);
@@ -472,7 +473,7 @@ public sealed partial class MainWindowViewModel
                 var scripts = await scriptModuleScanner.ScanAsync(new(sources), scriptProgress, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
                 Volatile.Write(ref activeStage, 3);
-                var duplicates = await duplicateRunService.RunAsync(duplicateInput, duplicateProgress, cancellation.Token);
+                var duplicates = await RunDuplicateScanAsync(duplicateInput, duplicateProgress, cache, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
                 Volatile.Write(ref activeStage, 4);
                 Report(4, "正在整理文件组…", 0, null);
@@ -546,6 +547,7 @@ public sealed partial class MainWindowViewModel
                 : string.Empty;
             RefreshConflictVisibility();
             timingOutcome = "完成";
+            if (!HasConflictProblems) await CommitScanCacheAsync(cache, cancellation.Token);
         }
         catch (OperationCanceledException)
         {

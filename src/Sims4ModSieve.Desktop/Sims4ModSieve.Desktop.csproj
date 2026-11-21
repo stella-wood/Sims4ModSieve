@@ -24,6 +24,7 @@
     <Content Include="..\..\docs\release\安装版使用说明.md" Link="README.md" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\licenses\**\*" Link="licenses\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="..\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
+    <ProjectReference Include="..\Sims4ModSieve.Caching\Sims4ModSieve.Caching.csproj" />
     <ProjectReference Include="..\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
   </ItemGroup>
 </Project>

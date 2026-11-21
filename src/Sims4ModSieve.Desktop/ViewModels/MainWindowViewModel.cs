@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
+using Sims4ModSieve.Caching;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Conflicts;
@@ -21,6 +22,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IFileActionService fileActionService;
     private readonly IFileActionDialogService fileActionDialogs;
     private readonly long? conflictGroupingMemoryBudgetBytes;
+    private readonly string? scanCacheDirectory;
     private readonly IUnexpectedErrorHandler unexpectedErrorHandler;
     private CancellationTokenSource? scanCancellation;
     private IReadOnlyList<DuplicateGroup>? lastDeleteSnapshot;
@@ -61,7 +63,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Func<IReadOnlyList<string>>? pickDisabledFiles = null,
         Func<string, bool>? confirmModChange = null,
         Func<DownloadedUpdate, Task>? startUpdate = null,
-        long? conflictGroupingMemoryBudgetBytes = null)
+        long? conflictGroupingMemoryBudgetBytes = null,
+        string? scanCacheDirectory = null)
     {
         this.duplicateRunService = duplicateRunService;
         this.conflictDetailsCopy = conflictDetailsCopy ?? System.Windows.Clipboard.SetText;
@@ -81,6 +84,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             new PhysicalFileMetadataAccess(), this.fileManagementStore, this.modDisableService);
         this.fileActionDialogs = fileActionDialogs ?? new FileActionDialogService();
         this.conflictGroupingMemoryBudgetBytes = conflictGroupingMemoryBudgetBytes;
+        this.scanCacheDirectory = scanCacheDirectory;
         this.unexpectedErrorHandler = unexpectedErrorHandler ?? new UnexpectedErrorHandler();
         this.packageConflictScanner = packageConflictScanner ?? new PackageConflictScanner(
             new PhysicalFileSystemAccess(), Sims4ModSieve.Packages.LlamaLogicPackageIndexReader.CreateDefault());
@@ -445,6 +449,30 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private bool CanStartScan() => !IsBusy && Sources.Any(source => source.IsEnabled);
 
+    internal void CancelActiveScan()
+    {
+        scanCancellation?.Cancel();
+        conflictCancellation?.Cancel();
+    }
+
+    private async Task<CachingStableFileHasher?> OpenScanCacheAsync() => scanCacheDirectory is { } directory
+        ? await Task.Run(() => CachingStableFileHasher.Open(directory)) : null;
+
+    private async Task<DuplicateReport> RunDuplicateScanAsync(DuplicateRunInput input,
+        IProgress<DuplicateScanProgress> progress, CachingStableFileHasher? cache, CancellationToken token)
+    {
+        if (cache is null) return await duplicateRunService.RunAsync(input, progress, token);
+        return await cache.RunAsync(hasher => duplicateRunService.RunAsync(input with { FileHasher = hasher }, progress, token), token);
+    }
+
+    private static async Task CommitScanCacheAsync(CachingStableFileHasher? cache, CancellationToken token)
+    {
+        if (cache is null) return;
+        // Results are already published. Closing now still cancels any pending cache write.
+        try { await Task.Run(() => cache.Commit(token), token); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
     private async Task StartScanAsync()
     {
         RefreshAvailability();
@@ -489,11 +517,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         try
         {
+            using var cache = await OpenScanCacheAsync();
             DuplicateReport report;
             try
             {
                 report = await Task.Run(
-                    () => duplicateRunService.RunAsync(input, progress, scanCancellation.Token),
+                    () => RunDuplicateScanAsync(input, progress, cache, scanCancellation.Token),
                     scanCancellation.Token);
             }
             finally
@@ -518,6 +547,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 }
             }
             if (generation != resultGeneration) return;
+            scanCancellation.Token.ThrowIfCancellationRequested();
             renderingTiming = BeginResultRenderingTiming();
             if (renderingTiming is not null)
             {
@@ -542,6 +572,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     + (firstIssue.Code.EndsWith("-failed", StringComparison.Ordinal) ? "无法读取：" : "未完成检查：")
                     + $"{firstIssue.Path}\n{firstIssue.Message}";
             timingOutcome = "完成";
+            if (report.Issues.Count == 0) await CommitScanCacheAsync(cache, scanCancellation.Token);
         }
         catch (OperationCanceledException)
         {

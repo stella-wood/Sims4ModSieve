@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sims4ModSieve.Caching\Sims4ModSieve.Caching.csproj" />
     <ProjectReference Include="..\..\src\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
     <InternalsVisibleTo Include="Sims4ModSieve.Benchmarks.Tests" />
     <Compile Include="..\..\src\Sims4ModSieve.Desktop\Services\WindowsStorageProfile.cs" Link="WindowsStorageProfile.cs" />

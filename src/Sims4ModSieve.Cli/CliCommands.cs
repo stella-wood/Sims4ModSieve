@@ -1,6 +1,7 @@
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Settings;
 using Sims4ModSieve.Core.Conflicts;
+using Sims4ModSieve.Caching;
 
 namespace Sims4ModSieve.Cli;
 
@@ -122,18 +123,24 @@ internal static class CliCommands
 
         if (!explicitSources) await error.WriteLineAsync(SettingsNotice);
         await error.WriteLineAsync("正在扫描…");
-        var scan = new CliScanReport(command, explicitSources ? "argument" : "settings",
-            explicitSources ? null : SettingsNotice, ignored, options, conflictGroupingMemoryBudgetBytes, size =>
-            {
-                error.WriteLine(size.DiagnosticText);
-                if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);
-            }, memoryObserved: error.WriteLine,
-            scanOptions: new(LoadConcurrency(settings),
-                storageProfile ?? new WindowsStorageProfile())
-            {
-                ConcurrencyDecided = decision => error.WriteLine(decision.DiagnosticText),
-            });
-        await scan.RunAsync(sources, modsRoot, extensions);
+        using var cache = options.NoCache ? null : CachingStableFileHasher.Open(settings.DataDirectory);
+        var scanOptions = new ConflictScanOptions(LoadConcurrency(settings), storageProfile ?? new WindowsStorageProfile())
+        {
+            ConcurrencyDecided = decision => error.WriteLine(decision.DiagnosticText),
+        };
+        async Task<CliScanReport> RunScanAsync(IStableFileHasher? hasher)
+        {
+            var report = new CliScanReport(command, explicitSources ? "argument" : "settings",
+                explicitSources ? null : SettingsNotice, ignored, options, conflictGroupingMemoryBudgetBytes, size =>
+                {
+                    error.WriteLine(size.DiagnosticText);
+                    if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);
+                }, memoryObserved: error.WriteLine,
+                scanOptions: scanOptions, fileHasher: hasher);
+            await report.RunAsync(sources, modsRoot, extensions);
+            return report;
+        }
+        var scan = cache is null ? await RunScanAsync(null) : await cache.RunAsync(RunScanAsync);
         var hasSources = scan.Sources.Count > 0;
         if (hasSources)
             await summary.WriteLineAsync($"扫描目录（{(explicitSources ? "--source" : "设置")}）：{string.Join("、", scan.Sources.Select(source => source.Path))}");
@@ -156,6 +163,7 @@ internal static class CliCommands
         await summary.WriteLineAsync(scan.SummaryText);
         if (options.JsonPath is null && (options.HasOutputFilters || options.HideIgnored))
             await error.WriteLineAsync(scan.OutputOmissionsText);
+        if (hasSources && !scan.HasIssues) cache?.Commit();
         return hasSources ? scan.ExitCode : 2;
     }
 
@@ -214,6 +222,7 @@ internal static class CliCommands
         int? limit = null;
         var omitResourceKeys = false;
         var summaryOnly = false;
+        var noCache = false;
         for (var index = 0; index < args.Length; index++)
         {
             var option = args[index];
@@ -221,6 +230,7 @@ internal static class CliCommands
             {
                 case "--hide-ignored": hideIgnored = true; continue;
                 case "--summary-only": summaryOnly = true; continue;
+                case "--no-cache": noCache = true; continue;
                 case "--omit-resource-keys" when command == "scan-conflicts": omitResourceKeys = true; continue;
                 case "--omit-resource-keys":
                     throw new ArgumentException($"{option} 仅适用于 scan-conflicts。");
@@ -261,7 +271,7 @@ internal static class CliCommands
             }
         }
         var options = new ScanOptions(sources, extensions, modsRoot, jsonPath, htmlPath, hideIgnored,
-            severities.Distinct().ToArray(), kinds.Distinct().ToArray(), limit, omitResourceKeys, summaryOnly);
+            severities.Distinct().ToArray(), kinds.Distinct().ToArray(), limit, omitResourceKeys, summaryOnly, noCache);
         if (htmlPath is not null && options.HasOutputFilters)
             throw new ArgumentException("--html 不能与 --severity、--kind、--limit、--omit-resource-keys 或 --summary-only 同用；请另行生成 HTML 报告。");
         return options;
@@ -294,6 +304,7 @@ internal static class CliCommands
             output.WriteLine("  --source <目录>  临时指定扫描目录，可重复指定。省略时使用默认 Mods");
             output.WriteLine("  --json <文件|->  写入 JSON 文件，或用 - 输出到标准输出。省略时写入当前目录并显示摘要");
             output.WriteLine("  --hide-ignored  隐藏已经忽略的文件");
+            output.WriteLine("  --no-cache  直接计算整文件 SHA-256，跳过缓存读写");
             output.WriteLine("  --severity <级别>  筛选组和读取问题，可重复：abnormal、risk、no_effect、incomplete");
             output.WriteLine("  --kind <种类>  筛选组和读取问题，可重复；与 severity 同用时取交集");
             if (command is null or "scan-duplicates")
@@ -325,7 +336,7 @@ internal static class CliCommands
 
     internal sealed record ScanOptions(List<string> Sources, List<string> Extensions, string? ModsRoot,
         string? JsonPath, string? HtmlPath, bool HideIgnored, IReadOnlyList<string> Severities,
-        IReadOnlyList<string> Kinds, int? Limit, bool OmitResourceKeys, bool SummaryOnly)
+        IReadOnlyList<string> Kinds, int? Limit, bool OmitResourceKeys, bool SummaryOnly, bool NoCache)
     {
         public bool HasOutputFilters => Severities.Count > 0 || Kinds.Count > 0 || Limit.HasValue
             || OmitResourceKeys || SummaryOnly;

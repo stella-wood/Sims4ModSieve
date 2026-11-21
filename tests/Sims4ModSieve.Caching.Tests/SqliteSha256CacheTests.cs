@@ -95,7 +95,7 @@ public sealed class SqliteSha256CacheTests
     }
 
     [TestMethod]
-    public void ChangedSizeTimeAndIdentityMissWithoutDestroyingOtherVersions()
+    public void ChangedSizeTimeAndIdentityMissAndCommitReplacesOldVersions()
     {
         using var temp = new TempDirectory();
         var cache = CreateCache(temp);
@@ -112,14 +112,37 @@ public sealed class SqliteSha256CacheTests
         var identified = Stamp with { Identity = identity };
         Save(cache, path, identified, OtherHash);
         Assert.AreEqual(OtherHash, cache.GetSha256(path, identified));
+        Assert.IsNull(cache.GetSha256(path, before));
         Assert.IsNull(cache.GetSha256(path, Stamp));
         Assert.IsNull(cache.GetSha256(path, identified with { Identity = identity with { FileIdHigh = 0 } }));
         Assert.IsNull(cache.GetSha256(path, identified with { Identity = identity with { FileIdLow = 0 } }));
         Assert.IsNull(cache.GetSha256(path, identified with { Identity = identity with { VolumeSerialNumber = 0 } }));
         Save(cache, path, Stamp, Hash);
         Assert.AreEqual(Hash, cache.GetSha256(path, Stamp));
-        Assert.AreEqual(OtherHash, cache.GetSha256(path, identified));
+        Assert.IsNull(cache.GetSha256(path, identified));
         Assert.IsNull(cache.GetSha256(path + "-hardlink-alias", identified));
+    }
+
+    [TestMethod]
+    public void CommitKeepsOnlyLastStagedVersionAndLeavesOtherPaths()
+    {
+        using var temp = new TempDirectory();
+        var cache = CreateCache(temp);
+        var path = Path.Combine(temp.Path, "mod.package");
+        var alias = Path.Combine(temp.Path, "alias.package");
+        var middle = IdentifiedStamp with { Length = 200 };
+        var latest = IdentifiedStamp with { LastWriteTimeUtc = IdentifiedStamp.LastWriteTimeUtc.AddMinutes(1) };
+        Save(cache, path, IdentifiedStamp, Hash);
+        Save(cache, alias, IdentifiedStamp, Hash);
+        using var scan = cache.BeginScan();
+        Assert.IsTrue(scan.Stage(path, middle, OtherHash));
+        Assert.IsTrue(scan.Stage(path.ToUpperInvariant(), latest, OtherHash));
+        Assert.AreEqual(Hash, cache.GetSha256(path, IdentifiedStamp));
+        Assert.IsTrue(scan.Commit());
+        Assert.IsNull(cache.GetSha256(path, IdentifiedStamp));
+        Assert.IsNull(cache.GetSha256(path, middle));
+        Assert.AreEqual(OtherHash, cache.GetSha256(path, latest));
+        Assert.AreEqual(Hash, cache.GetSha256(alias, IdentifiedStamp));
     }
 
     [TestMethod]

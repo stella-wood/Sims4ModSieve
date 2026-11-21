@@ -31,11 +31,15 @@ public partial class MainWindow : Window
         if (!UpdateButton.IsVisible) UpdatePopup.IsOpen = false;
     }
 
-    public MainWindow() : this(new MainWindowViewModel(
-        new DuplicateRunService(DuplicateScanner.CreateDefault()),
-        new FolderPickerService(),
-        new DuplicateSettingsStore()))
+    public MainWindow() : this(CreateDefaultViewModel())
     {
+    }
+
+    private static MainWindowViewModel CreateDefaultViewModel()
+    {
+        var settings = new DuplicateSettingsStore();
+        return new(new DuplicateRunService(DuplicateScanner.CreateDefault()), new FolderPickerService(), settings,
+            scanCacheDirectory: settings.DataDirectory);
     }
 
     public MainWindow(MainWindowViewModel viewModel)
@@ -55,6 +59,7 @@ public partial class MainWindow : Window
             if (closingAfterWork is not null) return;
             closingAfterWork = viewModel;
             viewModel.PropertyChanged += CloseAfterWork;
+            viewModel.CancelActiveScan();
         };
         viewModel.DuplicateGroupLocationRequested += LocateDuplicateGroup;
         Closed += (_, _) =>
