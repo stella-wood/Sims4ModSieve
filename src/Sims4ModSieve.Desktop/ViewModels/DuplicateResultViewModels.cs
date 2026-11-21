@@ -104,21 +104,16 @@ public sealed class DuplicateGroupViewModel : ObservableObject
 
     public long SelectedBytes => Files.Where(file => file.IsSelected).Sum(file => file.Size);
 
-    internal string? SuggestedKeepForDeletion { get; set; }
-
     public void ApplySuggestion()
     {
-        SuggestedKeepForDeletion = null;
         foreach (var file in Files)
         {
             file.IsSelected = suggestedDeletePaths.Contains(file.Path);
         }
-        SuggestedKeepForDeletion = Model.SuggestedKeepPath;
     }
 
     public void ClearSelection()
     {
-        SuggestedKeepForDeletion = null;
         foreach (var file in Files)
         {
             file.IsSelected = false;
@@ -129,10 +124,6 @@ public sealed class DuplicateGroupViewModel : ObservableObject
     {
         if (eventArgs.PropertyName == nameof(DuplicateFileViewModel.IsSelected))
         {
-            if (SuggestedKeepForDeletion is { } keep &&
-                (sender is DuplicateFileViewModel { IsSelected: true } selected && StringComparer.OrdinalIgnoreCase.Equals(keep, selected.Path)
-                    || SelectedCount == 0))
-                SuggestedKeepForDeletion = null;
             OnPropertyChanged(nameof(SelectedCount));
             OnPropertyChanged(nameof(SelectedBytes));
             OnPropertyChanged(nameof(IsSuggestionSelected));

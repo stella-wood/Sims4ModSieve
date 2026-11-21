@@ -186,16 +186,12 @@ public sealed class DuplicateResultSession : ObservableObject
         var selected = Groups.SelectMany(group => group.Files).Where(file => file.IsSelected)
             .Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var expanded = Groups.Where(group => group.IsExpanded).Select(group => (group.Model.Sha256, group.Model.FileSize)).ToHashSet();
-        var suggestedKeeps = Groups.Where(group => group.SuggestedKeepForDeletion is not null)
-            .ToDictionary(group => (group.Model.Sha256, group.Model.FileSize), group => group.SuggestedKeepForDeletion);
         var rebuilt = models.Select(group => RebuildGroup(group, group.Files)).Where(group => group is not null).Cast<DuplicateGroup>().ToArray();
         var prepared = PrepareGroups(rebuilt);
         foreach (var group in prepared)
         {
             group.IsExpanded = expanded.Contains((group.Model.Sha256, group.Model.FileSize));
             foreach (var file in group.Files) file.IsSelected = selected.Contains(file.Path);
-            if (group.SelectedCount != 0)
-                group.SuggestedKeepForDeletion = suggestedKeeps.GetValueOrDefault((group.Model.Sha256, group.Model.FileSize));
         }
         Replace(prepared);
     }

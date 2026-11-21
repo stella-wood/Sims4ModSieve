@@ -254,8 +254,7 @@ public sealed partial class MainWindowViewModel
     }
 
     public async Task DisableFilesAsync(IReadOnlyList<string> paths,
-        IReadOnlyDictionary<string, FileStamp>? expectedStamps = null, bool confirmed = false,
-        IReadOnlyDictionary<string, string>? expectedHashes = null)
+        IReadOnlyDictionary<string, FileStamp>? expectedStamps = null, bool confirmed = false)
     {
         if (IsBusy || paths.Count == 0 || (!confirmed && !ConfirmModChange("禁用", paths.Count))) return;
         var generation = resultGeneration;
@@ -263,7 +262,7 @@ public sealed partial class MainWindowViewModel
         IsBusy = true;
         try
         {
-            var result = await Task.Run(() => modDisableService.Disable(paths, expectedStamps, expectedHashes));
+            var result = await Task.Run(() => modDisableService.Disable(paths, expectedStamps));
             if (result.CompletedPaths.Count > 0)
             {
                 if (generation == resultGeneration)

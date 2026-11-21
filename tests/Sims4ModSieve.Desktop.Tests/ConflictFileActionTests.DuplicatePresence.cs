@@ -6,7 +6,6 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Sims4ModSieve.Desktop.Components;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Sims4ModSieve.Caching;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Desktop.Services;
@@ -18,7 +17,9 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed partial class ConflictFileActionTests
 {
     [TestMethod]
-    public Task BatchDisableUsesDuplicateHashForScriptOnBothCards() => WpfTestHost.RunAsync(async () =>
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task CrossCardBatchDeleteChecksHashAndDisableChecksStamp(bool disable) => WpfTestHost.RunAsync(async () =>
     {
         using var files = new TemporaryFiles();
         var scriptRoot = Directory.CreateDirectory(Path.Combine(files.Root, "scripts")).FullName;
@@ -34,8 +35,8 @@ public sealed partial class ConflictFileActionTests
         var session = V2([], [], report, scripts);
         Assert.AreEqual("script-conflict", session.Cards.First(card => card.Files.Any(file => file.Path == script)).Type);
         var duplicateCard = session.Cards.Single(card => card.Duplicate is not null);
-        var dialogs = new PresenceDialogs { AllowProblems = true };
-        var model = PresenceModel(files, report, dialogs, out _);
+        var dialogs = new PresenceDialogs { AllowProblems = !disable };
+        var model = PresenceModel(files, report, dialogs, out var adapter);
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         await PreparePresenceSessionAsync(model, session);
@@ -56,16 +57,21 @@ public sealed partial class ConflictFileActionTests
         checkbox.SetCurrentValue(CheckBox.IsCheckedProperty, true);
         checkbox.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));
         Assert.AreEqual(1, model.ConflictSelectedCount);
-        var disable = Descendants<Button>(window).Single(button => button.Name == "DisableSelectedConflictFilesButton");
-        Assert.IsTrue(disable.IsEnabled);
-        Assert.AreSame(model.DisableSelectedConflictFilesCommand, disable.Command);
-        await model.DisableSelectedConflictFilesCommand.ExecuteAsync();
+        var command = disable ? model.DisableSelectedConflictFilesCommand : model.DeleteSelectedConflictFilesCommand;
+        var button = Descendants<Button>(window).Single(button => ReferenceEquals(button.Command, command));
+        Assert.IsTrue(button.IsEnabled);
+        await command.ExecuteAsync();
 
         CollectionAssert.AreEqual(new[] { "confirm" }, dialogs.Events);
-        Assert.IsTrue(File.Exists(script));
-        Assert.IsFalse(File.Exists(script + ".off"));
-        Assert.AreEqual(script, dialogs.Failures.Single().Path);
-        StringAssert.Contains(dialogs.Failures.Single().Message, "文件内容在扫描后发生变化");
+        Assert.HasCount(0, adapter.Deleted);
+        Assert.AreEqual(!disable, File.Exists(script));
+        Assert.AreEqual(disable, File.Exists(script + ".off"));
+        if (disable) CollectionAssert.AreEqual(changed, File.ReadAllBytes(script + ".off"));
+        else
+        {
+            Assert.AreEqual(script, dialogs.Failures.Single().Path);
+            StringAssert.Contains(dialogs.Failures.Single().Message, "文件内容在扫描后发生变化");
+        }
 
         static void WriteScript(string path, string content)
         {
@@ -73,52 +79,6 @@ public sealed partial class ConflictFileActionTests
             using var writer = new StreamWriter(archive.CreateEntry("kit/common.py").Open());
             writer.Write(content);
         }
-    });
-
-    [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public Task SuggestedDeletionSkipsUnsafeKeepAfterWarmScanAndContinuesOtherGroups(bool unreadable) => WpfTestHost.RunAsync(async () =>
-    {
-        using var files = new TemporaryFiles();
-        var mods = Directory.CreateDirectory(Path.Combine(files.Root, "Mods")).FullName;
-        var data = Path.Combine(files.Root, "data");
-        var keep = Path.Combine(mods, "a.package");
-        var copy = Path.Combine(mods, "b.package");
-        var otherCopy = Path.Combine(mods, "d.package");
-        File.WriteAllText(keep, "same");
-        File.Copy(keep, copy);
-        File.WriteAllText(Path.Combine(mods, "c.package"), "other");
-        File.Copy(Path.Combine(mods, "c.package"), otherCopy);
-        var adapter = new TestRecycleBin();
-        var dialogs = new PresenceDialogs { AllowProblems = true };
-        var model = new MainWindowViewModel(new DuplicateRunService(DuplicateScanner.CreateDefault()), new NoPicker(), new Settings(mods),
-            new FileActionService(adapter, new PhysicalFileMetadataAccess(), new FileManagementStore(data)), dialogs,
-            scanCacheDirectory: data);
-        await model.StartScanCommand.ExecuteAsync();
-        Assert.AreEqual(2, model.Groups.Count);
-        var stamp = new PhysicalFileSystemAccess().GetFileStamp(keep);
-        using (var warm = CachingStableFileHasher.Open(data))
-        {
-            await warm.HashAsync(keep);
-            Assert.AreEqual(1, warm.Hits);
-        }
-        if (!unreadable)
-        {
-            File.WriteAllText(keep, "diff");
-            File.SetLastWriteTimeUtc(keep, stamp.LastWriteTimeUtc);
-            Assert.AreEqual(stamp, new PhysicalFileSystemAccess().GetFileStamp(keep));
-        }
-        await model.StartScanCommand.ExecuteAsync();
-        Assert.AreEqual(2, model.Groups.Count);
-        model.ApplySuggestionsCommand.Execute(null);
-        using var keepLock = unreadable ? File.Open(keep, FileMode.Open, FileAccess.ReadWrite, FileShare.None) : null;
-        await model.DeleteSelectedCommand.ExecuteAsync();
-
-        CollectionAssert.AreEqual(new[] { otherCopy }, adapter.Deleted);
-        Assert.IsTrue(File.Exists(copy));
-        Assert.AreEqual(keep, dialogs.Failures.Single().Path);
-        StringAssert.Contains(dialogs.Failures.Single().Message, "请重新扫描");
     });
 
     [TestMethod]
@@ -274,13 +234,16 @@ public sealed partial class ConflictFileActionTests
     });
 
     [TestMethod]
-    public Task ExistingKeepContentIsNotReadOrCompared() => WpfTestHost.RunAsync(async () =>
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task ExistingKeepContentIsNotReadOrCompared(bool applySuggestion) => WpfTestHost.RunAsync(async () =>
     {
         using var files = new TemporaryFiles();
         var report = Duplicates(files.A, files.B);
         var dialogs = new PresenceDialogs();
         var model = PresenceModel(files, report, dialogs, out var adapter);
-        SelectPresenceFiles(model, files.B);
+        if (applySuggestion) model.ApplySuggestionsCommand.Execute(null);
+        else SelectPresenceFiles(model, files.B);
         File.AppendAllText(files.A, "changed keep content and size");
         using var lockedKeep = File.Open(files.A, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         await model.DeleteSelectedCommand.ExecuteAsync();

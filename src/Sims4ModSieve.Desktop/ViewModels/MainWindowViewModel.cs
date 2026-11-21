@@ -652,18 +652,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
             .Where(group => group.SelectedCount == group.Files.Count)
             .Select(group => group.GroupLabel)
             .ToArray();
-        var suggestedKeeps = Groups.Where(group => group.SelectedCount > 0 && group.SuggestedKeepForDeletion is not null)
-            .ToDictionary(group => group.GroupLabel, group => group.SuggestedKeepForDeletion!, StringComparer.Ordinal);
         var snapshot = Groups.Select(group => group.Model).ToArray();
         var deletionGeneration = resultGeneration;
         var relatedConflictSession = conflictSession;
         IsBusy = true;
         try
         {
-            var preflight = await Task.Run(() => fileActionService.Preflight(selectedFiles, fullySelectedGroups) with
-            {
-                SuggestedKeeps = suggestedKeeps,
-            });
+            var preflight = await Task.Run(() => fileActionService.Preflight(selectedFiles, fullySelectedGroups));
             if (!preflight.CanExecute)
             {
                 fileActionDialogs.ShowProblems("暂时不能删除", preflight.Problems);

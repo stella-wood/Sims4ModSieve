@@ -118,9 +118,7 @@ public sealed class FileActionServiceTests
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task DeleteAndDisableRejectContentChangeEvenWhenScanCacheHits(bool disable)
+    public async Task DeleteRejectsContentChangeEvenWhenScanCacheHits()
     {
         using var temp = new TempDirectory();
         var path = temp.WriteFile("Mods/copy.package", "AAAA");
@@ -139,86 +137,15 @@ public sealed class FileActionServiceTests
         Assert.AreEqual(original, await warm.HashAsync(path));
         Assert.AreEqual(1, warm.Hits);
 
-        if (disable)
-        {
-            var result = new ModDisableService(temp.Path).Disable([path],
-                new Dictionary<string, FileStamp> { [path] = original.Stamp },
-                new Dictionary<string, string> { [path] = original.Sha256 });
-            Assert.HasCount(0, result.CompletedPaths);
-            StringAssert.Contains(result.Failures.Single().Message, "文件内容在扫描后发生变化");
-            Assert.IsFalse(File.Exists(path + ".off"));
-        }
-        else
-        {
-            var bin = new FakeRecycleBinAdapter();
-            var actions = new FileActionService(bin, stampAccess, new FileManagementStore(temp.Path));
-            var preflight = actions.Preflight([new(path, original.Stamp.Length, original.Stamp.LastWriteTimeUtc, "第 1 组",
-                ExpectedIdentity: original.Stamp.Identity, ExpectedSha256: original.Sha256)], []);
-            Assert.IsTrue(preflight.CanExecute);
-            var result = await actions.DeleteAsync(preflight);
-            StringAssert.Contains(result.Failures.Single().Message, "文件内容在扫描后发生变化");
-            Assert.AreEqual(0, bin.DeleteCalls);
-        }
+        var bin = new FakeRecycleBinAdapter();
+        var actions = new FileActionService(bin, stampAccess, new FileManagementStore(temp.Path));
+        var preflight = actions.Preflight([new(path, original.Stamp.Length, original.Stamp.LastWriteTimeUtc, "第 1 组",
+            ExpectedIdentity: original.Stamp.Identity, ExpectedSha256: original.Sha256)], []);
+        Assert.IsTrue(preflight.CanExecute);
+        var result = await actions.DeleteAsync(preflight);
+        StringAssert.Contains(result.Failures.Single().Message, "文件内容在扫描后发生变化");
+        Assert.AreEqual(0, bin.DeleteCalls);
         Assert.AreEqual("BBBB", File.ReadAllText(path));
-    }
-
-    [TestMethod]
-    public async Task SuggestedKeepIsReadOnceForMultipleSelectedCopies()
-    {
-        const string keep = @"D:\Mods\keep.package";
-        const string first = @"D:\Mods\first.package";
-        const string second = @"D:\Mods\second.package";
-        const string group = "第 1 组";
-        var metadata = new FakeMetadataAccess();
-        var stamp = new FileStamp(4, DateTime.UnixEpoch, Identity);
-        foreach (var path in new[] { keep, first, second }) metadata.Set(path, stamp);
-        var reads = 0;
-        metadata.AfterRead(keep, () => reads++);
-        var service = new FileActionService(new FakeRecycleBinAdapter(), metadata);
-        var hash = Convert.ToHexString(SHA256.HashData(new byte[4]));
-        var preflight = service.Preflight([
-            new(first, 4, DateTime.UnixEpoch, group, ExpectedIdentity: Identity, ExpectedSha256: hash),
-            new(second, 4, DateTime.UnixEpoch, group, ExpectedIdentity: Identity, ExpectedSha256: hash),
-        ], []) with { SuggestedKeeps = new Dictionary<string, string> { [group] = keep } };
-
-        var result = await service.DeleteAsync(preflight);
-
-        Assert.AreEqual(1, reads);
-        CollectionAssert.AreEqual(new[] { first, second }, result.CompletedPaths.ToArray());
-    }
-
-    [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task SuggestedDeletionRechecksEarlierKeepAfterHashingLaterGroup(bool replaced)
-    {
-        const string firstKeep = @"D:\Mods\first-keep.package";
-        const string firstCopy = @"D:\Mods\first-copy.package";
-        const string secondKeep = @"D:\Mods\second-keep.package";
-        const string secondCopy = @"D:\Mods\second-copy.package";
-        const string firstGroup = "第 1 组";
-        const string secondGroup = "第 2 组";
-        using var temp = new TempDirectory();
-        var metadata = new FakeMetadataAccess();
-        var stamp = new FileStamp(4, DateTime.UnixEpoch, Identity);
-        foreach (var path in new[] { firstKeep, firstCopy, secondKeep, secondCopy }) metadata.Set(path, stamp);
-        metadata.AfterRead(secondKeep, () =>
-        {
-            metadata.Remove(firstKeep);
-            if (replaced) metadata.Set(firstKeep, stamp with { Identity = new FileIdentity(1, 9, 3) });
-        });
-        var service = new FileActionService(new FakeRecycleBinAdapter(), metadata, new FileManagementStore(temp.Path));
-        var hash = Convert.ToHexString(SHA256.HashData(new byte[4]));
-        var preflight = service.Preflight([
-            new(firstCopy, 4, DateTime.UnixEpoch, firstGroup, ExpectedIdentity: Identity, ExpectedSha256: hash),
-            new(secondCopy, 4, DateTime.UnixEpoch, secondGroup, ExpectedIdentity: Identity, ExpectedSha256: hash),
-        ], []) with { SuggestedKeeps = new Dictionary<string, string> { [firstGroup] = firstKeep, [secondGroup] = secondKeep } };
-
-        var result = await service.DeleteAsync(preflight);
-
-        CollectionAssert.AreEqual(new[] { secondCopy }, result.CompletedPaths.ToArray());
-        Assert.AreEqual(firstKeep, result.Failures.Single().Path);
-        StringAssert.Contains(result.Failures.Single().Message, "请重新扫描");
     }
 
     [TestMethod]
@@ -386,8 +313,7 @@ public sealed class FileActionServiceTests
 
         public bool FileExists(string path) => stamps.ContainsKey(path);
 
-        public FileStamp GetFileStamp(string path) => stamps.TryGetValue(path, out var stamp)
-            ? stamp : throw new FileNotFoundException(null, path);
+        public FileStamp GetFileStamp(string path) => stamps[path];
 
         public Stream OpenRead(string path)
         {
@@ -399,8 +325,6 @@ public sealed class FileActionServiceTests
         }
 
         public void Set(string path, FileStamp stamp) => stamps[path] = stamp;
-
-        public void Remove(string path) => stamps.Remove(path);
 
         public void Set(string path, FileStamp stamp, byte[] content) { stamps[path] = stamp; contents[path] = content; }
 

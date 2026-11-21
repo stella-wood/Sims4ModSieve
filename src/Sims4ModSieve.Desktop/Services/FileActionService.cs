@@ -19,8 +19,6 @@ public sealed record FileDeletionPreflight(
     IReadOnlyList<FileActionFailure> Problems,
     IReadOnlyList<string> FullySelectedGroups)
 {
-    internal IReadOnlyDictionary<string, string>? SuggestedKeeps { get; init; }
-
     public bool CanExecute => Candidates.Count > 0 && Problems.Count == 0;
 
     public int FileCount => Candidates.Count;
@@ -251,57 +249,12 @@ public sealed class FileActionService(
                 catch (Exception exception) when (IsHistoryException(exception) || exception is InvalidOperationException)
                 { preparationFailures.Add(new(candidate.Path, "文件校验或禁用删除记录失败：" + exception.Message)); }
             }
-            var verifiedKeeps = new Dictionary<string, (string Path, FileStamp Stamp)>(StringComparer.Ordinal);
-            var rejectedGroups = new HashSet<string>(StringComparer.Ordinal);
-            if (preflight.SuggestedKeeps is { Count: > 0 } keeps)
-            {
-                foreach (var group in ready.GroupBy(candidate => candidate.GroupLabel))
-                {
-                    if (!keeps.TryGetValue(group.Key, out var keepPath)) continue;
-                    try
-                    {
-                        var keep = await verificationHasher.HashAsync(keepPath, cancellationToken).ConfigureAwait(false);
-                        if (StringComparer.OrdinalIgnoreCase.Equals(keep.Sha256, group.First().ExpectedSha256))
-                        {
-                            verifiedKeeps.Add(group.Key, (keepPath, keep.Stamp));
-                            continue;
-                        }
-                        preparationFailures.Add(new(keepPath, $"{group.Key}建议保留的文件内容已变化，已跳过该组，请重新扫描"));
-                    }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                    {
-                        preparationFailures.Add(new(keepPath, $"无法核对{group.Key}建议保留的文件，已跳过该组，请重新扫描"));
-                    }
-                    rejectedGroups.Add(group.Key);
-                }
-                ready.RemoveAll(candidate => rejectedGroups.Contains(candidate.GroupLabel));
-            }
             foreach (var candidate in ready.ToArray())
             {
                 var finalCheck = Preflight([candidate], []);
                 if (finalCheck.CanExecute) continue;
                 ready.Remove(candidate);
                 preparationFailures.AddRange(finalCheck.Problems);
-            }
-            if (verifiedKeeps.Count > 0)
-            {
-                // Earlier keeps may have changed while later groups were being hashed.
-                foreach (var groupLabel in ready.Select(candidate => candidate.GroupLabel).Distinct(StringComparer.Ordinal))
-                {
-                    if (!verifiedKeeps.TryGetValue(groupLabel, out var keep)) continue;
-                    cancellationToken.ThrowIfCancellationRequested();
-                    try
-                    {
-                        if (metadata.GetFileStamp(keep.Path) == keep.Stamp) continue;
-                        preparationFailures.Add(new(keep.Path, $"{groupLabel}建议保留的文件已变化，已跳过该组，请重新扫描"));
-                    }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                    {
-                        preparationFailures.Add(new(keep.Path, $"无法再次核对{groupLabel}建议保留的文件，已跳过该组，请重新扫描"));
-                    }
-                    rejectedGroups.Add(groupLabel);
-                }
-                ready.RemoveAll(candidate => rejectedGroups.Contains(candidate.GroupLabel));
             }
             foreach (var candidate in ready.ToArray())
             {
