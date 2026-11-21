@@ -19,6 +19,8 @@ public sealed record FileDeletionPreflight(
     IReadOnlyList<FileActionFailure> Problems,
     IReadOnlyList<string> FullySelectedGroups)
 {
+    internal IReadOnlyDictionary<string, string>? SuggestedKeeps { get; init; }
+
     public bool CanExecute => Candidates.Count > 0 && Problems.Count == 0;
 
     public int FileCount => Candidates.Count;
@@ -248,6 +250,26 @@ public sealed class FileActionService(
                 }
                 catch (Exception exception) when (IsHistoryException(exception) || exception is InvalidOperationException)
                 { preparationFailures.Add(new(candidate.Path, "文件校验或禁用删除记录失败：" + exception.Message)); }
+            }
+            if (preflight.SuggestedKeeps is { Count: > 0 } keeps)
+            {
+                var rejectedGroups = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var group in ready.GroupBy(candidate => candidate.GroupLabel))
+                {
+                    if (!keeps.TryGetValue(group.Key, out var keepPath)) continue;
+                    try
+                    {
+                        var keep = await verificationHasher.HashAsync(keepPath, cancellationToken).ConfigureAwait(false);
+                        if (StringComparer.OrdinalIgnoreCase.Equals(keep.Sha256, group.First().ExpectedSha256)) continue;
+                        preparationFailures.Add(new(keepPath, $"{group.Key}建议保留的文件内容已变化，已跳过该组，请重新扫描"));
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        preparationFailures.Add(new(keepPath, $"无法核对{group.Key}建议保留的文件，已跳过该组，请重新扫描"));
+                    }
+                    rejectedGroups.Add(group.Key);
+                }
+                ready.RemoveAll(candidate => rejectedGroups.Contains(candidate.GroupLabel));
             }
             foreach (var candidate in ready.ToArray())
             {

@@ -163,6 +163,31 @@ public sealed class FileActionServiceTests
     }
 
     [TestMethod]
+    public async Task SuggestedKeepIsReadOnceForMultipleSelectedCopies()
+    {
+        const string keep = @"D:\Mods\keep.package";
+        const string first = @"D:\Mods\first.package";
+        const string second = @"D:\Mods\second.package";
+        const string group = "第 1 组";
+        var metadata = new FakeMetadataAccess();
+        var stamp = new FileStamp(4, DateTime.UnixEpoch, Identity);
+        foreach (var path in new[] { keep, first, second }) metadata.Set(path, stamp);
+        var reads = 0;
+        metadata.AfterRead(keep, () => reads++);
+        var service = new FileActionService(new FakeRecycleBinAdapter(), metadata);
+        var hash = Convert.ToHexString(SHA256.HashData(new byte[4]));
+        var preflight = service.Preflight([
+            new(first, 4, DateTime.UnixEpoch, group, ExpectedIdentity: Identity, ExpectedSha256: hash),
+            new(second, 4, DateTime.UnixEpoch, group, ExpectedIdentity: Identity, ExpectedSha256: hash),
+        ], []) with { SuggestedKeeps = new Dictionary<string, string> { [group] = keep } };
+
+        var result = await service.DeleteAsync(preflight);
+
+        Assert.AreEqual(1, reads);
+        CollectionAssert.AreEqual(new[] { first, second }, result.CompletedPaths.ToArray());
+    }
+
+    [TestMethod]
     public async Task DeleteRejectsSameStampIdentityReplacement()
     {
         const string path = @"D:\Mods\copy.package";
