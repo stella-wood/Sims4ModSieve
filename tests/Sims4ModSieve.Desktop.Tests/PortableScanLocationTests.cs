@@ -98,6 +98,10 @@ public sealed class PortableScanLocationTests
         Assert.AreEqual("这个文件夹里没有找到 mod 文件", model.EmptyConflictText);
         Assert.IsFalse(model.HasConflictProblems);
         Assert.IsTrue(ConflictPageRenderTests.Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == model.EmptyConflictText));
+        var warning = ConflictPageRenderTests.Descendants<TextBlock>(window).Single(text => text.IsVisible && text.Text == "没查出冲突不代表没有冲突");
+        var expand = ConflictPageRenderTests.Descendants<Button>(window).Single(button => button.Name == "ToggleAllConflictGroupsButton");
+        var warningBounds = warning.TransformToVisual(expand).TransformBounds(new Rect(warning.RenderSize));
+        Assert.IsTrue(warningBounds.Top >= 0 && warningBounds.Bottom <= expand.ActualHeight);
         ConflictPageRenderTests.Save(window, "empty-folder-conflicts.png");
         window.Close();
     });

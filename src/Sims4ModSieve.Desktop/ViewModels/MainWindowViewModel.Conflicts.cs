@@ -3,6 +3,7 @@ using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Reporting;
 using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Desktop.Infrastructure;
 
@@ -25,6 +26,7 @@ public sealed partial class MainWindowViewModel
     private string conflictSection = "overview";
     private string conflictView = "all";
     private string conflictFilter = "all";
+    private string conflictPathQuery = "";
     private readonly HashSet<string> conflictTypes = new(["override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate"], StringComparer.Ordinal);
     private bool showIgnoredConflicts;
     private bool showSelectedConflicts;
@@ -130,6 +132,19 @@ public sealed partial class MainWindowViewModel
     public IReadOnlyList<ConflictRangeProblem> ConflictRangeProblems => conflictSession.RangeProblems;
     public IReadOnlyList<ConflictResultRow> ConflictRows => conflictRows;
     public int VisibleConflictParentCount => visibleConflictParentCount;
+    public string ConflictPathQuery
+    {
+        get => conflictPathQuery;
+        set
+        {
+            if (!SetProperty(ref conflictPathQuery, value)) return;
+            ConflictSearch = new(value);
+            OnPropertyChanged(nameof(ConflictSearch));
+            if (IsConflictComplete) QueueConflictRowsRefresh();
+        }
+    }
+    public PathSearch ConflictSearch { get; private set; } = PathSearch.Empty;
+    public string ConflictSearchStatus => ConflictSearch.IsActive ? $"找到 {visibleConflictParentCount} 组" : "";
     public bool ShowCollapseAllConflictIcon => conflictRows.Any(row => row.IsCardStart && row.IsExpandable)
         && conflictRows.Where(row => row.IsCardStart && row.IsExpandable).All(row => row.IsExpanded);
     public bool ShowExpandAllConflictIcon => !ShowCollapseAllConflictIcon;
@@ -137,7 +152,8 @@ public sealed partial class MainWindowViewModel
     public bool ShowEmptyConflictRows => IsConflictBasic && IsConflictComplete && visibleConflictParentCount == 0;
     private bool NoConflictModFiles => IsConflictComplete && !HasConflictMatches && !HasConflictProblems
         && conflictSession.PackageReport?.DiscoveredPackageCount == 0 && conflictSession.ScriptReport?.DiscoveredArchiveCount == 0;
-    public string EmptyConflictText => HasActiveConflictFilter ? "没有符合筛选条件的结果"
+    public string EmptyConflictText => ConflictSearch.IsActive ? "没找到相关文件"
+        : HasActiveConflictFilter ? "没有符合筛选条件的结果"
         : NoConflictModFiles ? "这个文件夹里没有找到 mod 文件" : "已分析范围未发现冲突";
     public bool ShowConflictResources => IsConflictBasic && conflictView == "resources";
     public bool ShowConflictScripts => IsConflictBasic && conflictView == "scripts";
@@ -258,6 +274,7 @@ public sealed partial class MainWindowViewModel
         conflictRowsCancellation = cancellation;
         var view = conflictView;
         var filter = conflictFilter;
+        var search = ConflictSearch;
         var expanded = session.GetExpandedKeysSnapshot();
         var snapshot = session.ProjectionSnapshot();
         var types = new HashSet<string>(conflictTypes, StringComparer.Ordinal);
@@ -267,7 +284,7 @@ public sealed partial class MainWindowViewModel
         {
             var projection = await Task.Run(() =>
             {
-                var rows = snapshot.BuildVisibleRows(view, filter, expanded, cancellation.Token, showIgnored, types, selectedPaths);
+                var rows = snapshot.BuildVisibleRows(view, filter, expanded, cancellation.Token, showIgnored, types, selectedPaths, search);
                 return (Rows: rows, ParentCount: rows.Count(row => row.Depth == 0));
             }, cancellation.Token);
             if (!ReferenceEquals(session, conflictSession) || request != conflictRowsRequest || !IsConflictComplete) return;
@@ -316,6 +333,7 @@ public sealed partial class MainWindowViewModel
         visibleConflictParentCount = parentCount;
         OnPropertyChanged(nameof(ConflictRows));
         OnPropertyChanged(nameof(VisibleConflictParentCount));
+        OnPropertyChanged(nameof(ConflictSearchStatus));
         OnPropertyChanged(nameof(ShowEmptyConflictRows));
         OnPropertyChanged(nameof(EmptyConflictText));
         OnPropertyChanged(nameof(ShowCollapseAllConflictIcon));
@@ -340,6 +358,10 @@ public sealed partial class MainWindowViewModel
         conflictSession = new();
         conflictSession.SetIgnoredFiles(ignoredRecords.Select(record => record.Path));
         IsConflictMultiSelect = false;
+        conflictPathQuery = "";
+        ConflictSearch = PathSearch.Empty;
+        OnPropertyChanged(nameof(ConflictPathQuery));
+        OnPropertyChanged(nameof(ConflictSearch));
         PublishConflictRows([], 0);
         conflictView = "all";
         conflictFilter = "all";

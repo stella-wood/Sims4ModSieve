@@ -393,6 +393,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="扫描结果" FontSize="18" Style="{StaticResource SectionTitleTextStyle}" />
@@ -400,18 +401,23 @@
                                         <Run Text="{Binding DuplicateGroupCount, Mode=OneWay}" /><Run Text=" 组 · " /><Run Text="{Binding DuplicateFileCount, Mode=OneWay}" /><Run Text=" 个文件 · 已选 " /><Run Text="{Binding SelectedFileCount, Mode=OneWay}" />
                                     </TextBlock>
                                 </StackPanel>
-                                <Button Grid.Column="1" Margin="0,0,8,0" Content="清空勾选" Command="{Binding ClearSelectionCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,7" />
-                                <Button Grid.Column="2" Content="一键勾选" Command="{Binding ApplySuggestionsCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="12,7" />
+                                <local:ResultPathSearch x:Name="DuplicatePathSearch" Grid.Column="1" Query="{Binding DuplicatePathQuery}"
+                                                        IsEnabled="{Binding CanSearchDuplicateResults}" ResultSurface="{Binding ElementName=DuplicateResultsBody}" />
+                                <Button Grid.Column="2" Margin="0,0,8,0" Content="清空勾选" Command="{Binding ClearSelectionCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,7" />
+                                <Button Grid.Column="3" Content="一键勾选" Command="{Binding ApplySuggestionsCommand}" Style="{StaticResource PrimaryButtonStyle}" Padding="12,7" />
                             </Grid>
                         </Border>
 
-                        <Grid Grid.Row="1">
+                        <Grid x:Name="DuplicateResultsBody" Grid.Row="1" Background="Transparent" Focusable="True"
+                              FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
+                            <TextBlock Text="{Binding DuplicateSearchStatus}" Style="{StaticResource SearchResultCountStyle}" VerticalAlignment="Top" Visibility="{Binding ShowDuplicatePlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                                        Visibility="{Binding HasNoResults, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        Visibility="{Binding ShowDuplicatePlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <TextBlock x:Name="DuplicatePlaceholderText" Text="{Binding DuplicatePlaceholderText}" Foreground="{StaticResource MutedBrush}" FontSize="15" HorizontalAlignment="Center" />
                             </StackPanel>
 
-                            <ListBox x:Name="DuplicateGroupsList" ItemsSource="{Binding Groups}"
+                            <ListBox x:Name="DuplicateGroupsList" ItemsSource="{Binding VisibleDuplicateGroups}"
+                                     Tag="{Binding DuplicateSearchStatus}"
                                      Padding="20,6,8,12"
                                      Background="Transparent"
                                      BorderThickness="0"
@@ -430,14 +436,7 @@
                                         <Setter Property="BorderThickness" Value="0" />
                                         <Setter Property="Focusable" Value="False" />
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Template">
-                                            <Setter.Value>
-                                                <ControlTemplate TargetType="ListBoxItem">
-                                                    <ContentPresenter Content="{TemplateBinding Content}"
-                                                                      ContentTemplate="{TemplateBinding ContentTemplate}" />
-                                                </ControlTemplate>
-                                            </Setter.Value>
-                                        </Setter>
+                                        <Setter Property="Template" Value="{StaticResource SearchResultItemTemplate}" />
                                     </Style>
                                 </ListBox.ItemContainerStyle>
                                 <ListBox.ItemTemplate>
@@ -506,8 +505,12 @@
                                                                     </Grid.ColumnDefinitions>
                                                                     <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,11,0" />
                                                                     <StackPanel Grid.Column="1">
-                                                                        <TextBlock Text="{Binding FileName}" Style="{StaticResource FileNameTextStyle}" FontFamily="等线" FontSize="14" TextTrimming="CharacterEllipsis" />
-                                                                        <TextBlock Text="{Binding Path}" Foreground="{StaticResource MutedBrush}" Style="{StaticResource DataTextStyle}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
+                                                                        <TextBlock local:SearchHighlight.Text="{Binding FileName}" local:SearchHighlight.Brush="{StaticResource SearchFileNameHighlightBrush}"
+                                                                                   local:SearchHighlight.Query="{Binding DataContext.DuplicateSearch, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                                   Style="{StaticResource FileNameTextStyle}" FontFamily="等线" FontSize="14" TextTrimming="CharacterEllipsis" />
+                                                                        <TextBlock local:SearchHighlight.Text="{Binding Path}" local:SearchHighlight.Brush="{StaticResource SearchPathHighlightBrush}"
+                                                                                   local:SearchHighlight.Query="{Binding DataContext.DuplicateSearch, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                                   Foreground="{StaticResource MutedBrush}" Style="{StaticResource DataTextStyle}" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
                                                                     </StackPanel>
                                                                     <TextBlock Grid.Column="2"
                                                                                Text="建议保留"
@@ -609,6 +612,6 @@
             </Grid>
         </Grid>
         <local:SettingsPage Grid.Row="2" Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
-        <local:ConflictPage Grid.Row="2" Visibility="{Binding IsConflictVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
+        <local:ConflictPage x:Name="ConflictDetectionPage" Grid.Row="2" Visibility="{Binding IsConflictVisible, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>
 </Window>

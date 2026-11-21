@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Reporting;
 using Sims4ModSieve.Desktop.Infrastructure;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
@@ -9,6 +10,7 @@ public sealed class DuplicateResultSession : ObservableObject
 {
     private readonly DuplicateSelectionService selectionService = new();
     private IReadOnlyList<DuplicateGroupViewModel> groups = Array.Empty<DuplicateGroupViewModel>();
+    private string duplicatePathQuery = "";
     private bool isBulkUpdatingSelection;
     private bool isBulkUpdatingExpansion;
 
@@ -22,6 +24,20 @@ public sealed class DuplicateResultSession : ObservableObject
 
     public bool HasNoResults => !HasResults;
 
+    public string DuplicatePathQuery
+    {
+        get => duplicatePathQuery;
+        set
+        {
+            if (SetProperty(ref duplicatePathQuery, value)) RefreshVisibleDuplicateGroups();
+        }
+    }
+
+    public IReadOnlyList<DuplicateGroupViewModel> VisibleDuplicateGroups { get; private set; } = [];
+    public PathSearch DuplicateSearch { get; private set; } = new("");
+
+    public string DuplicateSearchStatus => DuplicateSearch.IsActive ? $"找到 {VisibleDuplicateGroups.Count} 组" : "";
+
     public int DuplicateGroupCount => Groups.Count;
 
     public int DuplicateFileCount => Groups.Sum(group => group.Files.Count);
@@ -34,13 +50,11 @@ public sealed class DuplicateResultSession : ObservableObject
     public string SelectedSizeText => DuplicateGroupViewModel.FormatBytes(
         Groups.Sum(group => group.SelectedBytes));
 
-    public bool ShowExpandAllIcon => Groups.Count == 0 || !Groups.All(group => group.IsExpanded);
+    public bool ShowExpandAllIcon => !ShowCollapseAllIcon;
 
-    public bool ShowCollapseAllIcon => Groups.Count > 0 && Groups.All(group => group.IsExpanded);
+    public bool ShowCollapseAllIcon => VisibleDuplicateGroups.Count > 0 && VisibleDuplicateGroups.All(group => group.IsExpanded);
 
-    public string ExpandCollapseToolTip => Groups.Count > 0 && Groups.All(group => group.IsExpanded)
-        ? "一键收起"
-        : "一键展开";
+    public string ExpandCollapseToolTip => ShowCollapseAllIcon ? "一键收起" : "一键展开";
 
     public IReadOnlyList<DuplicateGroupViewModel> PrepareGroups(
         IReadOnlyList<DuplicateGroup> reportGroups,
@@ -81,17 +95,35 @@ public sealed class DuplicateResultSession : ObservableObject
         }
 
         Groups = value;
+        RefreshVisibleDuplicateGroups();
         RefreshAllProperties();
     }
 
-    public void Reset() => Replace(Array.Empty<DuplicateGroupViewModel>());
+    public void Reset()
+    {
+        duplicatePathQuery = "";
+        OnPropertyChanged(nameof(DuplicatePathQuery));
+        Replace([]);
+    }
+
+    private void RefreshVisibleDuplicateGroups()
+    {
+        DuplicateSearch = new(DuplicatePathQuery);
+        VisibleDuplicateGroups = !DuplicateSearch.IsActive ? Groups : Groups
+            .Select(group => (Group: group, Rank: DuplicateSearch.Rank(group.Files.Select(file => file.Path))))
+            .Where(result => result.Rank >= 0).OrderByDescending(result => result.Rank).Select(result => result.Group).ToArray();
+        OnPropertyChanged(nameof(DuplicateSearch));
+        OnPropertyChanged(nameof(VisibleDuplicateGroups));
+        OnPropertyChanged(nameof(DuplicateSearchStatus));
+        RefreshExpansionProperties();
+    }
 
     public void ApplySuggestions()
     {
         isBulkUpdatingSelection = true;
         try
         {
-            foreach (var group in Groups)
+            foreach (var group in VisibleDuplicateGroups)
             {
                 group.ApplySuggestion();
             }
@@ -124,11 +156,11 @@ public sealed class DuplicateResultSession : ObservableObject
 
     public void ToggleAllGroups()
     {
-        var expand = !Groups.All(group => group.IsExpanded);
+        var expand = ShowExpandAllIcon;
         isBulkUpdatingExpansion = true;
         try
         {
-            foreach (var group in Groups)
+            foreach (var group in VisibleDuplicateGroups)
             {
                 group.IsExpanded = expand;
             }

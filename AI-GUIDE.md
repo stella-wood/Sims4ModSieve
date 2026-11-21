@@ -45,13 +45,14 @@ Get-Content -LiteralPath "<报告文件路径>" -Encoding utf8 -TotalCount 80
 
 ## 按需缩小报告明细
 
-三个扫描命令支持以下参数。只缩小输出，扫描、完整汇总和退出码不变。
+三个扫描命令支持以下输出筛选参数，适用范围见表格。只缩小输出，扫描、完整汇总和退出码不变。
 
 | 参数 | 规则 |
 | --- | --- |
 | `--severity <级别>` | 可重复，值为 `abnormal`、`risk`、`no_effect`、`incomplete`；同一参数多个值取并集 |
 | `--kind <种类>` | 可重复，取值见下表；与 severity 同用时取交集 |
-| `--limit <N>` | 筛选后按原结果顺序最多列 N 组，N 是大于或等于 0 的整数；不限制 `issues` |
+| `--path-contains <文本>` | 仅用于 `scan-conflicts`、`scan-duplicates`。按完整路径（含文件名）的子串匹配。先做 Unicode NFC 规范化并折叠全角 ASCII 和全角空格，再按空格分词，忽略大小写。任一可见文件命中任一词就保留整组。空文本或只有空格时显示全部 |
+| `--limit <N>` | 筛选并排序后最多列 N 组，N 是大于或等于 0 的整数；不限制 `issues` |
 | `--omit-resource-keys` | 仅用于 `scan-conflicts`；省略 package 组的 `resourceKeys` 数组，保留 `resourceKeyCount` |
 | `--summary-only` | 只要汇总，`groups` 和 `issues` 均为空 |
 
@@ -68,13 +69,16 @@ Get-Content -LiteralPath "<报告文件路径>" -Encoding utf8 -TotalCount 80
 ```powershell
 Sims4ModSieve.Cli.exe scan-conflicts --source "D:\Mods" --json "conflicts-summary.json" --summary-only
 Sims4ModSieve.Cli.exe scan-conflicts --source "D:\Mods" --json "conflicts-abnormal.json" --severity abnormal --limit 20 --omit-resource-keys
+Sims4ModSieve.Cli.exe scan-conflicts --source "D:\Mods" --json "conflicts-mod.json" --path-contains "Creator MouthScale" --severity abnormal --limit 20
 ```
+
+`--path-contains` 只筛选 `groups`，与 `--severity`、`--kind` 等条件取交集。排序先放同一条路径命中全部词的组，再放同组不同文件合起来命中全部词的组，最后放命中部分词的组。同一档沿用原结果顺序，排序完成后应用 `--limit`。
 
 JSON 顶层始终带 `complete`、`omittedGroupCount`、`omittedIssueCount` 和 `filters`：
 
 - 使用任何输出筛选、`--limit`、资源键省略、只要汇总或已有的 `--hide-ignored` 时，`complete` 为 `false`，即使这次没有实际省略组。
 - `omittedGroupCount` 是完整组数减已列组数；`omittedIssueCount` 是完整读取问题数减已列问题数。隐藏组里的部分文件、或省略资源键时，这两个数也可能都是 `0`。标准错误的摘要会写「还有 N 组未列出」，资源键省略时另有提示。
-- `filters` 记录实际生效的 `severity`、`kind` 数组（去重），以及 `limit`、`hideIgnored`、`omitResourceKeys`、`summaryOnly`。未指定的数组为空，`limit` 为 `null`，开关为 `false`。
+- `filters` 记录实际生效的 `severity`、`kind` 数组（去重），以及 `pathContains`、`limit`、`hideIgnored`、`omitResourceKeys`、`summaryOnly`。未指定的数组为空，`pathContains` 和 `limit` 为 `null`，开关为 `false`。
 - `complete: true` 只表示报告输出了全部现有结果，不表示每个文件都成功读完；仍要看 `issues` 和未分析数量。
 
 查重的 HTML 不支持这些新筛选参数：显式 `--html` 与它们同用时报参数错误，也不会自动生成 HTML。需要 HTML 时另行运行不带新筛选参数的查重命令；已有的 `--hide-ignored` 对 HTML 的行为保持不变。

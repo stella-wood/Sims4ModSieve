@@ -6,9 +6,18 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:MultiplyConverter x:Key="MultiplyConverter" />
+        <local:SearchResultCountConverter x:Key="SearchResultCountConverter" />
 
         <SolidColorBrush x:Key="WindowBrush" Color="#F6F5F2" />
         <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="#F3F1ED" />
+        <SolidColorBrush x:Key="SearchFileNameHighlightBrush" Color="#FFE550" />
+        <LinearGradientBrush x:Key="SearchPathHighlightBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#00FFEA85" Offset="0.23" />
+            <GradientStop Color="#FFEA85" Offset="0.23" />
+            <GradientStop Color="#FFEA85" Offset="0.92" />
+            <GradientStop Color="#00FFEA85" Offset="0.92" />
+        </LinearGradientBrush>
         <SolidColorBrush x:Key="InkBrush" Color="#2B2927" />
         <SolidColorBrush x:Key="MutedBrush" Color="#706C67" />
         <SolidColorBrush x:Key="AccentBrush" Color="#6F5A91" />
@@ -18,6 +27,34 @@
         <SolidColorBrush x:Key="ComboBoxFillBrush" Color="#F2F1EF" />
         <SolidColorBrush x:Key="ComboBoxActiveFillBrush" Color="#E9E6E2" />
         <sys:Double x:Key="FontSizeLarge">28</sys:Double>
+        <Style x:Key="SearchResultCountStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="20,5,8,0" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Style.Triggers>
+                <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SearchResultFlashStyle" TargetType="FrameworkElement">
+            <Style.Triggers>
+                <Trigger Property="IsHitTestVisible" Value="False"><Setter Property="Opacity" Value="0" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <ControlTemplate x:Key="SearchResultItemTemplate" TargetType="ListBoxItem">
+            <StackPanel>
+                <TextBlock x:Name="ResultCount" Style="{StaticResource SearchResultCountStyle}" Margin="0,0,0,6">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource SearchResultCountConverter}">
+                            <Binding />
+                            <Binding Path="ItemsSource" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                            <Binding Path="Tag" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
+                <ContentPresenter Style="{StaticResource SearchResultFlashStyle}" />
+            </StackPanel>
+        </ControlTemplate>
 
         <Style x:Key="ResultVerticalScrollBarStyle" TargetType="ScrollBar">
             <Setter Property="Width" Value="12" />

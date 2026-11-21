@@ -14,7 +14,7 @@
 |---|---|---|---|
 | `WindowBrush` | `#F6F5F2` | 页面底色 | 已有 |
 | `SurfaceBrush` | `#FFFFFF` | 卡片表面 | 已有 |
-| `SurfaceSunkenBrush` | `#F3F1ED` | 展开的文件区、卡片里凹下去的区域 | 待迁移（另有 `#F2F1EF` `#F0EEEB` `#F0F0F0` 近似值并入） |
+| `SurfaceSunkenBrush` | `#F3F1ED` | 展开的文件区、卡片里凹下去的区域、结果搜索框底色 | 已有（旧文件区颜色待迁移） |
 | `SurfaceMutedBrush` | `#EAE7E2` | 当前 Mods 区等成块的浅灰底 | 待迁移（`#ECEAE7` `#E8E4DE` 并入） |
 | `ControlBrush` | `#E4E0DB` | 次按钮底 | 在 `SecondaryButtonStyle` 里写死 |
 | `ControlHoverBrush` | `#DAD5CF` | 次按钮悬停 | 同上（`#DED8D0` 并入） |
@@ -112,6 +112,13 @@
 ## 扫描并发说明图标
 
 设置页局部资源：`ScanConcurrencyInfoSize` = 14（矢量图标），`ScanConcurrencyInfoTargetSize` = 24（键盘和鼠标宿主），`ScanConcurrencyInfoGap` = 左侧 2。颜色使用 `MutedBrush`；图标与标题垂直居中，说明放入可通过键盘焦点显示的 Tooltip。
+
+## 结果搜索
+
+- `ResultPathSearch` 收起宽 30 DIP。展开时重复检测高 30、宽 164–260 DIP，冲突检测高 24、宽 144–236 DIP。两端圆角为高度的一半，右侧间距分别为 8 和 4 DIP。
+- `SearchIconSize` 为 16 DIP，`SearchIconOffset` 向右、向下各 1 DIP，`SearchClearTarget` 为 24 DIP。放大镜列宽 30 DIP（冲突页 28）。`SearchInputFontSize` 为 12 DIP。输入及清空按钮间距见控件的 `SearchInputMargin`、`SearchClearMargin`，紧凑时右侧输入留白从 4 改为 2 DIP，清空按钮不留上下边距。
+- `SearchShadow` 模糊半径 6 DIP、向下偏移 1 DIP、不透明度 0.13。结果计数使用 `SearchResultCountStyle`，字体 11 DIP。在列表中沿用列表缩进，与首组相隔 6 DIP。零组时外边距为左 20、上 5、右 8、下 0 DIP。
+- `SearchFileNameHighlightBrush` 为 `#FFE550`，`SearchPathHighlightBrush` 为 `#FFEA85`，路径高亮仅填原行高的 23%–92% 区间。
 
 ## 组件
 

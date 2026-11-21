@@ -2,6 +2,7 @@ using System.IO;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
+using Sims4ModSieve.Core.Reporting;
 using Sims4ModSieve.Core.Scripts;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
@@ -389,9 +390,9 @@ public sealed partial class ConflictResultSession
         }
     }
 
-    private void AddGroupCards(List<(ConflictPairPriority Priority, string Key, bool Included, Action Build)> cards,
+    private void AddGroupCards(List<(ConflictPairPriority Priority, string Key, bool Included, int Rank, Action Build)> cards,
         Func<ConflictResultRow, bool> add, string view, IReadOnlySet<string> expanded, bool showIgnored,
-        IReadOnlySet<string>? types, CancellationToken token)
+        IReadOnlySet<string>? types, PathSearch search, CancellationToken token)
     {
         foreach (var card in Cards)
         {
@@ -400,7 +401,8 @@ public sealed partial class ConflictResultSession
             var included = (showIgnored || !ignored) && (types is null || types.Contains(card.Type))
                 && (view == "all" || view == "resources" && card.Package is not null
                     || view == "scripts" && card.Modules is not null || view == "duplicates" && card.Duplicate is not null);
-            cards.Add((card.Priority, card.Key, included, () =>
+            var rank = included ? search.Rank(card.Files.Where(file => showIgnored || !IsFileIgnored(file.Path)).Select(file => file.Path)) : -1;
+            cards.Add((card.Priority, card.Key, included, rank, () =>
             {
                 var ignoredCount = card.Files.Count(file => IsFileIgnored(file.Path));
                 var isDuplicateGroup = card.Duplicate is not null || card.Type == "script-duplicate";

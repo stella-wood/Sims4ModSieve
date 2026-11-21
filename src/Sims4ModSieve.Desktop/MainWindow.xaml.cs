@@ -74,6 +74,20 @@ public partial class MainWindow : Window
 
     private void RestartForUpdate(object? sender, EventArgs eventArgs) => Close();
 
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+        var search = DuplicatePathSearch.IsVisible ? DuplicatePathSearch : ConflictDetectionPage.ConflictPathSearch;
+        if (e.Handled || !search.IsVisible || !search.IsEnabled) return;
+        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            search.FocusInput();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+            e.Handled = search.ClearQuery();
+    }
+
     private void CloseAfterWork(object? sender, PropertyChangedEventArgs eventArgs)
     {
         if (eventArgs.PropertyName != nameof(MainWindowViewModel.IsBusy) || closingAfterWork?.IsBusy != false) return;

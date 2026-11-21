@@ -353,6 +353,80 @@ public sealed class CliReadOnlyTests
     }
 
     [TestMethod]
+    [DataRow("scan-duplicates", "risk", "-ＣＯＰＹ.package", 2)]
+    [DataRow("scan-duplicates", "risk", "", 2)]
+    [DataRow("scan-conflicts", "risk", "-ＣＯＰＹ.package", 2)]
+    [DataRow("scan-conflicts", "abnormal", "-ＣＯＰＹ.package", 1)]
+    [DataRow("scan-conflicts", "abnormal", "Ａ.ts4script", 1)]
+    [DataRow("scan-conflicts", "risk", "missing", 0)]
+    public async Task PathFilterKeepsWholeGroupsAndComposesWithSeverityAndLimit(
+        string command, string severity, string query, int matchCount)
+    {
+        using var temp = new TempDirectory();
+        var source = CreateFilterFixture(temp);
+        temp.WriteBytes(@"Mods\broken.ts4script", [1, 2, 3]);
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var args = new[] { command, "--source", source, "--json", "-", "--severity", severity };
+        if (query.Length == 0) args = [.. args, "--extension", ".package"];
+        var baseline = await Run(settings, args);
+        using var full = JsonDocument.Parse(baseline.Output);
+        var root = full.RootElement;
+        var normalizedQuery = query switch
+        {
+            "-ＣＯＰＹ.package" => "-copy.package",
+            "Ａ.ts4script" => "a.ts4script",
+            _ => query,
+        };
+        var expected = root.GetProperty("groups").EnumerateArray().Where(group => group.GetProperty("files")
+            .EnumerateArray().Any(file => Read(file, "path")!.Contains(normalizedQuery, StringComparison.Ordinal))).ToArray();
+        Assert.AreEqual(matchCount, expected.Length);
+
+        foreach (var limit in new[] { 1, 20 })
+        {
+            var scan = await Run(settings, [.. args, "--path-contains", query,
+                "--limit", limit.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+            using var document = JsonDocument.Parse(scan.Output);
+            var filtered = document.RootElement;
+            Assert.AreEqual(baseline.ExitCode, scan.ExitCode);
+            AssertFullSummaryUnchanged(root, filtered);
+            CollectionAssert.AreEqual(expected.Take(limit).Select(GroupKey).ToArray(),
+                filtered.GetProperty("groups").EnumerateArray().Select(GroupKey).ToArray());
+            Assert.AreEqual(Math.Min(expected.Length, limit), filtered.GetProperty("visibleGroupCount").GetInt32());
+            Assert.AreEqual(root.GetProperty("groupCount").GetInt32() - Math.Min(expected.Length, limit),
+                filtered.GetProperty("omittedGroupCount").GetInt32());
+            Assert.AreEqual(root.GetProperty("issues").GetRawText(), filtered.GetProperty("issues").GetRawText());
+            Assert.AreEqual(query, Read(filtered.GetProperty("filters"), "pathContains"));
+            Assert.IsFalse(filtered.GetProperty("complete").GetBoolean());
+        }
+    }
+
+    [TestMethod]
+    public async Task PathKeywordsRankBeforeLimitAndPreserveNonmatchingMembers()
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        temp.WriteBytes(@"Mods\a-alpha.package", [1]);
+        temp.WriteBytes(@"Mods\a-peer.package", [1]);
+        temp.WriteBytes(@"Mods\b-alpha.package", [2, 2]);
+        temp.WriteBytes(@"Mods\b-beta.package", [2, 2]);
+        temp.WriteBytes(@"Mods\c-alpha-beta.package", [3, 3, 3]);
+        temp.WriteBytes(@"Mods\c-peer.package", [3, 3, 3]);
+        var scan = await Run(new DuplicateSettingsStore(temp.Path), "scan-duplicates", "--source", source, "--json", "-",
+            "--path-contains", "alpha　ＢＥＴＡ", "--severity", "risk", "--limit", "2");
+        using var document = JsonDocument.Parse(scan.Output);
+        var root = document.RootElement;
+        Assert.AreEqual(1, scan.ExitCode);
+        Assert.AreEqual(3, root.GetProperty("groupCount").GetInt32());
+        Assert.AreEqual(2, root.GetProperty("visibleGroupCount").GetInt32());
+        var groups = root.GetProperty("groups").EnumerateArray().ToArray();
+        CollectionAssert.AreEquivalent(new[] { "c-alpha-beta.package", "c-peer.package" }, Names(groups[0]));
+        CollectionAssert.AreEquivalent(new[] { "b-alpha.package", "b-beta.package" }, Names(groups[1]));
+
+        static string[] Names(JsonElement group) => group.GetProperty("files").EnumerateArray()
+            .Select(file => Path.GetFileName(Read(file, "path"))!).ToArray();
+    }
+
+    [TestMethod]
     [DataRow("scan-duplicates")]
     [DataRow("scan-conflicts")]
     [DataRow("scan-scripts")]
@@ -499,6 +573,8 @@ public sealed class CliReadOnlyTests
     [TestMethod]
     [DataRow("scan-duplicates", "--omit-resource-keys", null)]
     [DataRow("scan-scripts", "--omit-resource-keys", null)]
+    [DataRow("scan-scripts", "--path-contains", "MouthScale")]
+    [DataRow("scan-duplicates", "--path-contains", null)]
     [DataRow("scan-duplicates", "--kind", "resource_conflict")]
     [DataRow("scan-duplicates", "--kind", "script_collision")]
     [DataRow("scan-duplicates", "--kind", "damaged_file")]
@@ -529,6 +605,7 @@ public sealed class CliReadOnlyTests
     [DataRow("--severity", "risk")]
     [DataRow("--kind", "duplicate")]
     [DataRow("--limit", "1")]
+    [DataRow("--path-contains", "MouthScale")]
     [DataRow("--summary-only", null)]
     public async Task HtmlAndOutputFiltersAreRejectedBeforeWritingReports(string option, string? value)
     {
