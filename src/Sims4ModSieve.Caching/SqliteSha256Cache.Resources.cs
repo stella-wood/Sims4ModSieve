@@ -116,7 +116,7 @@ public sealed partial class SqliteSha256Cache
                     command.Parameters.AddWithValue("$path", key.Path);
                     var alternate = command.Parameters.AddWithValue("$alternate", key.Identity.Length == 0 ? key.Path : ExactPathMarker + key.Path);
                     command.CommandText = """
-                        DELETE FROM temp.staged_resources WHERE generation = $generation AND
+                        DELETE FROM temp.staged_resources WHERE generation = $generation AND path_key IN ($key, $alternate) AND
                         ((path_key = $key AND (length, write_ticks, identity) <> ($length, $ticks, $identity))
                          OR (path_key = $alternate AND path = $path));
                         """;
