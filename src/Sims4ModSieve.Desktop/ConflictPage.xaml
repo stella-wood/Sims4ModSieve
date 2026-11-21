@@ -735,8 +735,7 @@
                     <Grid x:Name="TechnicalViewport" Grid.Row="2" ClipToBounds="True" Background="Transparent" Focusable="True"
                           FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
                         <TextBlock Text="{Binding ConflictStatus}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowConflictPlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" ItemTemplate="{StaticResource ConflictRowTemplate}" Style="{StaticResource ConflictListStyle}" VirtualizingPanel.ScrollUnit="Pixel"
-                                 Tag="{Binding ConflictSearchStatus}" AlternationCount="{StaticResource SearchResultAlternationCount}"
+                        <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" Tag="{Binding ConflictSearchStatus}" ItemTemplate="{StaticResource ConflictRowTemplate}" Style="{StaticResource ConflictListStyle}" VirtualizingPanel.ScrollUnit="Pixel"
                                  PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel" PreviewMouseDown="TechnicalResults_PreviewMouseDown" PreviewKeyDown="TechnicalResults_PreviewKeyDown"
                                  Loaded="TechnicalResults_Loaded" Unloaded="TechnicalResults_Unloaded" LayoutUpdated="TechnicalResults_LayoutUpdated">
                             <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>

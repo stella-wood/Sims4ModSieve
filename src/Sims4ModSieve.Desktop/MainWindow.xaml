@@ -417,7 +417,7 @@
                             </StackPanel>
 
                             <ListBox x:Name="DuplicateGroupsList" ItemsSource="{Binding VisibleDuplicateGroups}"
-                                     Tag="{Binding DuplicateSearchStatus}" AlternationCount="{StaticResource SearchResultAlternationCount}"
+                                     Tag="{Binding DuplicateSearchStatus}"
                                      Padding="20,6,8,12"
                                      Background="Transparent"
                                      BorderThickness="0"

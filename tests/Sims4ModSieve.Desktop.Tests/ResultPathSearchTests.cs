@@ -143,19 +143,18 @@ public sealed class ResultPathSearchTests
             .SelectMany(text => text.Inlines.OfType<Run>()).Where(run => run.Background is not null).Select(run => run.Text).ToArray();
         CollectionAssert.IsSubsetOf(new[] { "Creator", "Mouth" }, matches);
         var list = Descendants<ListBox>(window).Single(control => control.Name == (conflict ? "ConflictRowsList" : "DuplicateGroupsList"));
+        list.AlternationCount = 1; // 每个已生成的容器都可能拿到 0，计数仍只能跟着真正的首项。
         var presenter = Descendants<ScrollContentPresenter>(list).First();
         var count = Descendants<TextBlock>(presenter).Single(text => text.Name == "ResultCount" && text.IsVisible);
+        Assert.AreSame(list.Items[0], count.DataContext);
         Assert.AreEqual("找到 1 组", count.Text);
         SendKey(Key.Enter);
         Assert.AreEqual(0d, Descendants<ContentPresenter>(count.Parent).First().Opacity);
         Assert.AreEqual(1d, count.Opacity);
-        if (conflict)
-        {
-            for (var attempt = 0; attempt < 50 && !search.ResultSurface!.IsHitTestVisible; attempt++)
-                await Task.Delay(10);
-            Assert.IsTrue(search.ResultSurface!.IsHitTestVisible);
-            Save(window, "result-path-search.png", (FrameworkElement)search.ResultSurface.Parent);
-        }
+        for (var attempt = 0; attempt < 50 && !search.ResultSurface!.IsHitTestVisible; attempt++)
+            await Task.Delay(10);
+        Assert.IsTrue(search.ResultSurface!.IsHitTestVisible);
+        if (conflict) Save(window, "result-path-search.png", (FrameworkElement)search.ResultSurface.Parent);
         model.GoHomeCommand.Execute(null);
         if (conflict)
         {
@@ -185,5 +184,4 @@ public sealed class ResultPathSearchTests
             await WpfTestHost.LayoutAsync(window);
         }
     });
-
 }

@@ -6,6 +6,7 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:MultiplyConverter x:Key="MultiplyConverter" />
+        <local:SearchResultCountConverter x:Key="SearchResultCountConverter" />
 
         <SolidColorBrush x:Key="WindowBrush" Color="#F6F5F2" />
         <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
@@ -42,16 +43,18 @@
         </Style>
         <ControlTemplate x:Key="SearchResultItemTemplate" TargetType="ListBoxItem">
             <StackPanel>
-                <TextBlock x:Name="ResultCount" Style="{StaticResource SearchResultCountStyle}" Margin="0,0,0,6" />
+                <TextBlock x:Name="ResultCount" Style="{StaticResource SearchResultCountStyle}" Margin="0,0,0,6">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource SearchResultCountConverter}">
+                            <Binding />
+                            <Binding Path="ItemsSource" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                            <Binding Path="Tag" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
                 <ContentPresenter Style="{StaticResource SearchResultFlashStyle}" />
             </StackPanel>
-            <ControlTemplate.Triggers>
-                <Trigger Property="ItemsControl.AlternationIndex" Value="0">
-                    <Setter TargetName="ResultCount" Property="Text" Value="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}" />
-                </Trigger>
-            </ControlTemplate.Triggers>
         </ControlTemplate>
-        <sys:Int32 x:Key="SearchResultAlternationCount">2147483647</sys:Int32>
 
         <Style x:Key="ResultVerticalScrollBarStyle" TargetType="ScrollBar">
             <Setter Property="Width" Value="12" />
