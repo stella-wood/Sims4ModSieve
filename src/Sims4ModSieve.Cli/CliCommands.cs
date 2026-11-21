@@ -2,6 +2,7 @@ using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Settings;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Caching;
+using Sims4ModSieve.FileOperations;
 using Sims4ModSieve.Packages;
 
 namespace Sims4ModSieve.Cli;
@@ -13,7 +14,8 @@ internal static class CliCommands
 
     internal static async Task<int> RunAsync(string[] args, DuplicateSettingsStore settings,
         TextWriter output, TextWriter error, string? documentsDirectory = null,
-        long? conflictGroupingMemoryBudgetBytes = null, IStorageProfile? storageProfile = null)
+        long? conflictGroupingMemoryBudgetBytes = null, IStorageProfile? storageProfile = null,
+        IRecycleBinAdapter? recycleBin = null, string? applicationDirectory = null)
     {
         if (args is [] or ["-h" or "--help"])
         {
@@ -26,7 +28,8 @@ internal static class CliCommands
         try
         {
             if (operands is ["-h" or "--help"]
-                && command is "guide" or "find-mods" or "config" or "scan-conflicts" or "scan-scripts" or "scan-duplicates"
+                && (command is "guide" or "find-mods" or "config" or "scan-conflicts" or "scan-scripts" or "scan-duplicates"
+                    || CliFileCommands.IsFileCommand(command))
                 || command == "config" && operands is ["show" or "set-mods", "-h" or "--help"])
             {
                 PrintHelp(output, command, operands.Length == 2 ? operands[0] : null);
@@ -71,6 +74,9 @@ internal static class CliCommands
                     return 0;
                 case "scan-conflicts" or "scan-scripts" or "scan-duplicates":
                     return await ScanAsync(command, operands, settings, output, error, documentsDirectory, conflictGroupingMemoryBudgetBytes, storageProfile);
+                case "list-disabled" or "disable" or "restore" or "recycle" or "undo":
+                    return await new CliFileCommands(settings.DataDirectory, recycleBin ?? new WindowsRecycleBinAdapter(),
+                        applicationDirectory).RunAsync(command, operands, output, error);
                 default:
                     throw new ArgumentException($"未知命令或参数：{string.Join(' ', args)}。请运行 --help。");
             }
@@ -195,6 +201,7 @@ internal static class CliCommands
             throw new ArgumentException($"报告路径已存在：{fullPath}");
         if (fullPath[(Path.GetPathRoot(fullPath)?.Length ?? 0)..].Contains(':')
             || Path.GetFileName(fullPath).ToLowerInvariant() is "duplicate-settings.json" or "file-management.json" or "disabled-mods.json"
+                or CliFileCommands.LogFileName or ".file-management.lock"
             || Path.GetExtension(fullPath).ToLowerInvariant() is ".package" or ".ts4script" or ".off")
             throw new ArgumentException($"报告路径必须使用报告文件名：{fullPath}");
         return fullPath;
@@ -332,8 +339,9 @@ internal static class CliCommands
             output.WriteLine("config set-mods <路径>  保存已存在的 Mods 文件夹。例：Sims4ModSieve.Cli config set-mods \"D:\\Mods\"");
         if (command is null or "guide")
             output.WriteLine("guide  阅读给 AI 助手的操作说明。例：Sims4ModSieve.Cli guide");
+        if (command is null || CliFileCommands.IsFileCommand(command)) CliFileCommands.PrintHelp(output, command);
         if (command is null) output.WriteLine("使用 <命令> --help 查看命令帮助。");
-        output.WriteLine("退出码：0 完成且无发现或命令成功，1 有发现、未分析项或读取失败，2 参数错误或无可用目录。");
+        output.WriteLine("退出码：0 成功或无发现，1 有发现、未分析项或读取失败，2 参数错误或无可用目录，3 文件操作全部或部分失败。");
     }
 
     internal sealed record ScanOptions(List<string> Sources, List<string> Extensions, string? ModsRoot,

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "dependencies": {
-    "net10.0": {
+    "net10.0-windows7.0": {
       "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
         "requested": "[10.0.14, )",
@@ -185,6 +185,12 @@
           "SharpZipLib": "[1.4.2, )"
         }
       },
+      "sims4modsieve.fileoperations": {
+        "type": "Project",
+        "dependencies": {
+          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )"
+        }
+      },
       "sims4modsieve.packages": {
         "type": "Project",
         "dependencies": {
@@ -194,7 +200,7 @@
         }
       }
     },
-    "net10.0/win-x64": {
+    "net10.0-windows7.0/win-x64": {
       "SQLitePCLRaw.lib.e_sqlite3": {
         "type": "Transitive",
         "resolved": "2.1.13",

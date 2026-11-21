@@ -64,7 +64,7 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 2. 把 [AI-GUIDE.md](AI-GUIDE.md) 给它，告诉它 Sieve 在哪里。你可以先打开说明看看它会怎么做。
 3. 直接问「帮我看看 Mods 里有没有冲突」或「我是不是重复下载了 Mod」。执行命令前，AI 可能会请你允许。
 
-命令行扫描只读。需要处理文件时，可以让 AI 先列出哪些文件需要处理，再到 Sieve 界面确认禁用或移入回收站。只在云端运行、无法访问这台电脑文件的 AI 助手无法执行本机扫描。
+命令行扫描只读。需要处理文件时，AI 可以用 Sieve 先预览要动的文件。你确认后，它可以帮你禁用、恢复或移入回收站。只在云端运行、无法访问这台电脑文件的 AI 助手无法执行本机扫描或文件操作。
 
 ## 安全与隐私
 
@@ -133,7 +133,9 @@ pwsh -NoProfile -File .\eng\package-installer.ps1
 
 ### 命令行（CLI）
 
-CLI 提供只读扫描、报告和默认 Mods 目录设置。整文件哈希、package 索引和资源内容共用已保存的扫描并发设置；没有可读并发设置时用自动档。存储探测和有限预算规则见[自动并发](docs/architecture/性能优化与缓存架构.md#41-自动并发)。标准错误输出各读取阶段的并发决定，JSON 报告字段保持原样。运行 `Sims4ModSieve.Cli.exe --help` 查看命令，运行 `guide` 查看随程序嵌入的 AI 指南。
+CLI 提供只读扫描、报告和默认 Mods 目录设置，也支持查看已禁用文件、禁用、恢复、移入 Windows 回收站及撤回最近一批删除。文件操作默认预览，确认后加 `--apply`。命令用法和操作日志位置见 [AI 指南](AI-GUIDE.md#禁用恢复或把文件移入回收站)。运行 `Sims4ModSieve.Cli.exe --help` 查看命令，运行 `guide` 查看随程序嵌入的 AI 指南。
+
+整文件哈希、package 索引和资源内容共用已保存的扫描并发设置；没有可读并发设置时用自动档。标准错误输出各读取阶段的并发决定。存储探测和有限预算规则见[自动并发](docs/architecture/性能优化与缓存架构.md#41-自动并发)。
 
 桌面程序和 CLI 的扫描可复用未变化文件的整文件及 package 资源 SHA-256。排查结果时，CLI 加 `--no-cache` 可直接计算。缓存位置和提交规则见[缓存项目说明](src/Sims4ModSieve.Caching/README.md)。
 
@@ -158,6 +160,7 @@ CLI 提供只读扫描、报告和默认 Mods 目录设置。整文件哈希、p
 src/
 ├─ Sims4ModSieve.Core/       扫描、Hash、重复分组、冲突分析和报告
 ├─ Sims4ModSieve.Packages/   DBPF 只读读取（基于 LlamaLogic.Packages）
+├─ Sims4ModSieve.FileOperations/  桌面和 CLI 共用的 Windows 文件操作
 ├─ Sims4ModSieve.Cli/        命令行入口
 └─ Sims4ModSieve.Desktop/    WPF 桌面界面
 tests/                       各模块的测试

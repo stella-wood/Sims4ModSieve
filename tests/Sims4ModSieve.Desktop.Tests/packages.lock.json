@@ -326,6 +326,7 @@
         "dependencies": {
           "Sims4ModSieve.Caching": "[0.1.0-alpha.1, )",
           "Sims4ModSieve.Core": "[0.1.0-alpha.1, )",
+          "Sims4ModSieve.FileOperations": "[0.1.0-alpha.1, )",
           "Sims4ModSieve.Packages": "[0.1.0-alpha.1, )"
         }
       },

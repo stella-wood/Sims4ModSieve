@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <DefineConstants>$(DefineConstants);CLI_STORAGE_PROFILE</DefineConstants>
   </PropertyGroup>
 
@@ -8,6 +9,7 @@
     <ProjectReference Include="..\Sims4ModSieve.Core\Sims4ModSieve.Core.csproj" />
     <ProjectReference Include="..\Sims4ModSieve.Caching\Sims4ModSieve.Caching.csproj" />
     <ProjectReference Include="..\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
+    <ProjectReference Include="..\Sims4ModSieve.FileOperations\Sims4ModSieve.FileOperations.csproj" />
     <Compile Include="..\Sims4ModSieve.Desktop\Services\WindowsStorageProfile.cs" Link="WindowsStorageProfile.cs" />
     <EmbeddedResource Include="..\..\AI-GUIDE.md" LogicalName="AI-GUIDE.md" />
     <InternalsVisibleTo Include="Sims4ModSieve.Desktop.Tests" />

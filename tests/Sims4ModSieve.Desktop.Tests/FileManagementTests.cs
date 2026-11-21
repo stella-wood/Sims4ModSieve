@@ -635,7 +635,7 @@ public sealed class FileManagementTests
         using var stream = File.Create(Path.Combine(directory, name)); encoder.Save(stream);
     }
 
-    private sealed class TemporaryRecycleBin(string directory) : IRecycleBinAdapter
+    internal sealed class TemporaryRecycleBin(string directory) : IRecycleBinAdapter
     {
         private int sequence;
         public bool QueryFails { get; set; }

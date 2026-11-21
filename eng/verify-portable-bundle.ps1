@@ -71,7 +71,7 @@ $commonAssemblies = @(
     'Sims4ModSieve.Core.dll', 'Sims4ModSieve.Packages.dll', 'System.Private.CoreLib.dll',
     'LlamaLogic.Packages.dll', 'ICSharpCode.SharpZipLib.dll', 'BCnEncoder.dll',
     'StbImageSharp.dll', 'StbImageWriteSharp.dll', 'YamlDotNet.dll',
-    'Sims4ModSieve.Caching.dll', 'Microsoft.Data.Sqlite.dll', 'SQLitePCLRaw.core.dll',
+    'Sims4ModSieve.Caching.dll', 'Sims4ModSieve.FileOperations.dll', 'Microsoft.Data.Sqlite.dll', 'SQLitePCLRaw.core.dll',
     'SQLitePCLRaw.batteries_v2.dll', 'SQLitePCLRaw.provider.e_sqlite3.dll'
 )
 $sqliteNative = Join-Path $PackageDirectory 'e_sqlite3.dll'
@@ -81,7 +81,7 @@ $null = Test-Bundle 'Sims4ModSieve.Cli' ($commonAssemblies + 'Sims4ModSieve.Cli.
 $guide = Get-Content -LiteralPath (Join-Path $PackageDirectory 'AI-GUIDE.md')
 $cli = Join-Path $PackageDirectory 'Sims4ModSieve.Cli.exe'
 $helpText = & $cli --help
-if ($LASTEXITCODE -ne 0 -or -not ($helpText -match 'scan-conflicts')) { throw 'Bundled CLI help failed.' }
+if ($LASTEXITCODE -ne 0 -or -not ($helpText -match 'scan-conflicts') -or -not ($helpText -match 'list-disabled')) { throw 'Bundled CLI help failed.' }
 $embeddedGuide = & $cli guide
 if ($LASTEXITCODE -ne 0 -or ($embeddedGuide -join "`n").TrimEnd() -cne ($guide -join "`n").TrimEnd()) {
     throw 'Bundled guide differs from the embedded guide.'
