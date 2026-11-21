@@ -572,7 +572,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     + (firstIssue.Code.EndsWith("-failed", StringComparison.Ordinal) ? "无法读取：" : "未完成检查：")
                     + $"{firstIssue.Path}\n{firstIssue.Message}";
             timingOutcome = "完成";
-            if (report.Issues.Count == 0) await CommitScanCacheAsync(cache, scanCancellation.Token);
+            await CommitScanCacheAsync(cache, scanCancellation.Token);
         }
         catch (OperationCanceledException)
         {

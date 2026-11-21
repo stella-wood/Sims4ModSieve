@@ -44,7 +44,7 @@ internal static class BenchmarkRunner
             var duplicateReport = await RunDuplicateScanAsync();
             using (ScanPerformance.Measure("基准 · 生成一致性快照"))
                 await ResultSnapshot.WriteAsync(snapshotPath, ResultSnapshot.CreateDuplicates(duplicateReport), cancellationToken);
-            if (duplicateReport.Issues.Count == 0) cache?.Commit(cancellationToken);
+            cache?.Commit(cancellationToken);
             return snapshotPath;
         }
         var packages = await new PackageConflictScanner(new PhysicalFileSystemAccess(),
@@ -70,9 +70,7 @@ internal static class BenchmarkRunner
         cancellationToken.ThrowIfCancellationRequested();
         using (ScanPerformance.Measure("基准 · 生成一致性快照"))
             await ResultSnapshot.WriteAsync(snapshotPath, ResultSnapshot.Create(duplicates, packages, contents, scripts, grouping), cancellationToken);
-        if (duplicates.Issues.Count == 0 && packages.IncompletePackageCount == 0 && packages.Issues.Count == 0
-            && scripts.IncompleteArchiveCount == 0 && scripts.Issues.Count == 0
-            && !contents.Comparisons.Any(comparison => comparison.Uncompared.Count != 0)) cache?.Commit(cancellationToken);
+        cache?.Commit(cancellationToken);
         return snapshotPath;
     }
 

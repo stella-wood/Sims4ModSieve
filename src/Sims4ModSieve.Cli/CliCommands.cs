@@ -163,7 +163,7 @@ internal static class CliCommands
         await summary.WriteLineAsync(scan.SummaryText);
         if (options.JsonPath is null && (options.HasOutputFilters || options.HideIgnored))
             await error.WriteLineAsync(scan.OutputOmissionsText);
-        if (hasSources && !scan.HasIssues) cache?.Commit();
+        if (hasSources) cache?.Commit();
         return hasSources ? scan.ExitCode : 2;
     }
 
