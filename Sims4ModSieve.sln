@@ -24,6 +24,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sims4ModSieve.Caching", "sr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sims4ModSieve.Caching.Tests", "tests\Sims4ModSieve.Caching.Tests\Sims4ModSieve.Caching.Tests.csproj", "{0D2BC7B2-9204-4ED7-83E4-ED0D5D3144B1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sims4ModSieve.FileOperations", "src\Sims4ModSieve.FileOperations\Sims4ModSieve.FileOperations.csproj", "{DAEFB830-8D44-4B93-8DC3-D7DA4E0F47AF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -74,5 +76,9 @@ Global
 		{0D2BC7B2-9204-4ED7-83E4-ED0D5D3144B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0D2BC7B2-9204-4ED7-83E4-ED0D5D3144B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0D2BC7B2-9204-4ED7-83E4-ED0D5D3144B1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DAEFB830-8D44-4B93-8DC3-D7DA4E0F47AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DAEFB830-8D44-4B93-8DC3-D7DA4E0F47AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DAEFB830-8D44-4B93-8DC3-D7DA4E0F47AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DAEFB830-8D44-4B93-8DC3-D7DA4E0F47AF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

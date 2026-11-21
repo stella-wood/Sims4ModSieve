@@ -2,7 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Sims4ModSieve.Core.Settings;
 
-namespace Sims4ModSieve.Desktop.Services;
+namespace Sims4ModSieve.FileOperations;
 
 public sealed record DeletedFileRecord(string Id, RecycleBinItem Item, long Size, DateTime DeletedAtUtc,
     DateTime? LastWriteTimeUtc = null, DisabledModRecord? DisabledMod = null);

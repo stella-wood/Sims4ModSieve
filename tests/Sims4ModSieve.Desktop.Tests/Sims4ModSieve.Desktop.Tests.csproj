@@ -24,4 +24,7 @@
     <Content Include="..\fixtures\duplicates\**\*" Link="Fixtures\Duplicates\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\src\Sims4ModSieve.Desktop\Assets\Sims4ModSieve.ico" Link="Assets\Sims4ModSieve.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <Using Include="Sims4ModSieve.FileOperations" />
+  </ItemGroup>
 </Project>

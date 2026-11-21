@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sims4ModSieve.Core.Duplicates;
 
-namespace Sims4ModSieve.Desktop.Services;
+namespace Sims4ModSieve.FileOperations;
 
 public sealed record DisabledRecycleRecord(string Id, RecycleBinItem Item, DateTime DeletedAtUtc);
 
@@ -22,7 +22,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
     Action<string>? logProtectedPath = null)
 {
     private readonly ApplicationDirectoryGuard applicationGuard = new(applicationDirectory,
-        logProtectedPath ?? UnexpectedErrorHandler.LogProtectedPath);
+        logProtectedPath);
     private readonly object gate = new();
     private readonly string ledgerPath = Path.Combine(directory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve"), "disabled-mods.json");
@@ -287,7 +287,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
         return records;
     }
 
-    internal static bool IsValidRecord(DisabledModRecord record) => Guid.TryParseExact(record.Id, "N", out _)
+    public static bool IsValidRecord(DisabledModRecord record) => Guid.TryParseExact(record.Id, "N", out _)
         && !string.IsNullOrWhiteSpace(record.OriginalPath) && Path.IsPathFullyQualified(record.OriginalPath)
         && IsModPath(record.OriginalPath) && record.Size >= 0
         && StringComparer.OrdinalIgnoreCase.Equals(Path.GetFullPath(record.OriginalPath), record.OriginalPath)

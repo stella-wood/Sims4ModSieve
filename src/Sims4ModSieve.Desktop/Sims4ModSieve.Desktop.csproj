@@ -27,4 +27,8 @@
     <ProjectReference Include="..\Sims4ModSieve.Caching\Sims4ModSieve.Caching.csproj" />
     <ProjectReference Include="..\Sims4ModSieve.Packages\Sims4ModSieve.Packages.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Using Include="Sims4ModSieve.FileOperations" />
+    <ProjectReference Include="..\Sims4ModSieve.FileOperations\Sims4ModSieve.FileOperations.csproj" />
+  </ItemGroup>
 </Project>

@@ -1,7 +1,7 @@
 using System.IO;
 using Sims4ModSieve.Core.Duplicates;
 
-namespace Sims4ModSieve.Desktop.Services;
+namespace Sims4ModSieve.FileOperations;
 
 public sealed record FileDeletionCandidate(
     string Path,
@@ -114,7 +114,7 @@ public sealed class FileActionService(
     Action<string>? logProtectedPath = null) : IFileActionService
 {
     private readonly ApplicationDirectoryGuard applicationGuard = new(applicationDirectory,
-        logProtectedPath ?? UnexpectedErrorHandler.LogProtectedPath);
+        logProtectedPath);
     private readonly FileManagementStore historyStore = historyStore ?? new FileManagementStore();
     private readonly StableFileHasher verificationHasher = new(new MetadataFileSystem(metadata));
 

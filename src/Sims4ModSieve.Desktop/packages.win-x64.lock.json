@@ -185,6 +185,12 @@
           "SharpZipLib": "[1.4.2, )"
         }
       },
+      "sims4modsieve.fileoperations": {
+        "type": "Project",
+        "dependencies": {
+          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )"
+        }
+      },
       "sims4modsieve.packages": {
         "type": "Project",
         "dependencies": {

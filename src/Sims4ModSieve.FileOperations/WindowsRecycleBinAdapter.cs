@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace Sims4ModSieve.Desktop.Services;
+namespace Sims4ModSieve.FileOperations;
 
 public sealed class WindowsRecycleBinAdapter : IRecycleBinAdapter
 {
