@@ -20,7 +20,7 @@ public sealed class SqliteSha256CacheTests
     {
         using var temp = new TempDirectory();
         var database = Path.Combine(temp.Path, "缓存", "哈希.sqlite3");
-        var cache = new SqliteSha256Cache(database, "app-1");
+        var cache = new SqliteSha256Cache(database);
         Assert.IsTrue(cache.IsAvailable);
         var path = Path.Combine(temp.Path, "中文 Mods", "Étage-Σ-𐐀.package");
         using (var scan = cache.BeginScan())
@@ -28,7 +28,7 @@ public sealed class SqliteSha256CacheTests
             Assert.IsTrue(scan.Stage(path, IdentifiedStamp, Hash.ToLowerInvariant()));
             Assert.IsTrue(scan.Commit());
         }
-        var reopened = new SqliteSha256Cache(database, "app-1");
+        var reopened = new SqliteSha256Cache(database);
         Assert.AreEqual(Hash, reopened.GetSha256(path.ToLowerInvariant(), IdentifiedStamp));
         Assert.AreEqual(Hash, reopened.GetSha256(Path.Combine(Path.GetDirectoryName(path)!, ".", Path.GetFileName(path)), IdentifiedStamp));
         Assert.AreEqual(Hash, reopened.GetSha256(path + Path.DirectorySeparatorChar, IdentifiedStamp));
@@ -190,26 +190,54 @@ public sealed class SqliteSha256CacheTests
     }
 
     [TestMethod]
-    [DataRow("app-2", "SHA-256/v1")]
-    [DataRow("app-1", "SHA-256/v2")]
-    public void VersionChangeInvalidatesOldDataAndRejectsLateCommit(string app, string algorithm)
+    public void AlgorithmVersionChangeInvalidatesOldDataAndRejectsLateCommit()
     {
         using var temp = new TempDirectory();
         var database = Path.Combine(temp.Path, "cache.sqlite3");
-        var old = new SqliteSha256Cache(database, "app-1");
+        var old = new SqliteSha256Cache(database);
         var path = Path.Combine(temp.Path, "a.package");
         Save(old, path, Stamp, Hash);
         using var late = old.BeginScan();
         Assert.IsTrue(late.Stage(path, Stamp, OtherHash));
-        var current = new SqliteSha256Cache(database, app, algorithm);
+        var current = new SqliteSha256Cache(database, "SHA-256/v2");
         Assert.IsTrue(current.IsAvailable);
         Assert.IsNull(current.GetSha256(path, Stamp));
         Assert.IsNull(old.GetSha256(path, Stamp));
         Assert.IsFalse(late.Commit());
         Save(current, path, Stamp, OtherHash);
         Assert.AreEqual(OtherHash, current.GetSha256(path, Stamp));
-        var switchedBack = new SqliteSha256Cache(database, "app-1");
+        var switchedBack = new SqliteSha256Cache(database);
         Assert.IsNull(switchedBack.GetSha256(path, Stamp));
+    }
+
+    [TestMethod]
+    public void LegacyApplicationVersionIsRemovedWithoutInvalidatingCompatibleHashes()
+    {
+        using var temp = new TempDirectory();
+        var database = Path.Combine(temp.Path, "cache.sqlite3");
+        var cache = CreateCache(temp);
+        var path = Path.Combine(temp.Path, "a.package");
+        Save(cache, path, Stamp, Hash);
+        using var scan = cache.BeginScan();
+        Assert.IsTrue(scan.Stage(path, Stamp, OtherHash));
+        using (var connection = new SqliteConnection($"Data Source={database};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "ALTER TABLE metadata ADD COLUMN application_version TEXT NOT NULL DEFAULT 'old-app';";
+            command.ExecuteNonQuery();
+        }
+
+        var reopened = CreateCache(temp);
+        Assert.IsTrue(reopened.IsAvailable);
+        Assert.AreEqual(Hash, reopened.GetSha256(path, Stamp));
+        Assert.IsTrue(scan.Commit());
+        Assert.AreEqual(OtherHash, reopened.GetSha256(path, Stamp));
+        using var inspection = new SqliteConnection($"Data Source={database};Pooling=False");
+        inspection.Open();
+        using var columns = inspection.CreateCommand();
+        columns.CommandText = "SELECT count(*) FROM pragma_table_info('metadata') WHERE name = 'application_version';";
+        Assert.AreEqual(0L, columns.ExecuteScalar());
     }
 
     [TestMethod]
@@ -247,7 +275,7 @@ public sealed class SqliteSha256CacheTests
     {
         using var temp = new TempDirectory();
         var database = Path.Combine(temp.Path, "cache.sqlite3");
-        var cache = new SqliteSha256Cache(database, "app-1");
+        var cache = new SqliteSha256Cache(database);
         Save(cache, database + "-old", Stamp, Hash);
         var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
         {
@@ -265,7 +293,7 @@ public sealed class SqliteSha256CacheTests
             if (!child.HasExited) child.Kill(entireProcessTree: true);
             await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
         }
-        var reopened = new SqliteSha256Cache(database, "app-1");
+        var reopened = new SqliteSha256Cache(database);
         Assert.IsTrue(reopened.IsAvailable);
         Assert.AreEqual(Hash, reopened.GetSha256(database + "-old", Stamp));
         Assert.IsNull(reopened.GetSha256(database + "-new-1", Stamp));
@@ -277,8 +305,8 @@ public sealed class SqliteSha256CacheTests
     {
         using var temp = new TempDirectory();
         var database = temp.WriteFile("坏缓存.sqlite3", "not a SQLite database");
-        AssertUnavailable(new SqliteSha256Cache(database, "app-1"), temp.Path);
-        AssertUnavailable(new SqliteSha256Cache(Path.Combine(database, "cache.sqlite3"), "app-1"), temp.Path);
+        AssertUnavailable(new SqliteSha256Cache(database), temp.Path);
+        AssertUnavailable(new SqliteSha256Cache(Path.Combine(database, "cache.sqlite3")), temp.Path);
         Assert.AreEqual("not a SQLite database", File.ReadAllText(database));
     }
 
@@ -287,7 +315,7 @@ public sealed class SqliteSha256CacheTests
     {
         using var temp = new TempDirectory();
         var database = Path.Combine(temp.Path, "cache.sqlite3");
-        var cache = new SqliteSha256Cache(database, "app-1");
+        var cache = new SqliteSha256Cache(database);
         Save(cache, temp.Path, Stamp, Hash);
         File.WriteAllText(database, "corrupt after initialization");
         Assert.IsNull(cache.GetSha256(temp.Path, Stamp));
@@ -299,7 +327,7 @@ public sealed class SqliteSha256CacheTests
     {
         using var temp = new TempDirectory();
         var database = Path.Combine(temp.Path, "cache.sqlite3");
-        var cache = new SqliteSha256Cache(database, "app-1");
+        var cache = new SqliteSha256Cache(database);
         Save(cache, temp.Path, Stamp, Hash);
         using (var connection = new SqliteConnection($"Data Source={database};Pooling=False"))
         {
@@ -318,7 +346,7 @@ public sealed class SqliteSha256CacheTests
     {
         using var temp = new TempDirectory();
         var database = Path.Combine(temp.Path, "cache.sqlite3");
-        var cache = new SqliteSha256Cache(database, "app-1");
+        var cache = new SqliteSha256Cache(database);
         var first = Path.Combine(temp.Path, "a.package");
         var second = Path.Combine(temp.Path, "b.package");
         Save(cache, first, Stamp, Hash);
@@ -338,7 +366,7 @@ public sealed class SqliteSha256CacheTests
             command.ExecuteNonQuery();
         }
         Assert.IsFalse(scan.Commit());
-        var reopened = new SqliteSha256Cache(database, "app-1");
+        var reopened = new SqliteSha256Cache(database);
         Assert.AreEqual(Hash, reopened.GetSha256(first, Stamp));
         Assert.IsNull(reopened.GetSha256(second, Stamp));
     }
@@ -389,7 +417,7 @@ public sealed class SqliteSha256CacheTests
     }
 
     private static SqliteSha256Cache CreateCache(TempDirectory temp) =>
-        new(Path.Combine(temp.Path, "cache.sqlite3"), "app-1");
+        new(Path.Combine(temp.Path, "cache.sqlite3"));
 
     private static void Save(SqliteSha256Cache cache, string path, FileStamp stamp, string hash)
     {

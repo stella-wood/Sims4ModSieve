@@ -6,7 +6,7 @@ internal static class CrashWorker
     public static int Main(string[] args)
     {
         if (args.Length != 1) return 2;
-        var cache = new SqliteSha256Cache(args[0], "app-1");
+        var cache = new SqliteSha256Cache(args[0]);
         using var scan = cache.BeginScan();
         for (var i = 1; i <= 2; i++)
             if (!scan.Stage(args[0] + $"-new-{i}", SqliteSha256CacheTests.Stamp, SqliteSha256CacheTests.Hash)) return 1;

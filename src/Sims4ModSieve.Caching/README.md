@@ -3,7 +3,7 @@
 独立的 .NET 10 存储项目；桌面程序、CLI 和扫描器均未引用它。只存整文件 SHA-256，不负责读取源文件、判断文件是否稳定或授权删除。
 
 ```csharp
-var cache = new SqliteSha256Cache(databasePath, applicationVersion, "SHA-256/v1");
+var cache = new SqliteSha256Cache(databasePath, "SHA-256/v1");
 using var scan = cache.BeginScan();
 string? hit = scan.GetSha256(filePath, currentStamp, cancellationToken);
 scan.Stage(filePath, successfulHash.Stamp, successfulHash.Sha256);
@@ -16,7 +16,7 @@ bool published = scan.Commit(cancellationToken);
 - 文件版本由完整路径、大小、UTC 修改时间 ticks、身份是否存在及卷序列号 / FileIdLow / FileIdHigh 组成。身份为 null 与各字段为零的真实身份不同，UInt64 用定长十六进制保存。
 - 路径使用完整路径并去尾分隔符，最长 32768 个 UTF-16 字符。无文件身份时按 `Ordinal` 精确比较路径，有身份时按 `OrdinalIgnoreCase` 比较。SQLite 排序规则和命中后的路径核对都使用对应的 .NET 比较规则。硬链接仍按路径分别存储，缓存不跟随重解析点。
 - 仅接受 64 位十六进制 SHA-256，数据库保存 32 字节摘要及覆盖文件版本与摘要的记录校验值。读取前限制 BLOB 长度，异常记录视为故障。
-- 程序版本、算法规则版本、存储结构版本或路径规则版本变化时，在事务内换代并清空旧记录；降回旧版本也不会重新启用历史记录。旧存储对象不能查询或提交新一代的数据。
+- 缓存失效条件见[版本和键](../../docs/architecture/性能优化与缓存架构.md#62-版本和键)。
 - 每个 `Scan` 复用一条关闭连接池的独立连接，查询只读已提交记录，写入先存入 SQLite TEMP 表。同一个 `Scan` 的并发调用串行使用连接，无需跨源文件 IO 持有写事务。TEMP 可由 SQLite 写到临时文件。扫描外的单次查询可用 `cache.GetSha256`。
 - `Commit` 在一个短事务内整体发布，结束后关闭连接；重复提交返回 false。`Dispose`、提交前取消或写入失败不改变已提交数据。进程被杀后临时表消失，主数据库依靠 WAL 恢复，暂存数据不会被读取。
 - 提交前最后检查取消；取消与已完成的原子提交同时发生时，允许保留整批有效数据。取消抛出 `OperationCanceledException`，不伪装成存储故障。

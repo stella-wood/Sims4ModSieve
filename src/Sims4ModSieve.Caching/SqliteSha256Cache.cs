@@ -23,10 +23,8 @@ public sealed class SqliteSha256Cache
     private readonly string _generation = Guid.NewGuid().ToString("N");
     private volatile bool _available;
 
-    public SqliteSha256Cache(string databasePath, string applicationVersion,
-        string algorithmVersion = "SHA-256/v1")
+    public SqliteSha256Cache(string databasePath, string algorithmVersion = "SHA-256/v1")
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(applicationVersion);
         ArgumentException.ThrowIfNullOrWhiteSpace(algorithmVersion);
         var fullPath = Path.GetFullPath(databasePath);
         _connectionString = new SqliteConnectionStringBuilder
@@ -48,15 +46,21 @@ public sealed class SqliteSha256Cache
             command.CommandText = """
                 CREATE TABLE IF NOT EXISTS metadata
                 (id INTEGER PRIMARY KEY CHECK(id = 1), generation TEXT NOT NULL,
-                 application_version TEXT NOT NULL, algorithm_version TEXT NOT NULL,
+                 algorithm_version TEXT NOT NULL,
                  schema_version INTEGER NOT NULL, path_key_version INTEGER NOT NULL) STRICT;
                 """ + "CREATE TABLE IF NOT EXISTS hashes " + TableDefinition + ";";
             command.ExecuteNonQuery();
+            // Remove the obsolete version while keeping compatible hashes in the same generation.
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('metadata') WHERE name = 'application_version');";
+            if (Equals(command.ExecuteScalar(), 1L))
+            {
+                command.CommandText = "ALTER TABLE metadata DROP COLUMN application_version;";
+                command.ExecuteNonQuery();
+            }
             command.CommandText = """
-                SELECT generation FROM metadata WHERE id = 1 AND application_version = $app
-                AND algorithm_version = $algorithm AND schema_version = $schema AND path_key_version = $path;
+                SELECT generation FROM metadata WHERE id = 1 AND algorithm_version = $algorithm
+                AND schema_version = $schema AND path_key_version = $path;
                 """;
-            command.Parameters.AddWithValue("$app", applicationVersion);
             command.Parameters.AddWithValue("$algorithm", algorithmVersion);
             command.Parameters.AddWithValue("$schema", SchemaVersion);
             command.Parameters.AddWithValue("$path", PathKeyVersion);
@@ -66,7 +70,8 @@ public sealed class SqliteSha256Cache
             {
                 command.CommandText = """
                     DELETE FROM hashes;
-                    INSERT OR REPLACE INTO metadata VALUES(1, $generation, $app, $algorithm, $schema, $path);
+                    INSERT OR REPLACE INTO metadata (id, generation, algorithm_version, schema_version, path_key_version)
+                    VALUES(1, $generation, $algorithm, $schema, $path);
                     """;
                 command.Parameters.AddWithValue("$generation", _generation);
                 command.ExecuteNonQuery();
