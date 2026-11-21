@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Sims4ModSieve.Caching;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Services;
 
@@ -20,6 +21,7 @@ internal static class Program
             Console.WriteLine("    --sample-id <id> [--runs 3] [--mods-root <directory>] [--baseline <previous-output>]");
             Console.WriteLine("    [--cancel-after-ms <milliseconds>] [--revision <commit>] [--storage <description>]");
             Console.WriteLine("    [--scope all|duplicates] (default: all)");
+            Console.WriteLine("    [--cache enabled|disabled] (default: disabled)");
             Console.WriteLine("    [--hash-concurrency auto|1|2|4|8] (default: auto)");
             Console.WriteLine("    [--index-concurrency auto|1|2|4|8] [--content-concurrency auto|1|2|4|8] (default: legacy calls)");
             return 0;
@@ -65,6 +67,8 @@ internal static class Program
         var cancelAfter = PositiveInt(options, "--cancel-after-ms");
         var scope = One(options, "--scope") ?? "all";
         if (scope is not ("all" or "duplicates")) throw new ArgumentException("--scope must be all or duplicates.");
+        var cacheMode = One(options, "--cache") ?? "disabled";
+        if (cacheMode is not ("enabled" or "disabled")) throw new ArgumentException("--cache must be enabled or disabled.");
         var concurrencyLabel = One(options, "--hash-concurrency") ?? "auto";
         var hashConcurrency = ParseConcurrency(concurrencyLabel, "--hash-concurrency");
         var indexConcurrency = One(options, "--index-concurrency") is { } indexLabel
@@ -99,10 +103,16 @@ internal static class Program
             {
                 var snapshotPath = Path.Combine(output, $"snapshot-{iteration:D2}.json");
                 var storage = new WindowsStorageProfile();
+                CachingStableFileHasher? hasher = null;
                 var measurement = await BenchmarkRunner.MeasureAsync(
-                    token => BenchmarkRunner.CaptureAsync(sources, One(options, "--mods-root"), token, snapshotPath, scope,
-                        hashConcurrency, storage, indexConcurrency, contentConcurrency),
+                    async token =>
+                    {
+                        using var cache = hasher = cacheMode == "enabled" ? CachingStableFileHasher.Open(output) : null;
+                        return await BenchmarkRunner.CaptureAsync(sources, One(options, "--mods-root"), token, snapshotPath,
+                            scope, hashConcurrency, storage, indexConcurrency, contentConcurrency, cache);
+                    },
                     cancelAfter, lifetime.Token, storage);
+                measurement = measurement with { CacheHits = hasher?.Hits ?? 0, CacheMisses = hasher?.Misses ?? 0 };
                 measurements.Add(measurement);
                 await File.WriteAllTextAsync(Path.Combine(output, $"run-{iteration:D2}.log"), measurement.TimingLog);
                 await WriteJsonAsync(Path.Combine(output, $"run-{iteration:D2}.json"), measurement);
@@ -149,7 +159,7 @@ internal static class Program
             CancellationMedianMs = measurements.Any(run => run.CancellationLatencyMs is not null)
                 ? (double?)BenchmarkRunner.Median(measurements.Where(run => run.CancellationLatencyMs is not null).Select(run => run.CancellationLatencyMs!.Value))
                 : null,
-            Cache = "disabled", OsPageCache = "uncontrolled",
+            Cache = cacheMode, OsPageCache = "uncontrolled",
             UiAndTrueDiskBaseline = "not measured; collect on Windows",
             MetricNotes = "Total includes streaming snapshot serialization and its file write; working set is process lifetime peak; handles are start/end observations, not a peak.",
         });
@@ -184,7 +194,7 @@ internal static class Program
     private static Dictionary<string, List<string>> Parse(string[] args)
     {
         string[] allowed = ["--source", "--output", "--sample-id", "--runs", "--mods-root", "--baseline",
-            "--cancel-after-ms", "--revision", "--storage", "--scope", "--hash-concurrency", "--index-concurrency", "--content-concurrency"];
+            "--cancel-after-ms", "--revision", "--storage", "--scope", "--hash-concurrency", "--index-concurrency", "--content-concurrency", "--cache"];
         var options = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (var index = 1; index < args.Length; index += 2)
         {

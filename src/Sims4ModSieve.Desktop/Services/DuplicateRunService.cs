@@ -10,6 +10,7 @@ public sealed record DuplicateRunInput(
 {
     public DuplicateHashConcurrency HashConcurrency { get; init; }
     internal WindowsStorageProfile? StorageProfile { get; init; }
+    internal IStableFileHasher? FileHasher { get; init; }
 }
 
 public interface IDuplicateRunService
@@ -40,7 +41,8 @@ public sealed class DuplicateRunService(DuplicateScanner scanner) : IDuplicateRu
                 Label: source.Label))
             .ToArray();
 
-        return scanner.ScanAsync(
+        var runScanner = input.FileHasher is { } hasher ? DuplicateScanner.CreateDefault(hasher) : scanner;
+        return runScanner.ScanAsync(
             new DuplicateScanRequest(sources, input.ModsRoot, IncludedExtensions)
             {
                 HashConcurrency = input.HashConcurrency,

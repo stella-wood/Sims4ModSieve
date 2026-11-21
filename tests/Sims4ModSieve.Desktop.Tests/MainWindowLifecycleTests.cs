@@ -1,4 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Caching;
+using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Desktop.ViewModels;
 using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
@@ -26,6 +28,30 @@ public sealed class MainWindowLifecycleTests
         await WpfTestHost.LayoutAsync(window);
         Assert.IsFalse(window.IsVisible);
         Assert.AreEqual(1, closed);
+    });
+
+    [TestMethod]
+    public Task ClosingDuringScanCancelsAndDiscardsStagedHashes() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var mods = files.Folder("Mods");
+        var path = Path.Combine(mods, "a.package");
+        File.WriteAllText(path, "same");
+        files.Store.Save(new(mods, []));
+        var run = new WaitingScan(path);
+        var model = new MainWindowViewModel(run, new Picker(), files.Store, scanCacheDirectory: files.Store.DataDirectory);
+        var window = OpenWindow(model);
+        var scan = model.StartScanCommand.ExecuteAsync();
+        await run.Staged.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        window.Close();
+        await scan.WaitAsync(TimeSpan.FromSeconds(5));
+        await WpfTestHost.LayoutAsync(window);
+
+        Assert.IsFalse(window.IsVisible);
+        Assert.AreEqual("扫描已取消", model.StatusText);
+        var cache = new SqliteSha256Cache(Path.Combine(files.Store.DataDirectory, "cache", "sha256.sqlite3"));
+        Assert.IsTrue(cache.IsAvailable);
+        Assert.IsNull(cache.GetSha256(path, new PhysicalFileSystemAccess().GetFileStamp(path)));
     });
 
     [TestMethod]
@@ -58,6 +84,20 @@ public sealed class MainWindowLifecycleTests
         StringAssert.Contains(model.FileActionStatusText, "已移入回收站 1 个文件");
         Assert.IsFalse(model.IsBusy);
     });
+
+    private sealed class WaitingScan(string path) : IDuplicateRunService
+    {
+        public TaskCompletionSource Staged { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<DuplicateReport> RunAsync(DuplicateRunInput input, IProgress<DuplicateScanProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            await input.FileHasher!.HashAsync(path, cancellationToken);
+            Staged.SetResult();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException();
+        }
+    }
 
     private sealed class WaitingRecycleBin(string directory) : IRecycleBinAdapter
     {

@@ -211,7 +211,9 @@ public sealed partial class MainWindowViewModel
         var stamps = candidates.ToDictionary(candidate => candidate.Path,
             candidate => new FileStamp(candidate.ExpectedSize, candidate.ExpectedLastWriteTimeUtc, candidate.ExpectedIdentity),
             StringComparer.OrdinalIgnoreCase);
-        await DisableFilesAsync(candidates.Select(candidate => candidate.Path).ToArray(), stamps, confirmed: true);
+        var hashes = candidates.Where(candidate => candidate.ExpectedSha256 is not null)
+            .ToDictionary(candidate => candidate.Path, candidate => candidate.ExpectedSha256!, StringComparer.OrdinalIgnoreCase);
+        await DisableFilesAsync(candidates.Select(candidate => candidate.Path).ToArray(), stamps, confirmed: true, expectedHashes: hashes);
         ConflictFileActionStatusText = FileManagementFeedback;
         if (disabledRecords.Count > before) ClearConflictSelection();
     }

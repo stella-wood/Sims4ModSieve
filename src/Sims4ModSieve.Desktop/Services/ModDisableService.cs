@@ -27,6 +27,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
     private readonly string ledgerPath = Path.Combine(directory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve"), "disabled-mods.json");
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly StableFileHasher VerificationHasher = new(new PhysicalFileSystemAccess());
 
     public DisabledModsResult Load()
     {
@@ -129,7 +130,8 @@ public sealed class ModDisableService(string? directory = null, string? applicat
     }
 
     public ModDisableBatchResult Disable(IReadOnlyList<string> paths,
-        IReadOnlyDictionary<string, FileStamp>? expectedStamps = null)
+        IReadOnlyDictionary<string, FileStamp>? expectedStamps = null,
+        IReadOnlyDictionary<string, string>? expectedHashes = null)
     {
         lock (gate)
         {
@@ -157,6 +159,14 @@ public sealed class ModDisableService(string? directory = null, string? applicat
                         if (!expectedStamps.TryGetValue(original, out var expected)
                             || expected.Identity is null || expected.Length != stamp.Size
                             || expected.LastWriteTimeUtc != stamp.Modified || expected.Identity != stamp.Identity)
+                            throw new IOException("文件在扫描后发生变化，请重新扫描");
+                    }
+                    if (expectedHashes?.TryGetValue(original, out var expectedHash) == true)
+                    {
+                        var actual = VerificationHasher.HashAsync(original).GetAwaiter().GetResult();
+                        if (!StringComparer.OrdinalIgnoreCase.Equals(actual.Sha256, expectedHash))
+                            throw new IOException("文件内容在扫描后发生变化，请重新扫描");
+                        if (actual.Stamp != new FileStamp(stamp.Size, stamp.Modified, stamp.Identity))
                             throw new IOException("文件在扫描后发生变化，请重新扫描");
                     }
                     if (TryReadStamp(original + ".off") is not null) throw new IOException("禁用目标已存在，未覆盖");

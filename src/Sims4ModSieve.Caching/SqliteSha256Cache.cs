@@ -219,6 +219,7 @@ public sealed class SqliteSha256Cache
         private readonly SqliteSha256Cache _owner;
         private readonly object _gate = new();
         private SqliteConnection? _connection;
+        private bool _hasStagedRows;
 
         internal Scan(SqliteSha256Cache owner, SqliteConnection? connection)
         {
@@ -261,14 +262,18 @@ public sealed class SqliteSha256Cache
                 {
                     using var command = _connection.CreateCommand();
                     command.CommandText = """
+                        DELETE FROM temp.staged WHERE generation = $generation AND path_key IN ($key, $alternate)
+                        AND (path_key = $key OR path = $path);
                         INSERT OR REPLACE INTO temp.staged
                         VALUES($generation, $key, $path, $length, $ticks, $identity, $sha, $checksum);
                         """;
                     _owner.BindKey(command, key);
+                    command.Parameters.AddWithValue("$alternate", key.Identity.Length == 0 ? key.Path : ExactPathMarker + key.Path);
                     command.Parameters.AddWithValue("$path", key.Path);
                     command.Parameters.AddWithValue("$sha", hash);
                     command.Parameters.AddWithValue("$checksum", key.Checksum(hash));
                     command.ExecuteNonQuery();
+                    _hasStagedRows = true;
                     return true;
                 }
                 catch (Exception ex) when (IsStorageFailure(ex))
@@ -288,6 +293,7 @@ public sealed class SqliteSha256Cache
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (!_owner._available || _connection is null) return false;
+                    if (!_hasStagedRows) return true;
                     using var transaction = _connection.BeginTransaction();
                     using var command = _connection.CreateCommand();
                     command.Transaction = transaction;
@@ -297,7 +303,15 @@ public sealed class SqliteSha256Cache
                         _owner._available = false;
                         return false;
                     }
-                    command.CommandText = "INSERT OR REPLACE INTO main.hashes SELECT * FROM temp.staged;";
+                    // Across identity modes, only an exact path match can retire an older version.
+                    command.CommandText = """
+                        DELETE FROM main.hashes WHERE generation = $generation
+                        AND path_key IN (SELECT path_key FROM temp.staged);
+                        DELETE FROM main.hashes WHERE generation = $generation
+                        AND (path_key, path) IN (SELECT CASE WHEN identity = '' THEN path ELSE ':' || path END, path FROM temp.staged);
+                        INSERT INTO main.hashes SELECT * FROM temp.staged;
+                        """;
+                    command.Parameters.AddWithValue("$generation", _owner._generation);
                     command.ExecuteNonQuery();
                     // Cancellation after this check may race with the complete atomic publication.
                     cancellationToken.ThrowIfCancellationRequested();

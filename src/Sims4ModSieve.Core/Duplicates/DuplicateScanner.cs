@@ -10,12 +10,12 @@ public sealed class DuplicateScanner(
 {
     private readonly SourceFileDiscovery _discovery = new(fileSystem, applicationDirectory);
 
-    public static DuplicateScanner CreateDefault()
+    public static DuplicateScanner CreateDefault(IStableFileHasher? fileHasher = null)
     {
         var fileSystem = new PhysicalFileSystemAccess();
         return new DuplicateScanner(
             fileSystem,
-            new StableFileHasher(fileSystem),
+            fileHasher ?? new StableFileHasher(fileSystem),
             new DuplicateSelectionService());
     }
 

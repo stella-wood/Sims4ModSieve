@@ -1,5 +1,4 @@
 using System.IO;
-using System.Security.Cryptography;
 using Sims4ModSieve.Core.Duplicates;
 
 namespace Sims4ModSieve.Desktop.Services;
@@ -117,6 +116,17 @@ public sealed class FileActionService(
     private readonly ApplicationDirectoryGuard applicationGuard = new(applicationDirectory,
         logProtectedPath ?? UnexpectedErrorHandler.LogProtectedPath);
     private readonly FileManagementStore historyStore = historyStore ?? new FileManagementStore();
+    private readonly StableFileHasher verificationHasher = new(new MetadataFileSystem(metadata));
+
+    private sealed class MetadataFileSystem(IFileMetadataAccess metadata) : IFileSystemAccess
+    {
+        public FileStamp GetFileStamp(string path) => metadata.GetFileStamp(path);
+        public Stream OpenRead(string path) => metadata.OpenRead(path);
+        public bool DirectoryExists(string path) => throw new NotSupportedException();
+        public IReadOnlyList<string> EnumerateFileSystemEntries(string directory) => throw new NotSupportedException();
+        public FileAttributes GetAttributes(string path) => throw new NotSupportedException();
+    }
+
     private List<DeletedFileRecord>? history;
     private IReadOnlyList<RecycleBinItem> lastDeletedItems = Array.Empty<RecycleBinItem>();
 
@@ -220,11 +230,15 @@ public sealed class FileActionService(
                 {
                     if (candidate.ExpectedSha256 is { } expectedHash)
                     {
-                        await using var stream = metadata.OpenRead(candidate.Path);
-                        var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
-                        if (!StringComparer.OrdinalIgnoreCase.Equals(actualHash, expectedHash))
+                        var actual = await verificationHasher.HashAsync(candidate.Path, cancellationToken).ConfigureAwait(false);
+                        if (!StringComparer.OrdinalIgnoreCase.Equals(actual.Sha256, expectedHash))
                         {
                             preparationFailures.Add(new(candidate.Path, "文件内容在扫描后发生变化，请重新扫描"));
+                            continue;
+                        }
+                        if (actual.Stamp != new FileStamp(candidate.ExpectedSize, candidate.ExpectedLastWriteTimeUtc, candidate.ExpectedIdentity))
+                        {
+                            preparationFailures.Add(new(candidate.Path, "文件在扫描后发生变化，请重新扫描"));
                             continue;
                         }
                         refreshed = Preflight([candidate], []);

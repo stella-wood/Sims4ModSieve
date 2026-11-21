@@ -1,7 +1,9 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Caching;
 using Sims4ModSieve.Cli;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
@@ -18,6 +20,64 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class CliReadOnlyTests
 {
+    [TestMethod]
+    public async Task DuplicateCommandBypassesCacheOnRequestAndFallsBackForBadDatabase()
+    {
+        using var temp = new TempDirectory();
+        var first = temp.WriteFile("Mods/a.package", "same");
+        temp.WriteFile("Mods/b.package", "same");
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var args = new[] { "scan-duplicates", "--source", Path.GetDirectoryName(first)!, "--json", "-" };
+        var database = Path.Combine(settings.DataDirectory, "cache", "sha256.sqlite3");
+        Assert.AreEqual(1, (await Run(settings, [.. args, "--no-cache"])).ExitCode);
+        Assert.IsFalse(File.Exists(database));
+
+        Assert.AreEqual(1, (await Run(settings, args)).ExitCode);
+        var fileSystem = new PhysicalFileSystemAccess();
+        var stamp = fileSystem.GetFileStamp(first);
+        var cache = new SqliteSha256Cache(database);
+        Assert.IsNotNull(cache.GetSha256(first, stamp));
+        File.WriteAllText(first, "diff");
+        File.SetLastWriteTimeUtc(first, stamp.LastWriteTimeUtc);
+        Assert.AreEqual(stamp, fileSystem.GetFileStamp(first));
+        Assert.AreEqual(1, (await Run(settings, args)).ExitCode);
+        var uncached = await Run(settings, [.. args, "--no-cache"]);
+        Assert.AreEqual(0, uncached.ExitCode);
+
+        File.WriteAllText(database, "corrupt");
+        var fallback = await Run(settings, args);
+        Assert.AreEqual(uncached.ExitCode, fallback.ExitCode);
+        Assert.AreEqual(uncached.Error, fallback.Error);
+        var expected = JsonNode.Parse(uncached.Output)!.AsObject();
+        var actual = JsonNode.Parse(fallback.Output)!.AsObject();
+        foreach (var key in new[] { "startedAtUtc", "completedAtUtc" })
+        {
+            expected.Remove(key);
+            actual.Remove(key);
+        }
+        Assert.IsTrue(JsonNode.DeepEquals(expected, actual));
+        Assert.AreEqual("corrupt", File.ReadAllText(database));
+    }
+
+    [TestMethod]
+    public async Task DuplicateCommandDoesNotCommitHashesFromPartialScan()
+    {
+        using var temp = new TempDirectory();
+        var first = temp.WriteFile("Mods/a.package", "same");
+        temp.WriteFile("Mods/b.package", "same");
+        var settings = new DuplicateSettingsStore(temp.Path);
+
+        var scan = await Run(settings, "scan-duplicates", "--source", Path.GetDirectoryName(first)!,
+            "--source", Path.Combine(temp.Path, "missing"), "--json", "-");
+
+        using var json = JsonDocument.Parse(scan.Output);
+        Assert.AreEqual(1, scan.ExitCode);
+        Assert.AreEqual(1, json.RootElement.GetProperty("groupCount").GetInt32());
+        Assert.IsTrue(json.RootElement.GetProperty("issueCount").GetInt32() > 0);
+        var cache = new SqliteSha256Cache(Path.Combine(settings.DataDirectory, "cache", "sha256.sqlite3"));
+        Assert.IsNull(cache.GetSha256(first, new PhysicalFileSystemAccess().GetFileStamp(first)));
+    }
+
     [TestMethod]
     public async Task ConflictAndScriptCommandsMatchDesktopCardsAndListWholeFileHashes()
     {

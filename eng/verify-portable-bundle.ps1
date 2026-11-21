@@ -70,8 +70,12 @@ function Test-Bundle([string]$name, [string[]]$requiredAssemblies, [string[]]$re
 $commonAssemblies = @(
     'Sims4ModSieve.Core.dll', 'Sims4ModSieve.Packages.dll', 'System.Private.CoreLib.dll',
     'LlamaLogic.Packages.dll', 'ICSharpCode.SharpZipLib.dll', 'BCnEncoder.dll',
-    'StbImageSharp.dll', 'StbImageWriteSharp.dll', 'YamlDotNet.dll'
+    'StbImageSharp.dll', 'StbImageWriteSharp.dll', 'YamlDotNet.dll',
+    'Sims4ModSieve.Caching.dll', 'Microsoft.Data.Sqlite.dll', 'SQLitePCLRaw.core.dll',
+    'SQLitePCLRaw.batteries_v2.dll', 'SQLitePCLRaw.provider.e_sqlite3.dll'
 )
+$sqliteNative = Join-Path $PackageDirectory 'e_sqlite3.dll'
+if (-not (Test-Path -LiteralPath $sqliteNative -PathType Leaf)) { throw 'Missing native SQLite library.' }
 $headerOffset = Test-Bundle 'Sims4ModSieve' ($commonAssemblies + @('Sims4ModSieve.dll', 'PresentationFramework.dll')) @('Microsoft.NETCore.App', 'Microsoft.WindowsDesktop.App')
 $null = Test-Bundle 'Sims4ModSieve.Cli' ($commonAssemblies + 'Sims4ModSieve.Cli.dll') @('Microsoft.NETCore.App')
 $guide = Get-Content -LiteralPath (Join-Path $PackageDirectory 'AI-GUIDE.md')

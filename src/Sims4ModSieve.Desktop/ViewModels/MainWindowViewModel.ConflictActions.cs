@@ -128,8 +128,13 @@ public sealed partial class MainWindowViewModel
         if (record is null)
         {
             if ((await RefreshMissingResultMembersAsync([row.File.Path], fromConflicts: true)).Count == 0) return;
+            var duplicateHash = conflictSession.Cards.FirstOrDefault(card => card.Key == row.OwnerKey)?.Duplicate?.Sha256;
             await DisableFilesAsync([row.File.Path],
-                new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase) { [row.File.Path] = stamp });
+                new Dictionary<string, FileStamp>(StringComparer.OrdinalIgnoreCase) { [row.File.Path] = stamp },
+                expectedHashes: duplicateHash is null ? null : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [row.File.Path] = duplicateHash,
+                });
         }
         else await RestoreDisabledFilesAsync([record.Id]);
         ConflictFileActionStatusText = FileManagementFeedback;

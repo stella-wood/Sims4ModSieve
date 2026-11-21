@@ -16,7 +16,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     IReadOnlySet<string> ignoredPaths, CliCommands.ScanOptions options,
     long? memoryBudgetBytes = null,
     Action<ConflictGroupingSize>? sizeObserved = null, Action<string>? memoryObserved = null,
-    ConflictScanOptions? scanOptions = null)
+    ConflictScanOptions? scanOptions = null, IStableFileHasher? fileHasher = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -34,7 +34,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     };
     private readonly List<ReportIssue> issues = [];
     private readonly HashSet<(string Path, string Code, string? Entry)> issueKeys = [];
-    private readonly StableFileHasher hasher = new(new PhysicalFileSystemAccess());
+    private readonly IStableFileHasher hasher = fileHasher ?? new StableFileHasher(new PhysicalFileSystemAccess());
     private IReadOnlyList<ScanSourceSnapshot> sources = [];
     private DuplicateReport? duplicates;
     public ConflictGroupingSize? GroupingSize { get; private set; }
@@ -49,6 +49,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     private int AbnormalCount => abnormalGroupCount + issues.Count(issue => issue.Severity == "abnormal");
     private bool Visible(string path) => !options.HideIgnored || !ignoredPaths.Contains(path);
     public int ExitCode => groupCount == 0 && issues.Count == 0 ? 0 : 1;
+    public bool HasIssues => issues.Count != 0;
     public IReadOnlyList<ScanSourceSnapshot> Sources => sources;
 
     private bool Complete => GroupingSize?.ExceedsLimit != true && !options.HasOutputFilters && !options.HideIgnored;
@@ -77,6 +78,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     public async Task RunAsync(IReadOnlyList<ScanSource> scanSources, string? modsRoot, IReadOnlyCollection<string> extensions)
     {
         startedAtUtc = DateTime.UtcNow;
+        var duplicateScanner = DuplicateScanner.CreateDefault(hasher);
         var snapshot = scanOptions ?? new ConflictScanOptions(StorageProfile: new WindowsStorageProfile());
         DuplicateScanRequest DuplicateRequest(IReadOnlyCollection<string> included) => new(scanSources, modsRoot, included)
         {
@@ -86,7 +88,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
         };
         if (command == "scan-duplicates")
         {
-            duplicates = await DuplicateScanner.CreateDefault().ScanAsync(DuplicateRequest(extensions));
+            duplicates = await duplicateScanner.ScanAsync(DuplicateRequest(extensions));
             sources = duplicates.Sources;
             discoveredFileCount = duplicates.DiscoveredFileCount;
             hashedFileCount = duplicates.HashedFileCount;
@@ -117,7 +119,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
 
             if (packages is not null && contents is not null)
             {
-                var report = await DuplicateScanner.CreateDefault().ScanAsync(DuplicateRequest([".package", ".ts4script"]));
+                var report = await duplicateScanner.ScanAsync(DuplicateRequest([".package", ".ts4script"]));
                 hashedFileCount = report.HashedFileCount;
                 try
                 {
