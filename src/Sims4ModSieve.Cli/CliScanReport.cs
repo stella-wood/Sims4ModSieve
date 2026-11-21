@@ -56,8 +56,11 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     private bool Matches(string kind, string severity) =>
         (options.Kinds.Count == 0 || options.Kinds.Contains(kind))
         && (options.Severities.Count == 0 || options.Severities.Contains(severity));
+    private readonly PathSearch pathSearch = new(options.PathContains ?? "");
+    private int PathRank(IEnumerable<string> paths) => pathSearch.Rank(paths.Where(Visible));
     private IEnumerable<ReportGroup> OutputGroups => options.SummaryOnly ? []
-        : groups.Where(group => Matches(group.Kind, group.Severity)).Take(options.Limit ?? int.MaxValue);
+        : groups.Where(group => group.PathRank >= 0 && Matches(group.Kind, group.Severity))
+            .OrderByDescending(group => group.PathRank).Take(options.Limit ?? int.MaxValue);
     private IEnumerable<ReportIssue> OutputIssues => options.SummaryOnly ? []
         : issues.Where(issue => (!issue.IsFile || Visible(issue.Path)) && Matches(issue.Kind, issue.Severity));
     private int OmittedGroupCount => groupCount - OutputGroups.Count();
@@ -238,7 +241,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                         relation.Pair.FirstPath, relation.Pair.SecondPath, relation.Overlap,
                         relation.Pair.DifferentResourceCount, relation.Pair.IdenticalResourceCount, relation.Pair.IncompleteResourceCount,
                     }),
-            }));
+            }, PathRank(group.Members.Select(member => member.Path))));
         }
 
         foreach (var group in duplicateGroups)
@@ -288,7 +291,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                         contentSha256 = occurrence.Sha256, issueCode = occurrence.Issue?.Code,
                     }),
                 }),
-            }));
+            }, PathRank(members.Select(file => file.Path))));
         }
     }
 
@@ -315,7 +318,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             suggestedKeepPath = kept,
             suggestedDeletePaths = kept is null ? [] : group.SuggestedDeletePaths.Where(Visible).ToArray(),
             group.ReclaimableBytes,
-        }));
+        }, PathRank(group.Files.Select(file => file.Path))));
     }
 
     private void CountGroup(string severity)
@@ -404,7 +407,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             complete = Complete, omittedGroupCount = OmittedGroupCount, omittedIssueCount = OmittedIssueCount,
             filters = new
             {
-                severity = options.Severities, kind = options.Kinds, options.Limit, options.HideIgnored,
+                severity = options.Severities, kind = options.Kinds, options.Limit, options.HideIgnored, options.PathContains,
                 options.OmitResourceKeys, options.SummaryOnly,
             },
             severityCounts = SeverityCounts, issueCount = issues.Count,
@@ -427,7 +430,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
         return DuplicateHtmlReportRenderer.Render(report);
     }
 
-    private sealed record ReportGroup(string Kind, string Severity, object Detail);
+    private sealed record ReportGroup(string Kind, string Severity, object Detail, int PathRank);
     private sealed record ReportFile(string Path, string? Sha256, long? Size, DateTime? LastWriteTimeUtc, bool Ignored);
     private sealed record ReportIssue(string Path, string Code, string Message, string Stage, string? Entry,
         bool IsFile, string Kind, string Severity, ConflictGroupingSize? GroupingSize = null);

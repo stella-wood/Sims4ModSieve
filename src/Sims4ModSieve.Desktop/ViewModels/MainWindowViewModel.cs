@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using Sims4ModSieve.Caching;
 using Sims4ModSieve.Core.Duplicates;
+using Sims4ModSieve.Core.Reporting;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Scripts;
@@ -109,9 +110,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
             exception => ReportUnexpectedError("扫描没有完成", exception),
             CanStartScan);
         CancelScanCommand = new RelayCommand(_ => scanCancellation?.Cancel(), _ => IsBusy);
-        ApplySuggestionsCommand = new RelayCommand(_ => ApplySuggestions(), _ => Groups.Count > 0 && !IsBusy);
+        ApplySuggestionsCommand = new RelayCommand(_ => ApplySuggestions(), _ => VisibleDuplicateGroups.Count > 0 && !IsBusy);
         ClearSelectionCommand = new RelayCommand(_ => ClearSelection(), _ => SelectedFileCount > 0 && !IsBusy);
-        ToggleAllGroupsCommand = new RelayCommand(_ => ToggleAllGroups(), _ => Groups.Count > 0 && !IsBusy);
+        ToggleAllGroupsCommand = new RelayCommand(_ => ToggleAllGroups(), _ => VisibleDuplicateGroups.Count > 0 && !IsBusy);
         DeleteSelectedCommand = new AsyncRelayCommand(
             DeleteSelectedAsync,
             exception => ReportUnexpectedError("删除没有完成", exception),
@@ -135,6 +136,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private ObservableCollection<ScanSourceViewModel> ActiveSources => IsConflictVisible ? ConflictSources : Sources;
 
     public IReadOnlyList<DuplicateGroupViewModel> Groups => resultSession.Groups;
+    public IReadOnlyList<DuplicateGroupViewModel> VisibleDuplicateGroups => resultSession.VisibleDuplicateGroups;
+    public string DuplicatePathQuery { get => resultSession.DuplicatePathQuery; set => resultSession.DuplicatePathQuery = value; }
+    public PathSearch DuplicateSearch => resultSession.DuplicateSearch;
+    public string DuplicateSearchStatus => resultSession.DuplicateSearchStatus;
+    public bool ShowDuplicatePlaceholder => VisibleDuplicateGroups.Count == 0;
+    public bool CanSearchDuplicateResults => !IsBusy && (HasResults || IsStatusVisible);
 
     public RelayCommand OpenDuplicateScannerCommand { get; }
     public RelayCommand OpenConflictCommand { get; }
@@ -198,6 +205,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
             OnPropertyChanged(nameof(CanEditSources));
             OnPropertyChanged(nameof(CanEditFileManagement));
+            OnPropertyChanged(nameof(CanSearchDuplicateResults));
             RefreshCommands();
         }
     }
@@ -213,7 +221,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get => isStatusVisible;
         private set
         {
-            if (SetProperty(ref isStatusVisible, value)) OnPropertyChanged(nameof(DuplicatePlaceholderText));
+            if (!SetProperty(ref isStatusVisible, value)) return;
+            OnPropertyChanged(nameof(DuplicatePlaceholderText));
+            OnPropertyChanged(nameof(CanSearchDuplicateResults));
         }
     }
 
@@ -261,7 +271,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    public string DuplicatePlaceholderText => IsStatusVisible ? StatusText : "尚未扫描";
+    public string DuplicatePlaceholderText => DuplicateSearch.IsActive ? "没找到相关文件"
+        : IsStatusVisible ? StatusText : "尚未扫描";
 
     public string StatusDetail
     {
@@ -888,6 +899,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         else
         {
             OnPropertyChanged(eventArgs.PropertyName);
+            if (eventArgs.PropertyName == nameof(HasResults)) OnPropertyChanged(nameof(CanSearchDuplicateResults));
+            if (eventArgs.PropertyName == nameof(VisibleDuplicateGroups))
+            {
+                OnPropertyChanged(nameof(ShowDuplicatePlaceholder));
+                OnPropertyChanged(nameof(DuplicatePlaceholderText));
+            }
         }
 
         RefreshResultCommands();

@@ -337,14 +337,19 @@
                         </Grid>
                         <StackPanel>
                             <WrapPanel>
-                                <TextBlock x:Name="Title" MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}" Text="{Binding Title}" FontFamily="等线" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" IsHitTestVisible="False" />
+                                <TextBlock x:Name="Title" MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=StackPanel}}"
+                                           local:SearchHighlight.Text="{Binding Title}" local:SearchHighlight.Brush="{StaticResource SearchFileNameHighlightBrush}"
+                                           local:SearchHighlight.Query="{Binding DataContext.ConflictSearch, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                           FontFamily="等线" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" IsHitTestVisible="False" />
                                 <Border Background="#E4DFD7" Padding="5,1" Margin="8,1,0,0" Visibility="{Binding IsDisabled, Converter={StaticResource BooleanToVisibilityConverter}}"><TextBlock Text="已禁用" Foreground="{StaticResource ConflictNeedReviewBrush}" FontSize="10" ToolTip="关系为本次扫描时的结果" /></Border>
                                 <Border x:Name="FileTag" Background="#EEE9F3" CornerRadius="2" Padding="5,1" Margin="8,1,0,0" IsHitTestVisible="False" Visibility="{Binding HasTag, Converter={StaticResource BooleanToVisibilityConverter}}"><TextBlock Text="{Binding Tag}" Foreground="#8B769F" FontSize="10" /></Border>
                                 <Border x:Name="AnnotationSurface" Background="Transparent" Margin="10,3,0,0" ToolTip="{Binding AnnotationTooltip}" Visibility="{Binding HasAnnotation, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <TextBlock x:Name="AnnotationText" Text="{Binding Annotation}" Foreground="{StaticResource MutedBrush}" FontSize="11" IsHitTestVisible="False" />
                                 </Border>
                             </WrapPanel>
-                            <TextBlock Text="{Binding FilePath}" ToolTip="{Binding FilePath}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False" />
+                            <TextBlock local:SearchHighlight.Text="{Binding FilePath}" local:SearchHighlight.Brush="{StaticResource SearchPathHighlightBrush}"
+                                       local:SearchHighlight.Query="{Binding DataContext.ConflictSearch, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       ToolTip="{Binding FilePath}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False" />
                             <WrapPanel>
                                 <TextBlock Text="{Binding File.Metadata}" FontSize="11" Foreground="{StaticResource MutedBrush}" IsHitTestVisible="False" />
                                 <TextBlock Text="已忽略" Margin="8,0,0,0" FontSize="11" Foreground="{StaticResource MutedBrush}" Visibility="{Binding IsFileIgnored, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -657,12 +662,14 @@
                 </Border>
             </Grid>
             <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0">
-                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid Margin="20,16,10,3.48">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <TextBlock Text="扫描结果" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <local:ResultPathSearch x:Name="ConflictPathSearch" Grid.Column="1" Compact="True" Query="{Binding ConflictPathQuery}"
+                                                IsEnabled="{Binding IsConflictComplete}" ResultSurface="{Binding ElementName=TechnicalViewport}" />
                         <ToggleButton x:Name="ConflictMultiSelectButton"
-                                      Grid.Column="1"
+                                      Grid.Column="2"
                                       Content="{Binding ConflictMultiSelectText}"
                                       Style="{StaticResource ConflictMultiSelectToggleStyle}"
                                       IsChecked="{Binding IsConflictMultiSelect, Mode=TwoWay}"
@@ -725,7 +732,9 @@
                         </Popup>
                         </Grid>
                     </Border>
-                    <Grid x:Name="TechnicalViewport" Grid.Row="2" ClipToBounds="True">
+                    <TextBlock Grid.Row="2" Text="{Binding ConflictSearchStatus}" Style="{StaticResource SearchResultCountStyle}" />
+                    <Grid x:Name="TechnicalViewport" Grid.Row="3" ClipToBounds="True" Background="Transparent" Focusable="True"
+                          FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
                         <TextBlock Text="{Binding ConflictStatus}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowConflictPlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" ItemTemplate="{StaticResource ConflictRowTemplate}" Style="{StaticResource ConflictListStyle}" VirtualizingPanel.ScrollUnit="Pixel"
                                  PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel" PreviewMouseDown="TechnicalResults_PreviewMouseDown" PreviewKeyDown="TechnicalResults_PreviewKeyDown"
@@ -766,7 +775,7 @@
                         </Canvas>
                         <TextBlock Text="{Binding EmptyConflictText}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowEmptyConflictRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     </Grid>
-                    <Border Grid.Row="3" Padding="20,10,20,10" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <Border Grid.Row="4" Padding="20,10,20,10" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Height" Value="48" />

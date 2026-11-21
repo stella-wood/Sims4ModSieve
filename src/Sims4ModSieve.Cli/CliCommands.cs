@@ -229,6 +229,7 @@ internal static class CliCommands
         var severities = new List<string>();
         var kinds = new List<string>();
         int? limit = null;
+        string? pathContains = null;
         var omitResourceKeys = false;
         var summaryOnly = false;
         var noCache = false;
@@ -251,6 +252,7 @@ internal static class CliCommands
             {
                 case "--source": sources.Add(value); break;
                 case "--json": jsonPath = value; break;
+                case "--path-contains" when command is "scan-duplicates" or "scan-conflicts": pathContains = value; break;
                 case "--severity":
                     if (value is not ("abnormal" or "risk" or "no_effect" or "incomplete"))
                         throw new ArgumentException($"无效的 --severity：{value}。可用值：abnormal、risk、no_effect、incomplete。");
@@ -280,9 +282,9 @@ internal static class CliCommands
             }
         }
         var options = new ScanOptions(sources, extensions, modsRoot, jsonPath, htmlPath, hideIgnored,
-            severities.Distinct().ToArray(), kinds.Distinct().ToArray(), limit, omitResourceKeys, summaryOnly, noCache);
+            severities.Distinct().ToArray(), kinds.Distinct().ToArray(), limit, omitResourceKeys, summaryOnly, noCache, pathContains);
         if (htmlPath is not null && options.HasOutputFilters)
-            throw new ArgumentException("--html 不能与 --severity、--kind、--limit、--omit-resource-keys 或 --summary-only 同用；请另行生成 HTML 报告。");
+            throw new ArgumentException("--html 不能与 --severity、--kind、--path-contains、--limit、--omit-resource-keys 或 --summary-only 同用；请另行生成 HTML 报告。");
         return options;
     }
 
@@ -326,6 +328,8 @@ internal static class CliCommands
                 output.WriteLine("  --omit-resource-keys  不列 resourceKeys，保留 resourceKeyCount；仅 scan-conflicts");
             }
             output.WriteLine("  --limit <N>  筛选后最多列 N 组，N 可为 0；不限制读取问题");
+            if (command is null or "scan-duplicates" or "scan-conflicts")
+                output.WriteLine("  --path-contains <文本>  空格分词，按组内文件路径匹配、排序并保留整组；仅 scan-duplicates 和 scan-conflicts");
             output.WriteLine("  --summary-only  只输出汇总，groups 和 issues 为空");
             output.WriteLine("  筛选只影响 JSON 明细，汇总和退出码按完整结果计算；complete=false 表示输出不完整。");
             output.WriteLine("  显式 --json 时摘要写标准错误；不写 --json 时保持写文件并在标准输出显示摘要。");
@@ -346,9 +350,9 @@ internal static class CliCommands
 
     internal sealed record ScanOptions(List<string> Sources, List<string> Extensions, string? ModsRoot,
         string? JsonPath, string? HtmlPath, bool HideIgnored, IReadOnlyList<string> Severities,
-        IReadOnlyList<string> Kinds, int? Limit, bool OmitResourceKeys, bool SummaryOnly, bool NoCache)
+        IReadOnlyList<string> Kinds, int? Limit, bool OmitResourceKeys, bool SummaryOnly, bool NoCache, string? PathContains = null)
     {
         public bool HasOutputFilters => Severities.Count > 0 || Kinds.Count > 0 || Limit.HasValue
-            || OmitResourceKeys || SummaryOnly;
+            || OmitResourceKeys || SummaryOnly || PathContains is not null;
     }
 }

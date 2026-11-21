@@ -3,6 +3,7 @@ using System.IO;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
+using Sims4ModSieve.Core.Reporting;
 using Sims4ModSieve.Core.Scripts;
 using Sims4ModSieve.Packages;
 
@@ -271,12 +272,15 @@ public sealed partial class ConflictResultSession
 
     public IReadOnlyList<ConflictResultRow> BuildVisibleRows(string view, string filter,
         IReadOnlySet<string> expanded, CancellationToken cancellationToken = default,
-        bool showIgnored = false, IReadOnlySet<string>? types = null, IReadOnlySet<string>? selectedPaths = null)
+        bool showIgnored = false, IReadOnlySet<string>? types = null, IReadOnlySet<string>? selectedPaths = null,
+        PathSearch? search = null)
     {
+        search ??= PathSearch.Empty;
         var rows = new List<ConflictResultRow>();
+        var matchingGroups = new List<(int Rank, int Start, int Count)>();
         var includeUngroupedProblems = types is null
             || new[] { "override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate" }.All(types.Contains);
-        var cards = new List<(ConflictPairPriority Priority, string Key, bool Included, Action Build)>();
+        var cards = new List<(ConflictPairPriority Priority, string Key, bool Included, int Rank, Action Build)>();
         var currentOwnerKey = string.Empty;
         var ignoredProblemKeys = Problems.Where(problem => IsFileIgnored(problem.Path))
             .Select(problem => "problem" + Identity(problem.Path.ToUpperInvariant())).ToHashSet(StringComparer.Ordinal);
@@ -300,9 +304,10 @@ public sealed partial class ConflictResultSession
             foreach (var value in values()) Technical(key + "/technical" + index++, value);
         }
         void Explanation(string owner, string text) => Add(new(owner + "/explanation", ConflictRowKind.Explanation, 1, text));
-        void Card(ConflictPairPriority priority, string key, bool included, Action build) => cards.Add((priority, key, included, build));
+        void Card(ConflictPairPriority priority, string key, bool included, int rank, Action build) =>
+            cards.Add((priority, key, included, rank, build));
 
-        AddGroupCards(cards, Add, view, expanded, showIgnored, types, cancellationToken);
+        AddGroupCards(cards, Add, view, expanded, showIgnored, types, search, cancellationToken);
         var moduleGroups = Cards.SelectMany(card => card.Modules ?? []).GroupBy(module => module.ModuleName, StringComparer.Ordinal).ToArray();
         // 已出现在资源／模块卡里的失败条目，不再复制为未完成文件卡；未碰撞的失败仍保留。
         var represented = new Dictionary<string, HashSet<(string Entry, string Code)>>(StringComparer.OrdinalIgnoreCase);
@@ -324,7 +329,7 @@ public sealed partial class ConflictResultSession
             var key = "problem" + Identity(problem.Path.ToUpperInvariant());
             Card(ConflictPairPriority.Incomplete, key, (view is "all" or "problems" || view == (isScript ? "scripts" : "resources"))
                 && includeUngroupedProblems
-                && (showIgnored || !IsFileIgnored(problem.Path)), () =>
+                && (showIgnored || !IsFileIgnored(problem.Path)), search.Rank([problem.Path]), () =>
             {
                 var file = new ConflictFile(problem.Path, problem.Stamp);
                 var reasonTexts = reasons.Where(reason => reason.Category != ConflictProblemCategory.Placeholder)
@@ -350,7 +355,7 @@ public sealed partial class ConflictResultSession
             var key = "range" + Identity(problem.Path.ToUpperInvariant()) + index;
             Card(ConflictPairPriority.Incomplete, key, (view is "all" or "problems" || view == (problem.IsScript ? "scripts" : "resources")
                 || problem.IsLink && view is "resources" or "scripts")
-                && includeUngroupedProblems, () =>
+                && includeUngroupedProblems && !search.IsActive, 0, () =>
             {
                 if (!Add(new(key, ConflictRowKind.RangeProblem, 0, "检查范围问题", Tooltip: problem.Path,
                     Priority: ConflictPairPriority.Incomplete, IsExpandable: true))) return;
@@ -366,7 +371,7 @@ public sealed partial class ConflictResultSession
         {
             cancellationToken.ThrowIfCancellationRequested();
             groupIndex++;
-            if (!card.Included || !Matches(filter, card.Priority) || !showIgnored && ignoredGroups.Contains(card.Key)) continue;
+            if (!card.Included || card.Rank < 0 || !Matches(filter, card.Priority) || !showIgnored && ignoredGroups.Contains(card.Key)) continue;
             var firstRow = rows.Count;
             currentOwnerKey = card.Key;
             card.Build();
@@ -379,8 +384,10 @@ public sealed partial class ConflictResultSession
             }
             rows[firstRow] = rows[firstRow] with { GroupIndex = groupNumbers.GetValueOrDefault(card.Key, groupIndex) };
             rows[^1] = rows[^1] with { IsCardEnd = true };
+            if (search.IsActive) matchingGroups.Add((card.Rank, firstRow, rows.Count - firstRow));
         }
-        return rows.AsReadOnly();
+        return search.IsActive ? matchingGroups.OrderByDescending(group => group.Rank)
+            .SelectMany(group => rows.Skip(group.Start).Take(group.Count)).ToArray() : rows.AsReadOnly();
     }
 
     private static bool Matches(string filter, ConflictPairPriority priority) => filter == "all"
