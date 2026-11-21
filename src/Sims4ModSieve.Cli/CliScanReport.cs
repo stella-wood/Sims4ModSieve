@@ -49,7 +49,6 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     private int AbnormalCount => abnormalGroupCount + issues.Count(issue => issue.Severity == "abnormal");
     private bool Visible(string path) => !options.HideIgnored || !ignoredPaths.Contains(path);
     public int ExitCode => groupCount == 0 && issues.Count == 0 ? 0 : 1;
-    public bool HasIssues => issues.Count != 0;
     public IReadOnlyList<ScanSourceSnapshot> Sources => sources;
 
     private bool Complete => GroupingSize?.ExceedsLimit != true && !options.HasOutputFilters && !options.HideIgnored;

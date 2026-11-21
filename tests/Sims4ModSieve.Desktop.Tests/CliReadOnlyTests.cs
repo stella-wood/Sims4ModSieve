@@ -60,7 +60,7 @@ public sealed class CliReadOnlyTests
     }
 
     [TestMethod]
-    public async Task DuplicateCommandDoesNotCommitHashesFromPartialScan()
+    public async Task DuplicateCommandCommitsSuccessfulHashesDespiteSourceIssue()
     {
         using var temp = new TempDirectory();
         var first = temp.WriteFile("Mods/a.package", "same");
@@ -75,7 +75,8 @@ public sealed class CliReadOnlyTests
         Assert.AreEqual(1, json.RootElement.GetProperty("groupCount").GetInt32());
         Assert.IsTrue(json.RootElement.GetProperty("issueCount").GetInt32() > 0);
         var cache = new SqliteSha256Cache(Path.Combine(settings.DataDirectory, "cache", "sha256.sqlite3"));
-        Assert.IsNull(cache.GetSha256(first, new PhysicalFileSystemAccess().GetFileStamp(first)));
+        Assert.AreEqual(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(first))),
+            cache.GetSha256(first, new PhysicalFileSystemAccess().GetFileStamp(first)));
     }
 
     [TestMethod]

@@ -547,7 +547,7 @@ public sealed partial class MainWindowViewModel
                 : string.Empty;
             RefreshConflictVisibility();
             timingOutcome = "完成";
-            if (!HasConflictProblems) await CommitScanCacheAsync(cache, cancellation.Token);
+            await CommitScanCacheAsync(cache, cancellation.Token);
         }
         catch (OperationCanceledException)
         {

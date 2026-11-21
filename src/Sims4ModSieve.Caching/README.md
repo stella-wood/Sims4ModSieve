@@ -5,10 +5,10 @@
 ```csharp
 using var cache = CachingStableFileHasher.Open(dataDirectory);
 var report = await cache.RunAsync(hasher => ScanAsync(hasher, cancellationToken), cancellationToken);
-if (report.Issues.Count == 0) cache.Commit(cancellationToken);
+cache.Commit(cancellationToken);
 ```
 
-`dataDirectory` 是工具的本地数据目录，测试传临时目录。扫描完成且没有读取或分析问题才提交。桌面窗口关闭时取消进行中的扫描。存储层 `SqliteSha256Cache` 只用文件路径作为键。
+`dataDirectory` 是工具的本地数据目录，测试传临时目录。扫描正常结束后提交暂存的成功哈希，即使报告有读取问题或未完成分析。桌面窗口关闭时取消进行中的扫描。存储层 `SqliteSha256Cache` 只用文件路径作为键。
 
 - 文件版本由完整路径、大小、UTC 修改时间 ticks、身份是否存在及卷序列号 / FileIdLow / FileIdHigh 组成。身份为 null 与各字段为零的真实身份不同，UInt64 用定长十六进制保存。
 - 路径使用完整路径并去尾分隔符，最长 32768 个 UTF-16 字符。无文件身份时按 `Ordinal` 精确比较路径，有身份时按 `OrdinalIgnoreCase` 比较。SQLite 排序规则和命中后的路径核对都使用对应的 .NET 比较规则。硬链接仍按路径分别存储，缓存不跟随重解析点。

@@ -34,6 +34,32 @@ public sealed class BenchmarkBaselineTests
     }
 
     [TestMethod]
+    public async Task CompletedRunCachesSuccessfulHashesDespiteIncompleteAnalysis()
+    {
+        using var temp = new TempDirectory();
+        var corpus = Path.Combine(temp.Path, "corpus");
+        BenchmarkInputs.Generate(corpus);
+        var output = Path.Combine(temp.Path, "benchmark");
+
+        Assert.AreEqual(0, await Program.ExecuteAsync(["run", "--source", corpus, "--output", output,
+            "--sample-id", "cache-with-issues", "--runs", "2", "--cache", "enabled"]));
+
+        var first = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(output, "run-01.json")))!;
+        var second = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(output, "run-02.json")))!;
+        var snapshot = first["snapshot"]!;
+        Assert.IsTrue(snapshot["packages"]!["issues"]!.AsArray().Count > 0);
+        Assert.IsTrue(snapshot["scripts"]!["issues"]!.AsArray().Count > 0);
+        Assert.IsTrue(snapshot["contents"]!["comparisons"]!.AsArray()
+            .Any(comparison => comparison!["uncompared"]!.AsArray().Count > 0));
+        Assert.IsTrue(JsonNode.DeepEquals(snapshot, second["snapshot"]));
+        var misses = first["cacheMisses"]!.GetValue<int>();
+        Assert.IsTrue(misses >= 2);
+        Assert.AreEqual(0, first["cacheHits"]!.GetValue<int>());
+        Assert.AreEqual(misses, second["cacheHits"]!.GetValue<int>());
+        Assert.AreEqual(0, second["cacheMisses"]!.GetValue<int>());
+    }
+
+    [TestMethod]
     public async Task SyntheticPipelineIsRepeatableAndPreservesFailuresWithoutWritingInputs()
     {
         using var temp = new TempDirectory();
