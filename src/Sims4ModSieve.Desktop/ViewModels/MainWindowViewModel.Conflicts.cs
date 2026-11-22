@@ -285,11 +285,11 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(EmptyConflictText));
     }
 
-    internal void ToggleConflictExpanded(ConflictResultRow row, Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
+    internal void ToggleConflictExpanded(ConflictResultRow row, Action<IReadOnlyList<ConflictResultRow>>? afterPublish = null)
     {
         if (!row.IsExpandable || !IsConflictComplete) return;
         conflictSession.ToggleExpanded(row.Key);
-        ConflictRowsRefreshTask = RefreshConflictRowsAsync(restoreViewport);
+        ConflictRowsRefreshTask = RefreshConflictRowsAsync(afterPublish: afterPublish);
     }
 
     private void QueueConflictRowsRefresh(bool animateSearch = false, bool animateRemoval = false)
@@ -299,7 +299,8 @@ public sealed partial class MainWindowViewModel
     }
 
     private async Task RefreshConflictRowsAsync(Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null,
-        bool animateSearch = false, bool animateRemoval = false, ConflictViewportCapture? removalViewport = null)
+        bool animateSearch = false, bool animateRemoval = false, ConflictViewportCapture? removalViewport = null,
+        Action<IReadOnlyList<ConflictResultRow>>? afterPublish = null)
     {
         var session = conflictSession;
         var request = ++conflictRowsRequest;
@@ -326,7 +327,8 @@ public sealed partial class MainWindowViewModel
             {
                 if (cancellation.IsCancellationRequested || !ReferenceEquals(session, conflictSession) || request != conflictRowsRequest || !IsConflictComplete) return;
                 ApplyConflictSearch(search);
-                PublishConflictRows(projection.Rows, projection.ParentCount, restoreViewport);
+                var publishedRows = PublishConflictRows(projection.Rows, projection.ParentCount, restoreViewport);
+                afterPublish?.Invoke(publishedRows);
             }
             if (animateRemoval && ConflictRemovalTransitionRequested is { } remove)
                 await remove(projection.Rows, Apply, removalViewport, cancellation.Token);
@@ -347,7 +349,7 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    private void PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount,
+    private IReadOnlyList<ConflictResultRow> PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount,
         Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
     {
         var disabledByPath = disabledRecords.ToDictionary(record => record.OriginalPath, StringComparer.OrdinalIgnoreCase);
@@ -384,6 +386,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(ShowExpandAllConflictIcon));
         OnPropertyChanged(nameof(ConflictExpandCollapseToolTip));
         ToggleAllConflictGroupsCommand?.RaiseCanExecuteChanged();
+        return publishedRows;
     }
 
     private void ResetConflictSession()

@@ -359,7 +359,8 @@ public partial class ConflictPage : UserControl
         var top = viewport.Top(item);
         FinishGroupAnimation();
         var original = model.ConflictRows;
-        model.ToggleConflictExpanded(row, replacement => Dispatcher.BeginInvoke(() =>
+        // 先完成位置恢复，再让刷新任务的调用方继续滚动。
+        model.ToggleConflictExpanded(row, replacement =>
         {
             bool IsCurrent() => ConflictRowsList.IsVisible && ReferenceEquals(DataContext, model)
                 && ReferenceEquals(model.ConflictRows, replacement);
@@ -370,7 +371,7 @@ public partial class ConflictPage : UserControl
                 RestoreTechnicalToggle(viewport, updated, top, replacement[^1]);
             else
                 viewport.Restore(updated, top);
-        }, DispatcherPriority.DataBind));
+        });
     }
 
     private void RestoreTechnicalToggle(ResultListViewport viewport, ConflictResultRow toggle, double top, ConflictResultRow lastRow)
