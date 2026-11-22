@@ -16,9 +16,10 @@ public sealed class CachingStableFileHasher(SqliteSha256Cache cache, IFileSystem
     public int Misses => Volatile.Read(ref _misses);
     public long ResourceHits => _resourceHasher?.Hits ?? 0;
     public long ResourceMisses => _resourceHasher?.Misses ?? 0;
+    public ScanCoverage? Coverage { get; } = cache.IsAvailable ? new() : null;
 
     public static CachingStableFileHasher Open(string dataDirectory) => new(
-        new SqliteSha256Cache(Path.Combine(dataDirectory, "cache", "sha256.sqlite3")), new PhysicalFileSystemAccess());
+        new SqliteSha256Cache(SqliteSha256Cache.DatabasePath(dataDirectory)), new PhysicalFileSystemAccess());
 
     public async Task<StableFileHash> HashAsync(string path, CancellationToken cancellationToken = default)
     {
@@ -62,7 +63,7 @@ public sealed class CachingStableFileHasher(SqliteSha256Cache cache, IFileSystem
         return RunAsync(fileHasher => scan(fileHasher, ReferenceEquals(fileHasher, this) ? resourceHasher : hasher), cancellationToken);
     }
 
-    public bool Commit(CancellationToken cancellationToken = default) => _scan.Commit(cancellationToken);
+    public bool Commit(CancellationToken cancellationToken = default) => _scan.Commit(cancellationToken, Coverage);
 
     public void Dispose() => _scan.Dispose();
 }

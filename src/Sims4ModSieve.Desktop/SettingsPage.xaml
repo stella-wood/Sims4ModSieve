@@ -12,6 +12,8 @@
         <sys:Double x:Key="ScanConcurrencyInfoTargetSize">24</sys:Double>
         <Thickness x:Key="ScanConcurrencyInfoGap">2,0,0,0</Thickness>
         <Thickness x:Key="SettingsSectionGap">0,36,0,0</Thickness>
+        <Thickness x:Key="SettingsInlineGap">8,0,0,0</Thickness>
+        <Thickness x:Key="SettingsGroupRowInset">0,16,0,16</Thickness>
         <Style x:Key="SettingsLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="Normal" />
@@ -313,6 +315,14 @@
                         <TextBlock Text="删除与忽略" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </RadioButton>
+                <RadioButton x:Name="CacheSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="缓存"
+                             IsChecked="{Binding IsCacheSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="cache">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource SettingsNavIcon}" Fill="{x:Null}"
+                              Data="M 4,5 A 8,3 0 1 1 20,5 A 8,3 0 1 1 4,5 M 4,5 V 19 A 8,3 0 0 0 20,19 V 5 M 4,12 A 8,3 0 0 0 20,12" />
+                        <TextBlock Text="缓存" Margin="{StaticResource SettingsInlineGap}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </RadioButton>
                 <RadioButton x:Name="DiagnosticsSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="诊断与反馈"
                              IsChecked="{Binding IsDiagnosticsSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="diagnostics">
                     <StackPanel Orientation="Horizontal">
@@ -460,6 +470,25 @@
                         </Grid>
                     </Border>
                     <TextBlock Text="{Binding SettingsFeedback}" Style="{StaticResource SettingsFeedback}" />
+                </StackPanel>
+                <StackPanel Visibility="{Binding IsCacheSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="缓存" Style="{StaticResource SettingsTitle}" />
+                    <Border Style="{StaticResource SettingsGroup}">
+                        <DockPanel Margin="{StaticResource SettingsGroupRowInset}">
+                            <Button x:Name="ClearCacheButton" DockPanel.Dock="Right" Content="清除缓存"
+                                    AutomationProperties.Name="清除缓存" Style="{StaticResource SettingsButton}"
+                                    Command="{Binding ClearCacheCommand}" VerticalAlignment="Center" />
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="缓存文件大小" Style="{StaticResource SettingsLabel}" />
+                                    <TextBlock x:Name="CacheSizeText" Text="{Binding CacheSize}" Style="{StaticResource SettingsLabel}"
+                                               Margin="{StaticResource SettingsInlineGap}" />
+                                </StackPanel>
+                                <TextBlock Text="清除后下次扫描会慢一些，不影响任何 Mod 文件。" Style="{StaticResource SettingsDescription}" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                    <TextBlock Text="{Binding CacheFeedback}" Style="{StaticResource SettingsFeedback}" />
                 </StackPanel>
                 <StackPanel Visibility="{Binding IsDiagnosticsSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="诊断与反馈" Style="{StaticResource SettingsTitle}" />

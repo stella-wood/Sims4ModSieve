@@ -98,6 +98,8 @@
 
 警告弹窗局部资源 `WarningDialogBodyMinWidth` = 300 DIP，用于正文区的最小宽度。
 
+设置页缓存区沿用 `SettingsGroup` 和 `SettingsButton`。局部间距资源 `SettingsInlineGap` 对应 `SpaceS`，`SettingsGroupRowInset` 的上下留白对应 `SpaceL`。
+
 ## 圆角
 
 | 令牌 | 值 | 用在 |

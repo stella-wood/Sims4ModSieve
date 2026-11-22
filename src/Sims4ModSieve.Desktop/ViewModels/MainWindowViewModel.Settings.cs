@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
+using Sims4ModSieve.Caching;
 using Sims4ModSieve.Core.Diagnostics;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Infrastructure;
@@ -21,6 +22,8 @@ public sealed partial class MainWindowViewModel
     private string diagnosticsFeedback = string.Empty;
     private string aboutFeedback = string.Empty;
     private string creditsFeedback = string.Empty;
+    private string cacheSize = string.Empty;
+    private string cacheFeedback = string.Empty;
     private string licenseText = string.Empty;
     private string? licenseDocument;
     private IReadOnlyList<DiagnosticLog> diagnosticLogs = [];
@@ -47,10 +50,12 @@ public sealed partial class MainWindowViewModel
     public RelayCommand OpenProjectCommand { get; private set; } = null!;
     public RelayCommand OpenAfdianCommand { get; private set; } = null!;
     public RelayCommand OpenLicenseCommand { get; private set; } = null!;
+    public AsyncRelayCommand ClearCacheCommand { get; private set; } = null!;
 
     public bool IsSettingsVisible { get => isSettingsVisible; private set => SetProperty(ref isSettingsVisible, value); }
     public string SettingsSection => settingsSection;
     public bool IsFoldersSettings { get => settingsSection == "folders"; set { if (value && !IsBusy) SelectSettingsSection("folders"); } }
+    public bool IsCacheSettings { get => settingsSection == "cache"; set { if (value && !IsBusy) SelectSettingsSection("cache"); } }
     public bool IsDiagnosticsSettings { get => settingsSection == "diagnostics"; set { if (value && !IsBusy) SelectSettingsSection("diagnostics"); } }
     public bool IsAboutSettings { get => settingsSection == "about"; set { if (value && !IsBusy) SelectSettingsSection("about"); } }
     public bool IsCreditsSettings { get => settingsSection == "credits"; set { if (value && !IsBusy) SelectSettingsSection("credits"); } }
@@ -100,6 +105,8 @@ public sealed partial class MainWindowViewModel
     public string DiagnosticsFeedback { get => diagnosticsFeedback; private set => SetProperty(ref diagnosticsFeedback, value); }
     public string AboutFeedback { get => aboutFeedback; private set => SetProperty(ref aboutFeedback, value); }
     public string CreditsFeedback { get => creditsFeedback; private set => SetProperty(ref creditsFeedback, value); }
+    public string CacheSize { get => cacheSize; private set => SetProperty(ref cacheSize, value); }
+    public string CacheFeedback { get => cacheFeedback; private set => SetProperty(ref cacheFeedback, value); }
     public string LicenseText { get => licenseText; private set => SetProperty(ref licenseText, value); }
     public bool HasLicenseText => !string.IsNullOrEmpty(LicenseText);
     public string ProductVersion => settingsSupport.ProductVersion;
@@ -147,6 +154,8 @@ public sealed partial class MainWindowViewModel
         CancelDefaultFolderCandidateCommand = SettingsCommand(CancelDefaultFolderCandidate);
         OpenModsFolderCommand = SettingsCommand(() => RunFolderOperation("Mods", () => settingsSupport.OpenFolder(ModsRoot ?? string.Empty)));
         OpenTrayFolderCommand = SettingsCommand(() => RunFolderOperation("Tray", () => settingsSupport.OpenFolder(TrayRoot ?? string.Empty)));
+        ClearCacheCommand = new(ClearCacheAsync, _ => CacheFeedback = "未能完成清除缓存，请重试",
+            () => !IsBusy && scanCacheDirectory is not null);
         RefreshDiagnosticsCommand = new(RefreshDiagnosticsAsync, _ => DiagnosticsFeedback = "无法读取诊断信息", () => !IsBusy);
         CopyDiagnosticsCommand = new(async () =>
         {
@@ -199,20 +208,47 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(HasTrayRootAvailabilityWarning));
         if (IsDiagnosticsSettings) RefreshDiagnosticsCommand.Execute(null);
         if (IsFileManagementSettings) StartFileManagementRefresh();
+        if (IsCacheSettings) RefreshCacheSize();
     }
 
     private void SelectSettingsSection(string? section)
     {
-        if (section is not ("folders" or "files" or "diagnostics" or "about" or "credits") || section == settingsSection) return;
+        if (section is not ("folders" or "files" or "cache" or "diagnostics" or "about" or "credits") || section == settingsSection) return;
         settingsSection = section;
         OnPropertyChanged(nameof(SettingsSection));
         OnPropertyChanged(nameof(IsFoldersSettings));
+        OnPropertyChanged(nameof(IsCacheSettings));
         OnPropertyChanged(nameof(IsDiagnosticsSettings));
         OnPropertyChanged(nameof(IsAboutSettings));
         OnPropertyChanged(nameof(IsCreditsSettings));
         OnPropertyChanged(nameof(IsFileManagementSettings));
         if (IsDiagnosticsSettings) RefreshDiagnosticsCommand.Execute(null);
         if (IsFileManagementSettings) StartFileManagementRefresh();
+        if (IsCacheSettings) RefreshCacheSize();
+    }
+
+    private void RefreshCacheSize()
+    {
+        var size = scanCacheDirectory is { } directory ? SqliteSha256Cache.GetSize(directory) : null;
+        CacheSize = size is { } bytes ? DuplicateGroupViewModel.FormatBytes(bytes) : "无法读取";
+    }
+
+    private async Task ClearCacheAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            if (!fileActionDialogs.ConfirmFiles("清除缓存", "清除后下次扫描会慢一些，不影响任何 Mod 文件。"))
+                return;
+            CacheFeedback = string.Empty;
+            if (!await Task.Run(() => SqliteSha256Cache.Clear(scanCacheDirectory!)))
+                CacheFeedback = "未能完成清除缓存，请重试";
+        }
+        finally
+        {
+            IsBusy = false;
+            RefreshCacheSize();
+        }
     }
 
     private void ChangeDefaultModsRoot() => RunFolderOperation("Mods", () =>
@@ -333,5 +369,6 @@ public sealed partial class MainWindowViewModel
         RefreshDiagnosticsCommand?.RaiseCanExecuteChanged();
         CopyDiagnosticsCommand?.RaiseCanExecuteChanged();
         CopyScanTimingCommand?.RaiseCanExecuteChanged();
+        ClearCacheCommand?.RaiseCanExecuteChanged();
     }
 }

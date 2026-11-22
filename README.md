@@ -137,7 +137,7 @@ CLI 提供只读扫描、报告和默认 Mods 目录设置，也支持查看已�
 
 整文件哈希、package 索引和资源内容共用已保存的扫描并发设置；没有可读并发设置时用自动档。标准错误输出各读取阶段的并发决定。存储探测和有限预算规则见[自动并发](docs/architecture/性能优化与缓存架构.md#41-自动并发)。
 
-桌面程序和 CLI 的扫描可复用未变化文件的整文件及 package 资源 SHA-256。排查结果时，CLI 加 `--no-cache` 可直接计算。缓存位置和提交规则见[缓存项目说明](src/Sims4ModSieve.Caching/README.md)。
+桌面程序和 CLI 的扫描可复用未变化文件的整文件及 package 资源 SHA-256。桌面程序可在[设置的「缓存」分类](docs/design/设置页面方案-v1.md#缓存)查看大小和清除。排查结果时，CLI 加 `--no-cache` 可直接计算。缓存位置和提交规则见[缓存项目说明](src/Sims4ModSieve.Caching/README.md)。
 
 ```powershell
 .\eng\dotnet.cmd run --project .\src\Sims4ModSieve.Cli\Sims4ModSieve.Cli.csproj -c Release -- `

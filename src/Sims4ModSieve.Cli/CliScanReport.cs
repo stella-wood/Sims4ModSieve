@@ -17,7 +17,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
     long? memoryBudgetBytes = null,
     Action<ConflictGroupingSize>? sizeObserved = null, Action<string>? memoryObserved = null,
     ConflictScanOptions? scanOptions = null, IStableFileHasher? fileHasher = null,
-    IResourceContentHasher? resourceHasher = null)
+    IResourceContentHasher? resourceHasher = null, ScanCoverage? coverage = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -88,6 +88,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             HashConcurrency = snapshot.Concurrency,
             StorageProfile = snapshot.StorageProfile,
             ConcurrencyDecided = snapshot.ConcurrencyDecided,
+            Coverage = coverage,
         };
         if (command == "scan-duplicates")
         {
@@ -111,7 +112,8 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                     .CompareAsync(new(packages.Candidates) { Options = snapshot });
             }
 
-            var scripts = await new ScriptModuleScanner(fileSystem).ScanAsync(new(scanSources));
+            var scripts = await new ScriptModuleScanner(fileSystem)
+                .ScanAsync(new(scanSources) { Coverage = command == "scan-scripts" ? coverage : null });
             sources = (packages?.Sources ?? []).Concat(scripts.Sources)
                 .DistinctBy(source => source.Path, StringComparer.OrdinalIgnoreCase).ToArray();
             discoveredFileCount = scripts.DiscoveredArchiveCount + (packages?.DiscoveredPackageCount ?? 0);

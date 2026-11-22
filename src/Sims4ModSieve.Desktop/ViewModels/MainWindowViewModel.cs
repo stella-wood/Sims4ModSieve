@@ -474,7 +474,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IProgress<DuplicateScanProgress> progress, CachingStableFileHasher? cache, CancellationToken token)
     {
         if (cache is null) return await duplicateRunService.RunAsync(input, progress, token);
-        return await cache.RunAsync(hasher => duplicateRunService.RunAsync(input with { FileHasher = hasher }, progress, token), token);
+        return await cache.RunAsync(hasher => duplicateRunService.RunAsync(
+            input with { FileHasher = hasher, Coverage = cache.Coverage }, progress, token), token);
     }
 
     private static async Task CommitScanCacheAsync(CachingStableFileHasher? cache, CancellationToken token)

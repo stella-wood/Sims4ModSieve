@@ -499,7 +499,8 @@ public sealed partial class MainWindowViewModel
                     var scripts = await scriptModuleScanner.ScanAsync(new(sources), scriptProgress, cancellation.Token);
                     cancellation.Token.ThrowIfCancellationRequested();
                     Volatile.Write(ref activeStage, 3);
-                    var duplicates = await duplicateRunService.RunAsync(duplicateInput with { FileHasher = fileHasher }, duplicateProgress, cancellation.Token);
+                    var duplicates = await duplicateRunService.RunAsync(
+                        duplicateInput with { FileHasher = fileHasher, Coverage = cache?.Coverage }, duplicateProgress, cancellation.Token);
                     return (contents, scripts, duplicates);
                 }
                 var contentHasher = Sims4ModSieve.Packages.DbpfResourceContentHasher.CreateDefault();

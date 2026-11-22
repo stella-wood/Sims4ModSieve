@@ -118,7 +118,8 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
         HashSet<string>? extensions,
         List<ScanIssue> issues,
         Action<string, int>? reportProgress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ScanCoverage? coverage = null)
     {
         var files = new Dictionary<string, DiscoveredFile>(PathRules.Comparer);
         var explicitRoots = sources.Select(source => source.Path).ToHashSet(PathRules.Comparer);
@@ -158,6 +159,7 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
                     continue;
                 }
 
+                coverage?.Observe(directory, entries);
                 foreach (var entry in entries.OrderBy(path => path, PathRules.Comparer).ThenBy(path => path, StringComparer.Ordinal))
                 {
                     cancellationToken.ThrowIfCancellationRequested();

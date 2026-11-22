@@ -26,7 +26,10 @@ public enum ScriptModuleFormat
 /// </summary>
 public sealed record ScriptModuleScanRequest(
     IReadOnlyList<ScanSource> Sources,
-    ScriptModuleLimits? Limits = null);
+    ScriptModuleLimits? Limits = null)
+{
+    public ScanCoverage? Coverage { get; init; }
+}
 
 public enum ScriptModuleScanPhase
 {

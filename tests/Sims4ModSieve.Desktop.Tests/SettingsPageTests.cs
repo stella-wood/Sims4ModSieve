@@ -8,8 +8,10 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Caching;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Desktop.Services;
+using Sims4ModSieve.Desktop.ViewModels;
 using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
 using static Sims4ModSieve.Desktop.Tests.SettingsViewModelTests;
 
@@ -18,6 +20,70 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class SettingsPageTests
 {
+    [TestMethod]
+    public Task CachePageDisablesClearDuringScanAndRefreshesSizeOnlyAfterConfirmation() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var mods = files.Folder("Mods");
+        files.Store.Save(new(mods, []));
+        using (var seed = new SqliteSha256Cache(SqliteSha256Cache.DatabasePath(files.Root)).BeginScan())
+        {
+            for (var i = 0; i < 256; i++)
+                Assert.IsTrue(seed.Stage(Path.Combine(mods, $"{i}.package"), new(1, DateTime.UnixEpoch), new('A', 64)));
+            Assert.IsTrue(seed.Commit());
+        }
+        var waiting = new WaitingRun();
+        var model = files.Model(run: waiting, dialogs: new FileActionDialogService(), scanCacheDirectory: files.Root);
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        WpfTestHost.ShowOffScreen(window);
+        try
+        {
+            model.OpenSettingsCommand.Execute(null);
+            var page = Descendants<SettingsPage>(window).Single();
+            var category = (RadioButton)page.FindName("CacheSectionButton");
+            ((ISelectionItemProvider)new RadioButtonAutomationPeer(category).GetPattern(PatternInterface.SelectionItem)!).Select();
+            await WpfTestHost.LayoutAsync(window);
+            var clear = (Button)page.FindName("ClearCacheButton");
+            var size = (TextBlock)page.FindName("CacheSizeText");
+            Assert.IsTrue(clear.IsVisible && clear.IsEnabled);
+            AssertHitRectangle(clear);
+            var before = size.Text;
+            Assert.AreEqual(DuplicateGroupViewModel.FormatBytes(SqliteSha256Cache.GetSize(files.Root)!.Value), before);
+            SaveReview(window, "cache-settings.png");
+
+            var scan = model.StartScanCommand.ExecuteAsync();
+            await waiting.Started.Task;
+            Assert.IsFalse(clear.IsEnabled);
+            model.CancelScanCommand.Execute(null);
+            await scan;
+            Assert.IsTrue(clear.IsEnabled);
+
+            await RespondToClearAsync("CancelButton");
+            Assert.AreEqual(before, size.Text);
+            await RespondToClearAsync("ConfirmButton");
+            Assert.AreNotEqual(before, size.Text);
+            Assert.AreEqual(DuplicateGroupViewModel.FormatBytes(SqliteSha256Cache.GetSize(files.Root)!.Value), size.Text);
+            Assert.AreEqual(string.Empty, model.CacheFeedback);
+
+            async Task RespondToClearAsync(string buttonName)
+            {
+                var response = window.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                {
+                    var dialog = Application.Current.Windows.OfType<MultiFileConfirmationWindow>().Single();
+                    ((Button)dialog.FindName(buttonName)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }));
+                await model.ClearCacheCommand.ExecuteAsync();
+                await response;
+                await WpfTestHost.LayoutAsync(window);
+            }
+        }
+        finally
+        {
+            model.CancelScanCommand.Execute(null);
+            window.Close();
+        }
+    });
+
     [TestMethod]
     public Task ScanConcurrencyInfoHasAccessibleKeyboardTooltipAndNoDescriptionLine() => WpfTestHost.RunAsync(async () =>
     {
