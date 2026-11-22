@@ -103,6 +103,12 @@ public sealed class ConflictDuplicateRelationTests
         var explanation = model.ConflictRows.Single(row => row.Key == card.Key + "/explanation");
         Assert.AreEqual(expected, Descendants<TextBlock>(window).Single(text => text.Name == "Title" && ReferenceEquals(text.DataContext, explanation)).Text);
         Save(window, $"collection-description-{copies}-{unique}.png");
+
+        session.ApplyDeletedPaths(same);
+        var updated = Rows(session, "all").Single(row => row.Key == card.Key + "/explanation");
+        Assert.AreEqual($"合集里包含 1 个另外单独放着的文件，0 个已被包含，1 个存在不同。还有 {unique + 3} 样资源只在合集里有", updated.Title);
+        session.ApplyRestoredPaths(same);
+        Assert.AreEqual(expected, Rows(session, "all").Single(row => row.Key == card.Key + "/explanation").Title);
     });
 
     [TestMethod]

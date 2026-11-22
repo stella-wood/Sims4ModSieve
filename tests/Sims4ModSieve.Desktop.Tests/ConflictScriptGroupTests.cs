@@ -166,6 +166,8 @@ public sealed class ConflictScriptGroupTests
         Assert.AreEqual("重复模块（脚本）", current.Title);
         Assert.AreEqual(ConflictPairPriority.CanOrganize, current.Priority);
         Assert.IsTrue(session.TechnicalEntries(current).All(entry => entry.Conclusion == "内容相同"));
+        Assert.AreEqual("这 2 份文件都带了 kit，共 2 个模块，其中 0 个内容不同、0 个没比完。游戏对同名模块只会加载一份",
+            Rows(session, "all").Single(row => row.Kind == ConflictRowKind.Explanation).Title);
         Assert.AreEqual(0, session.BuildVisibleRows("all", "all", Closed, types: new HashSet<string> { "script-conflict" }).Count);
         Assert.AreEqual(1, session.BuildVisibleRows("all", "same", Closed, types: new HashSet<string> { "script-duplicate" }).Count);
         Assert.AreEqual(1, session.Relationships(A)!.CardCount);
