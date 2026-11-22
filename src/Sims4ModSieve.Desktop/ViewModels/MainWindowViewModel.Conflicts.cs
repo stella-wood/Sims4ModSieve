@@ -26,7 +26,8 @@ public sealed partial class MainWindowViewModel
     private int visibleConflictParentCount;
     public Task ConflictRowsRefreshTask { get; private set; } = Task.CompletedTask;
     internal event Func<bool, ConflictViewportCapture?>? ConflictViewportCaptureRequested;
-    internal event Func<Action, CancellationToken, Task>? ConflictFilterTransitionRequested;
+    internal event Func<Action, CancellationToken, Task>? ConflictSearchTransitionRequested;
+    internal event Action? ConflictSearchTransitionCanceled;
     internal event Func<IReadOnlyList<ConflictResultRow>, Action, ConflictViewportCapture?, CancellationToken, Task>? ConflictRemovalTransitionRequested;
     private PathSearch pendingConflictSearch = PathSearch.Empty;
     private string conflictSection = "overview";
@@ -36,7 +37,7 @@ public sealed partial class MainWindowViewModel
     private readonly HashSet<string> conflictTypes = new(["override", "collection", "suspected", "duplicates", "script-conflict", "script-duplicate"], StringComparer.Ordinal);
     private bool showIgnoredConflicts;
     private bool showSelectedConflicts;
-    public bool ShowIgnoredConflicts { get => showIgnoredConflicts; set { showIgnoredConflicts = value; OnPropertyChanged(); RefreshConflictFilterChoices(); if (IsConflictComplete) QueueConflictRowsRefresh(animateFilter: true); } }
+    public bool ShowIgnoredConflicts { get => showIgnoredConflicts; set { showIgnoredConflicts = value; OnPropertyChanged(); RefreshConflictFilterChoices(); if (IsConflictComplete) QueueConflictRowsRefresh(); } }
     public bool ShowSelectedConflicts
     {
         get => showSelectedConflicts;
@@ -44,7 +45,7 @@ public sealed partial class MainWindowViewModel
         {
             if (!SetProperty(ref showSelectedConflicts, value)) return;
             RefreshConflictFilterChoices();
-            if (IsConflictComplete) QueueConflictRowsRefresh(animateFilter: true);
+            if (IsConflictComplete) QueueConflictRowsRefresh();
         }
     }
     public bool IncludeConflictOverrides { get => conflictTypes.Contains("override"); set => SetConflictType("override", value); }
@@ -58,7 +59,7 @@ public sealed partial class MainWindowViewModel
         if (conflictTypes.Count == 0) conflictView = "none";
         OnPropertyChanged(nameof(ConflictView));
         RefreshConflictFilterChoices();
-        if (IsConflictComplete) QueueConflictRowsRefresh(animateFilter: true);
+        if (IsConflictComplete) QueueConflictRowsRefresh();
     }
     private string conflictStatus = "尚未扫描";
     private string conflictPhase = string.Empty;
@@ -141,13 +142,24 @@ public sealed partial class MainWindowViewModel
     public string ConflictPathQuery
     {
         get => conflictPathQuery;
-        set
+        set => SetConflictPathQuery(value, submitted: false);
+    }
+
+    internal void SubmitConflictSearch(string query) => SetConflictPathQuery(query, submitted: true);
+
+    private void SetConflictPathQuery(string query, bool submitted)
+    {
+        var changed = SetProperty(ref conflictPathQuery, query, nameof(ConflictPathQuery));
+        if (!changed && !submitted) return;
+        if (changed) pendingConflictSearch = new(query);
+        if (!IsConflictComplete) { ApplyConflictSearch(pendingConflictSearch); return; }
+
+        if (!changed && ReferenceEquals(ConflictSearch, pendingConflictSearch) && ConflictRowsRefreshTask.IsCompleted)
         {
-            if (!SetProperty(ref conflictPathQuery, value)) return;
-            pendingConflictSearch = new(value);
-            if (IsConflictComplete) QueueConflictRowsRefresh(animateFilter: true);
-            else ApplyConflictSearch(pendingConflictSearch);
+            if (ConflictSearchTransitionRequested is { } transition) ConflictRowsRefreshTask = transition(() => { }, default);
+            return;
         }
+        QueueConflictRowsRefresh(animateSearch: submitted);
     }
     public PathSearch ConflictSearch { get; private set; } = PathSearch.Empty;
     private void ApplyConflictSearch(PathSearch search)
@@ -236,7 +248,7 @@ public sealed partial class MainWindowViewModel
     {
         if (view is not ("all" or "resources" or "scripts" or "problems" or "none")) return;
         conflictView = view;
-        if (IsConflictComplete) QueueConflictRowsRefresh(animateFilter: true);
+        if (IsConflictComplete) QueueConflictRowsRefresh();
         OnPropertyChanged(nameof(ConflictView));
         RefreshConflictFilterChoices();
         RefreshConflictVisibility();
@@ -252,7 +264,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(IsSameFilterSelected));
         OnPropertyChanged(nameof(IsIncompleteFilterSelected));
         RefreshConflictFilterChoices();
-        if (IsConflictComplete) QueueConflictRowsRefresh(animateFilter: true);
+        if (IsConflictComplete) QueueConflictRowsRefresh();
     }
 
     private bool HasConflictFilter(string choice) => conflictFilter == "all" || conflictFilter.Split(',').Contains(choice, StringComparer.Ordinal);
@@ -280,11 +292,14 @@ public sealed partial class MainWindowViewModel
         ConflictRowsRefreshTask = RefreshConflictRowsAsync(restoreViewport);
     }
 
-    private void QueueConflictRowsRefresh(bool animateFilter = false, bool animateRemoval = false) =>
-        ConflictRowsRefreshTask = RefreshConflictRowsAsync(animateFilter: animateFilter, animateRemoval: animateRemoval);
+    private void QueueConflictRowsRefresh(bool animateSearch = false, bool animateRemoval = false)
+    {
+        if (!animateSearch) ConflictSearchTransitionCanceled?.Invoke();
+        ConflictRowsRefreshTask = RefreshConflictRowsAsync(animateSearch: animateSearch, animateRemoval: animateRemoval);
+    }
 
     private async Task RefreshConflictRowsAsync(Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null,
-        bool animateFilter = false, bool animateRemoval = false, ConflictViewportCapture? removalViewport = null)
+        bool animateSearch = false, bool animateRemoval = false, ConflictViewportCapture? removalViewport = null)
     {
         var session = conflictSession;
         var request = ++conflictRowsRequest;
@@ -315,8 +330,8 @@ public sealed partial class MainWindowViewModel
             }
             if (animateRemoval && ConflictRemovalTransitionRequested is { } remove)
                 await remove(projection.Rows, Apply, removalViewport, cancellation.Token);
-            else if (animateFilter && ConflictFilterTransitionRequested is { } filterTransition)
-                await filterTransition(Apply, cancellation.Token);
+            else if (animateSearch && ConflictSearchTransitionRequested is { } searchTransition)
+                await searchTransition(Apply, cancellation.Token);
             else Apply();
         }
         catch (OperationCanceledException) { }

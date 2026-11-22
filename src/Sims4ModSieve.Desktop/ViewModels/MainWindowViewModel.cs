@@ -140,8 +140,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string DuplicatePathQuery
     {
         get => resultSession.DuplicatePathQuery;
-        set => DuplicateSearchRefreshTask = resultSession.SetPathQuery(value, DuplicateSearchTransitionRequested);
+        set => DuplicateSearchRefreshTask = resultSession.SetPathQuery(value, null);
     }
+    internal void SubmitDuplicateSearch(string query) =>
+        DuplicateSearchRefreshTask = resultSession.SetPathQuery(query, DuplicateSearchTransitionRequested);
     internal Task DuplicateSearchRefreshTask { get; private set; } = Task.CompletedTask;
     internal event Func<Action, Task>? DuplicateSearchTransitionRequested;
     internal event Func<IReadOnlySet<string>, Action, Task>? DuplicateRemovalTransitionRequested;

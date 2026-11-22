@@ -33,6 +33,8 @@ public partial class ConflictPage : UserControl
     {
         InitializeComponent();
         resultTransitions = new(TechnicalViewport, ConflictRowsList);
+        ConflictPathSearch.SubmitQuery = query => { if (DataContext is MainWindowViewModel model) model.SubmitConflictSearch(query); };
+        ConflictPathSearch.CancelResultTransition = resultTransitions.CancelSwitch;
         technicalEdge.Freeze();
         IsVisibleChanged += (_, _) => { if (!IsVisible) { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); FinishGroupAnimation(); } };
         Unloaded += (_, _) => { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); FinishGroupAnimation(); };
@@ -55,14 +57,16 @@ public partial class ConflictPage : UserControl
             {
                 oldModel.ConflictGroupLocationRequested -= LocateGroup;
                 oldModel.ConflictViewportCaptureRequested -= CaptureConflictViewport;
-                oldModel.ConflictFilterTransitionRequested -= resultTransitions.SwitchAsync;
+                oldModel.ConflictSearchTransitionRequested -= resultTransitions.SwitchAsync;
+                oldModel.ConflictSearchTransitionCanceled -= resultTransitions.CancelSwitch;
                 oldModel.ConflictRemovalTransitionRequested -= AnimateConflictRemovalAsync;
             }
             if (e.NewValue is MainWindowViewModel newModel)
             {
                 newModel.ConflictGroupLocationRequested += LocateGroup;
                 newModel.ConflictViewportCaptureRequested += CaptureConflictViewport;
-                newModel.ConflictFilterTransitionRequested += resultTransitions.SwitchAsync;
+                newModel.ConflictSearchTransitionRequested += resultTransitions.SwitchAsync;
+                newModel.ConflictSearchTransitionCanceled += resultTransitions.CancelSwitch;
                 newModel.ConflictRemovalTransitionRequested += AnimateConflictRemovalAsync;
             }
         };

@@ -24,6 +24,8 @@ public partial class ResultPathSearch : UserControl
     public string Query { get => (string)GetValue(QueryProperty); set => SetValue(QueryProperty, value); }
     public FrameworkElement? ResultSurface { get => (FrameworkElement?)GetValue(ResultSurfaceProperty); set => SetValue(ResultSurfaceProperty, value); }
     public bool Compact { get; set; }
+    internal Action<string>? SubmitQuery { get; set; }
+    internal Action? CancelResultTransition { get; set; }
 
     public ResultPathSearch()
     {
@@ -109,13 +111,17 @@ public partial class ResultPathSearch : UserControl
     private void ApplyQuery()
     {
         searchDelay.Stop();
+        if (QueryInput.Text == Query) return;
+        CancelResultTransition?.Invoke();
         SetCurrentValue(QueryProperty, QueryInput.Text);
     }
 
     private void QueryInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
-        ApplyQuery();
+        searchDelay.Stop();
+        if (SubmitQuery is { } submit) submit(QueryInput.Text);
+        else ApplyQuery();
         DismissFocus();
         e.Handled = true;
     }

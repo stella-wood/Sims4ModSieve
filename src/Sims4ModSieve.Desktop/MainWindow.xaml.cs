@@ -49,6 +49,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         duplicateTransitions = new(DuplicateResultsBody, DuplicateGroupsList);
+        DuplicatePathSearch.SubmitQuery = viewModel.SubmitDuplicateSearch;
+        DuplicatePathSearch.CancelResultTransition = duplicateTransitions.CancelSwitch;
         UpdatePopup.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>
             [new CustomPopupPlacement(new Point(-popupSize.Width - 8, targetSize.Height - popupSize.Height), PopupPrimaryAxis.Vertical)];
         UpdateToolTip.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>

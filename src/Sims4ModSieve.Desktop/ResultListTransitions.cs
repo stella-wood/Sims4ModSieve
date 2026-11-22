@@ -10,6 +10,7 @@ internal sealed class ResultListTransitions
 {
     private readonly FrameworkElement surface;
     private TaskCompletionSource? fadeOut;
+    private bool applyingSearch;
     private IReadOnlyList<FrameworkElement> leaving = [];
     private readonly List<ListBoxItem> compensatingItems = [];
     private TaskCompletionSource? exit;
@@ -18,7 +19,11 @@ internal sealed class ResultListTransitions
     public ResultListTransitions(FrameworkElement surface, ListBox list)
     {
         this.surface = surface;
-        ((INotifyCollectionChanged)list.Items).CollectionChanged += (_, _) => ClearSpace();
+        ((INotifyCollectionChanged)list.Items).CollectionChanged += (_, _) =>
+        {
+            ClearSpace();
+            if (!applyingSearch) CancelSwitch();
+        };
         list.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(ReleaseSpace));
         surface.IsVisibleChanged += (_, _) =>
         {
@@ -54,8 +59,14 @@ internal sealed class ResultListTransitions
             await fade.Task.WaitAsync(cancellation);
             cancellation.ThrowIfCancellationRequested();
             if (!ReferenceEquals(fadeOut, fade)) return;
-            apply();
-            surface.UpdateLayout();
+            applyingSearch = true;
+            try
+            {
+                apply();
+                surface.UpdateLayout();
+            }
+            finally { applyingSearch = false; }
+            if (!ReferenceEquals(fadeOut, fade)) return;
             fadeOut = null;
             if (CanAnimate) Reveal();
             else ResetSurface();
@@ -66,6 +77,15 @@ internal sealed class ResultListTransitions
             fadeOut = null;
             ResetSurface();
         }
+    }
+
+    public void CancelSwitch()
+    {
+        var previous = fadeOut;
+        if (previous is null && surface.RenderTransform is not TranslateTransform) return;
+        fadeOut = null;
+        previous?.TrySetCanceled();
+        ResetSurface();
     }
 
     private void Reveal()
