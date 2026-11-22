@@ -244,7 +244,7 @@
             <Grid Margin="0,6">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
                 <Button x:Name="ChevronButton" Style="{StaticResource ConflictChevronButtonStyle}" VerticalAlignment="Center"
-                        Click="GroupToggle_Click" RequestBringIntoView="GroupToggle_RequestBringIntoView" />
+                        Click="ExpandToggle_Click" RequestBringIntoView="ExpandToggle_RequestBringIntoView" />
                 <CheckBox x:Name="GroupSelection"
                           Grid.Column="1"
                           Margin="0,0,8,0"
@@ -256,7 +256,7 @@
                           Click="ConflictGroupSelection_Click"
                           AutomationProperties.Name="选择本组文件" />
                 <Button x:Name="ExpandButton" Grid.Column="2" Margin="5,0,8,0" Style="{StaticResource ConflictHeaderContentButtonStyle}"
-                        Click="GroupToggle_Click" RequestBringIntoView="GroupToggle_RequestBringIntoView">
+                        Click="ExpandToggle_Click" RequestBringIntoView="ExpandToggle_RequestBringIntoView">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Ellipse x:Name="StateDot" Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
@@ -420,7 +420,7 @@
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalToggleTemplate">
             <Button x:Name="TechnicalToggleButton" Margin="26,5,0,0" HorizontalAlignment="Right" Content="{Binding Title}" Style="{StaticResource ConflictTechnicalButtonStyle}"
-                    Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                    Click="ExpandToggle_Click" RequestBringIntoView="ExpandToggle_RequestBringIntoView" />
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalRelatedLinkTemplate">
             <Button Content="{Binding TechnicalLabel}" Style="{StaticResource ConflictTechnicalButtonStyle}" Foreground="#8B72A0" Padding="0" Margin="0,0,12,6" FontSize="10"

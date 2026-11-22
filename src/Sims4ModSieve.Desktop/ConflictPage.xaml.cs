@@ -247,10 +247,10 @@ public partial class ConflictPage : UserControl
         };
     }
 
-    private void GroupToggle_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e) =>
+    private void ExpandToggle_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e) =>
         ResultListViewport.SuppressMouseFocusScroll(sender, e);
 
-    private void GroupToggle_Click(object sender, RoutedEventArgs e)
+    private void ExpandToggle_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: ConflictResultRow { IsExpandable: true } row }
             || DataContext is not MainWindowViewModel model) return;
@@ -270,7 +270,7 @@ public partial class ConflictPage : UserControl
             bool IsCurrent() => ConflictRowsList.IsVisible && ReferenceEquals(DataContext, model)
                 && ReferenceEquals(model.ConflictRows, replacement);
             if (!IsCurrent() || replacement.FirstOrDefault(candidate => candidate.Key == row.Key) is not { } updated) return;
-            if (SystemParameters.ClientAreaAnimation && updated.IsExpanded != row.IsExpanded)
+            if (row.IsCardStart && SystemParameters.ClientAreaAnimation && updated.IsExpanded != row.IsExpanded)
                 AnimateGroup(viewport, updated, row.IsExpanded ? original : replacement, replacement, top, IsCurrent);
             else
                 viewport.Restore(updated, top);

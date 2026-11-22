@@ -1102,6 +1102,48 @@ public sealed class ConflictTechnicalDetailsTests
         Save(window, "technical-list-plain-rows.png");
     });
     [TestMethod]
+    public Task InlineTechnicalDetailsKeepTheirPositionWhenClickedAtViewportEdge() => WpfTestHost.RunAsync(async () =>
+    {
+        var session = Session(Enumerable.Range(0, 24).SelectMany(group => Enumerable.Range(0, 12).Select(resource =>
+            Resource((ulong)(group * 100 + resource + 1), ($@"C:\DemoMods\group-{group:D2}-a.package", "first"),
+                ($@"C:\DemoMods\group-{group:D2}-b.package", "second")))).ToArray());
+        session.ToggleExpanded(session.Cards[12].Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        WpfTestHost.PlaceOnScreen(window);
+        await SetSessionAsync(model, session);
+        var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
+        var scroll = Descendants<ScrollViewer>(list).First();
+        var viewport = Descendants<ScrollContentPresenter>(scroll).First();
+        var toggleKey = model.ConflictRows.Single(row => row.IsTechnicalToggle).Key;
+        var toggle = model.ConflictRows.Single(row => row.Key == toggleKey);
+        list.ScrollIntoView(toggle);
+        await WpfTestHost.LayoutAsync(window);
+
+        Button ToggleButton() => Descendants<Button>(list).Single(button => button.Name == "TechnicalToggleButton"
+            && button.DataContext is ConflictResultRow row && row.Key == toggleKey);
+        double Top(Button button) => button.TranslatePoint(new Point(), viewport).Y;
+        var initial = ToggleButton();
+        scroll.ScrollToVerticalOffset(scroll.VerticalOffset + Top(initial) + initial.ActualHeight / 3);
+        await WpfTestHost.LayoutAsync(window);
+        var before = Top(ToggleButton());
+        Assert.IsTrue(before < 0 && before + ToggleButton().ActualHeight > 0, "技术详情按钮应被视口上沿部分裁切");
+
+        foreach (var expanded in new[] { true, false })
+        {
+            var button = ToggleButton();
+            await WpfTestHost.ClickAsync(button, new Point(button.ActualWidth / 2, button.ActualHeight * 0.75));
+            await model.ConflictRowsRefreshTask;
+            await WpfTestHost.LayoutAsync(window);
+
+            Assert.AreEqual(expanded, model.ConflictRows.Single(row => row.Key == toggleKey).IsExpanded);
+            Assert.AreEqual(before, Top(ToggleButton()), 1d, "技术详情展开和收起后应保持操作入口的位置");
+        }
+    });
+
+    [TestMethod]
     [DataRow(2)]
     [DataRow(15)]
     public Task FloatingCollapseRemainsClickableAndClosesItsTechnicalDetails(int files) => WpfTestHost.RunAsync(async () =>
