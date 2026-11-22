@@ -152,6 +152,41 @@ public sealed class ConflictV2SessionTests
         Save(window, $"conflict-explanation-{card.Type}-{fileCount}.png");
     });
 
+    [TestMethod]
+    public Task SuspectedModExplanationKeepsItsWordingAfterDeletionAndUndo() => WpfTestHost.RunAsync(async () =>
+    {
+        var paths = Enumerable.Range(0, 7).Select(index => $@"C:\Mods\suspected-{index}.package").ToArray();
+        var removed = paths.Take(4).ToArray();
+        var session = V2([
+            Resource(1, paths.Select(path => (path, (string?)"same")).ToArray()),
+            Resource(2, removed.Select((path, index) => (path, (string?)$"version-{index}")).ToArray()),
+        ], paths.Select(path => (path, 2)).ToArray());
+        var card = session.Cards.Single();
+        Assert.AreEqual("suspected", card.Type);
+        session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+
+        await AssertExplanation(7, 2, 1);
+        session.ApplyDeletedPaths(removed);
+        await AssertExplanation(3, 1, 0);
+        Save(window, "suspected-mod-wording-after-deletion.png");
+        session.ApplyRestoredPaths(removed);
+        await AssertExplanation(7, 2, 1);
+
+        async Task AssertExplanation(int files, int shared, int different)
+        {
+            await SetSessionAsync(model, session, "all");
+            await WpfTestHost.LayoutAsync(window);
+            var row = model.ConflictRows.Single(item => item.Key == card.Key + "/explanation");
+            var text = Descendants<TextBlock>(window).Single(item => ReferenceEquals(item.DataContext, row) && item.Name == "Title");
+            Assert.IsTrue(text.IsVisible);
+            Assert.AreEqual($"这 {files} 份文件有 {shared} 项资源编号相同，其中 {different} 项内容不同，可能是同一 mod 的不同版本", text.Text);
+        }
+    });
+
     internal static ConflictResultSession VersionSession(bool tiedLatest = false)
     {
         var stamps = new Dictionary<string, FileStamp>

@@ -28,6 +28,12 @@ public sealed partial class ConflictResultSession
                 : $"其中 {different} 个内容不同、{incomplete} 个没比完。游戏对同名模块只会加载一份");
     }
 
+    private static int CountDifferentResources(IEnumerable<PackageConflictPairSummary> pairs) => pairs.SelectMany(pair => pair.Resources)
+        .Where(match => match.HasConfirmedDifference).Select(match => match.Key).Distinct().Count();
+
+    private static string SuspectedModExplanation(int shared, int different) =>
+        $"有 {shared} 项资源编号相同，其中 {different} 项内容不同，可能是同一 mod 的不同版本";
+
     private (string Text, string Tooltip) ScriptFileAnnotation(ConflictCard card, ConflictFile file)
     {
         var shared = 0;
@@ -209,6 +215,7 @@ public sealed partial class ConflictResultSession
             var files = card.Files.Where(file => !removedPaths.Contains(file.Path)).ToArray();
             if (files.Length == card.Files.Count) return card;
             var package = card.Package;
+            var explanation = $"已移除 {card.Files.Count - files.Length} 个文件，剩余 {files.Length} 个文件";
             if (package is not null)
             {
                 var relations = package.Relations.Where(relation => !removedPaths.Contains(relation.Pair.FirstPath)
@@ -243,6 +250,8 @@ public sealed partial class ConflictResultSession
                     BundleUniqueResourceCount = bundle is null ? null : bundle.ResourceCount
                         - relations.SelectMany(relation => relation.Pair.Resources).Select(match => match.Key).Distinct().Count(),
                 };
+                if (package.Kind == PackageConflictRelationKind.SuspectedSameMod)
+                    explanation = SuspectedModExplanation(package.ResourceKeys.Count, CountDifferentResources(displayPairs));
             }
             var duplicate = card.Duplicate;
             if (duplicate is not null && files.Length > 0)
@@ -266,7 +275,7 @@ public sealed partial class ConflictResultSession
                 Priority = modules is null ? card.Priority : ScriptPriority(modules),
                 Type = modules is null ? card.Type : ScriptPriority(modules) == ConflictPairPriority.CanOrganize ? "script-duplicate" : "script-conflict",
                 Title = modules is null ? card.Title : ScriptPriority(modules) == ConflictPairPriority.CanOrganize ? "重复模块（脚本）" : "脚本冲突",
-                Explanation = $"已移除 {card.Files.Count - files.Length} 个文件，剩余 {files.Length} 个文件",
+                Explanation = explanation,
             };
         }).Where(card => card.Files.Count > 0
             && (card.Files.Count > 1 || !expiredCardKeys.Contains(card.Key))).ToArray();
@@ -317,15 +326,14 @@ public sealed partial class ConflictResultSession
                 .ThenByDescending(member => type == "suspected" ? member.ScannedStamp.LastWriteTimeUtc : DateTime.MinValue)
                 .ThenBy(member => member.Path, StringComparer.OrdinalIgnoreCase).Select(member => new ConflictFile(member.Path, member.ScannedStamp)).ToArray();
             var key = type + "/" + ConflictIgnoreKeyBuilder.Build(files.Select(file => RelativeIdentity(file.Path)), group.ResourceKeys);
-            var different = group.Relations.SelectMany(relation => relation.Pair.Resources)
-                .Where(match => match.HasConfirmedDifference).Select(match => match.Key).Distinct().Count();
+            var different = CountDifferentResources(group.Relations.Select(relation => relation.Pair));
             var explanation = type switch
             {
                 "override" => $"有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同；游戏对每个编号只会使用一份资源",
                 "collection" => $"合集里包含 {group.Members.Where(member => !member.IsBundle).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()} 个另外单独放着的文件，"
                     + $"{group.Members.Where(member => member.ContainedContentIdentical == true).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()} 个已被包含，"
                     + $"{group.Members.Where(member => member.ContainedContentIdentical == false).Select(member => Representative(member.Path)).Distinct(StringComparer.OrdinalIgnoreCase).Count()} 个存在不同。还有 {group.BundleUniqueResourceCount} 样资源只在合集里有",
-                _ => $"有 {group.ResourceKeys.Count} 项资源编号相同，其中 {different} 项内容不同，可能是同一 mod 的不同版本",
+                _ => SuspectedModExplanation(group.ResourceKeys.Count, different),
             };
             cards.Add(new(key, type, title, type == "override" ? ConflictPairPriority.NeedsReview : ConflictPairPriority.CanOrganize,
                 files, explanation, Package: group));
@@ -422,8 +430,10 @@ public sealed partial class ConflictResultSession
                     // 收起仅隐藏文件行，组勾选仍按相同的筛选和副本折叠结果计算。
                     SelectionFiles = visibleFiles.Where(file => file.HasStamp).ToArray(),
                 })) return;
-                var separator = card.Modules is not null || card.Duplicate is not null && !card.HasRemovedFiles
-                    || !card.HasRemovedFiles && card.Package?.Kind is PackageConflictRelationKind.OverrideConflict or PackageConflictRelationKind.SuspectedSameMod ? counts.Count > 0 ? " " : "" : "；";
+                var joinsFileCount = card.Modules is not null || card.Duplicate is not null && !card.HasRemovedFiles
+                    || card.Package?.Kind == PackageConflictRelationKind.SuspectedSameMod
+                    || !card.HasRemovedFiles && card.Package?.Kind == PackageConflictRelationKind.OverrideConflict;
+                var separator = joinsFileCount ? counts.Count > 0 ? " " : "" : "；";
                 add(new(card.Key + "/explanation", ConflictRowKind.Explanation, 1,
                     (card.Type == "collection" ? card.Explanation
                         : card.Duplicate is not null && !card.HasRemovedFiles ? $"共有 {DuplicateGroupCount} 组重复，"
