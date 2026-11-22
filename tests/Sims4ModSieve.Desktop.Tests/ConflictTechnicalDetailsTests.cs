@@ -1102,12 +1102,18 @@ public sealed class ConflictTechnicalDetailsTests
         Save(window, "technical-list-plain-rows.png");
     });
     [TestMethod]
-    public Task InlineTechnicalDetailsKeepTheirPositionWhenClickedAtViewportEdge() => WpfTestHost.RunAsync(async () =>
+    [DataRow("top")]
+    [DataRow("center")]
+    [DataRow("bottom")]
+    [DataRow("last")]
+    [DataRow("after-group")]
+    public Task InlineTechnicalDetailsKeepTheirPositionThroughEveryRenderedFrame(string placement) => WpfTestHost.RunAsync(async () =>
     {
         var session = Session(Enumerable.Range(0, 24).SelectMany(group => Enumerable.Range(0, 12).Select(resource =>
             Resource((ulong)(group * 100 + resource + 1), ($@"C:\DemoMods\group-{group:D2}-a.package", "first"),
                 ($@"C:\DemoMods\group-{group:D2}-b.package", "second")))).ToArray());
-        session.ToggleExpanded(session.Cards[12].Key);
+        var groupKey = session.Cards[placement == "last" ? session.Cards.Count - 1 : 12].Key;
+        if (placement != "after-group") session.ToggleExpanded(groupKey);
         var model = CreateModel();
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
@@ -1117,29 +1123,78 @@ public sealed class ConflictTechnicalDetailsTests
         var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
         var scroll = Descendants<ScrollViewer>(list).First();
         var viewport = Descendants<ScrollContentPresenter>(scroll).First();
+        if (placement == "after-group")
+        {
+            list.ScrollIntoView(model.ConflictRows.Single(row => row.Key == groupKey));
+            await WpfTestHost.LayoutAsync(window);
+            var heading = Descendants<Button>(list).Single(button => button.Name == "ExpandButton"
+                && button.DataContext is ConflictResultRow row && row.Key == groupKey);
+            await WpfTestHost.ClickAsync(heading);
+            await model.ConflictRowsRefreshTask;
+            await Task.Delay(250);
+        }
         var toggleKey = model.ConflictRows.Single(row => row.IsTechnicalToggle).Key;
         var toggle = model.ConflictRows.Single(row => row.Key == toggleKey);
         list.ScrollIntoView(toggle);
+        if (placement == "last") scroll.ScrollToEnd();
         await WpfTestHost.LayoutAsync(window);
 
         Button ToggleButton() => Descendants<Button>(list).Single(button => button.Name == "TechnicalToggleButton"
             && button.DataContext is ConflictResultRow row && row.Key == toggleKey);
         double Top(Button button) => button.TranslatePoint(new Point(), viewport).Y;
         var initial = ToggleButton();
-        scroll.ScrollToVerticalOffset(scroll.VerticalOffset + Top(initial) + initial.ActualHeight / 3);
+        var desiredTop = placement switch
+        {
+            "top" => -initial.ActualHeight / 3,
+            "bottom" => viewport.ActualHeight - initial.ActualHeight * 2 / 3,
+            "last" => Top(initial),
+            _ => viewport.ActualHeight / 2,
+        };
+        scroll.ScrollToVerticalOffset(scroll.VerticalOffset + Top(initial) - desiredTop);
         await WpfTestHost.LayoutAsync(window);
         var before = Top(ToggleButton());
-        Assert.IsTrue(before < 0 && before + ToggleButton().ActualHeight > 0, "技术详情按钮应被视口上沿部分裁切");
+        var originalTop = before;
+        Assert.AreEqual(desiredTop, before, 1d, "技术详情按钮应位于指定的视口位置");
 
         foreach (var expanded in new[] { true, false })
         {
+            if (placement == "last" && !expanded)
+            {
+                // 读过几行后收起，此时直接收起会把视口拉回新的列表底部。
+                scroll.ScrollToVerticalOffset(scroll.VerticalOffset + viewport.ActualHeight / 5);
+                await WpfTestHost.LayoutAsync(window);
+                before = Top(ToggleButton());
+            }
             var button = ToggleButton();
-            await WpfTestHost.ClickAsync(button, new Point(button.ActualWidth / 2, button.ActualHeight * 0.75));
-            await model.ConflictRowsRefreshTask;
-            await WpfTestHost.LayoutAsync(window);
+            var frames = new List<double?>();
+            void RecordFrame(object? sender, EventArgs args)
+            {
+                var visible = Descendants<Button>(list).FirstOrDefault(candidate => candidate.Name == "TechnicalToggleButton"
+                    && candidate.DataContext is ConflictResultRow row && row.Key == toggleKey);
+                frames.Add(visible is null ? null : Top(visible));
+            }
+            CompositionTarget.Rendering += RecordFrame;
+            try
+            {
+                await WpfTestHost.ClickAsync(button, new Point(button.ActualWidth / 2, button.ActualHeight / 2));
+                await model.ConflictRowsRefreshTask;
+                await WpfTestHost.LayoutAsync(window);
+            }
+            finally { CompositionTarget.Rendering -= RecordFrame; }
 
             Assert.AreEqual(expanded, model.ConflictRows.Single(row => row.Key == toggleKey).IsExpanded);
             Assert.AreEqual(before, Top(ToggleButton()), 1d, "技术详情展开和收起后应保持操作入口的位置");
+            Assert.IsTrue(frames.Count > 0 && frames.All(top => top is { } position && Math.Abs(position - before) <= 1),
+                $"技术详情的每个渲染帧都应保持按钮位置。expected={before:F1}, frames=[{string.Join(", ", frames.Select(top => top?.ToString("F1") ?? "missing"))}]");
+        }
+
+        if (placement == "last")
+        {
+            scroll.ScrollToTop();
+            await WpfTestHost.LayoutAsync(window);
+            scroll.ScrollToEnd();
+            await WpfTestHost.LayoutAsync(window);
+            Assert.AreEqual(originalTop, Top(ToggleButton()), 1d, "滚回后应恢复原有的列表底部");
         }
     });
 

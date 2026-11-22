@@ -23,6 +23,7 @@ public partial class ConflictPage : UserControl
     private double technicalScrollRemaining;
     private double technicalScrollVelocity;
     private Action? finishGroupAnimation;
+    private ListBoxItem? technicalBottomSpace;
     private readonly HashSet<ListBoxItem> technicalFadedRows = [];
     private readonly LinearGradientBrush technicalEdge = new(Colors.Transparent, Colors.Black, new Point(0, 0), new Point(24, 0))
         { MappingMode = BrushMappingMode.Absolute };
@@ -33,7 +34,12 @@ public partial class ConflictPage : UserControl
         technicalEdge.Freeze();
         IsVisibleChanged += (_, _) => { if (!IsVisible) { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); FinishGroupAnimation(); } };
         Unloaded += (_, _) => { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); FinishGroupAnimation(); };
-        ((INotifyCollectionChanged)ConflictRowsList.Items).CollectionChanged += (_, _) => { StopTechnicalScroll(); CloseFileMenu(); };
+        ((INotifyCollectionChanged)ConflictRowsList.Items).CollectionChanged += (_, _) =>
+        {
+            StopTechnicalScroll();
+            CloseFileMenu();
+            ClearTechnicalBottomSpace();
+        };
         ConflictRowsList.RequestBringIntoView += (_, _) => StopTechnicalScroll();
         ConflictRowsList.IsVisibleChanged += (_, _) => { if (!ConflictRowsList.IsVisible) StopTechnicalScroll(); };
         ConflictFilterPopup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
@@ -272,9 +278,36 @@ public partial class ConflictPage : UserControl
             if (!IsCurrent() || replacement.FirstOrDefault(candidate => candidate.Key == row.Key) is not { } updated) return;
             if (row.IsCardStart && SystemParameters.ClientAreaAnimation && updated.IsExpanded != row.IsExpanded)
                 AnimateGroup(viewport, updated, row.IsExpanded ? original : replacement, replacement, top, IsCurrent);
+            else if (updated.IsTechnicalToggle)
+                RestoreTechnicalToggle(viewport, updated, top, replacement[^1]);
             else
                 viewport.Restore(updated, top);
         }, DispatcherPriority.DataBind));
+    }
+
+    private void RestoreTechnicalToggle(ResultListViewport viewport, ConflictResultRow toggle, double top, ConflictResultRow lastRow)
+    {
+        viewport.Restore(toggle, top);
+        if (toggle.IsExpanded || technicalResultsScroll is not { } scroll || scroll.ScrollableHeight - scroll.VerticalOffset > 0.5
+            || viewport.Container(toggle) is not { } anchor || viewport.Container(lastRow) is not { } last) return;
+        var missingSpace = viewport.Top(anchor) - top;
+        if (missingSpace <= 0.5) return;
+
+        // 收起末尾的技术详情后，滚动范围可能短到无法保持按钮位置。
+        technicalBottomSpace = last;
+        last.DataContextChanged += TechnicalBottomSpace_DataContextChanged;
+        last.Margin = new Thickness(0, 0, 0, missingSpace);
+        viewport.Restore(toggle, top);
+    }
+
+    private void TechnicalBottomSpace_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e) => ClearTechnicalBottomSpace();
+
+    private void ClearTechnicalBottomSpace()
+    {
+        if (technicalBottomSpace is not { } last) return;
+        technicalBottomSpace = null;
+        last.DataContextChanged -= TechnicalBottomSpace_DataContextChanged;
+        last.ClearValue(MarginProperty);
     }
 
     private void AnimateGroup(ResultListViewport viewport, ConflictResultRow header, IReadOnlyList<ConflictResultRow> expandedRows,
@@ -469,6 +502,7 @@ public partial class ConflictPage : UserControl
     private void TechnicalResults_Unloaded(object sender, RoutedEventArgs e)
     {
         StopTechnicalScroll();
+        ClearTechnicalBottomSpace();
         if (technicalResultsScroll is not null) technicalResultsScroll.ScrollChanged -= TechnicalResults_ScrollChanged;
         technicalResultsScroll = null;
         HideTechnicalOverlays();
@@ -477,6 +511,9 @@ public partial class ConflictPage : UserControl
     private void TechnicalResults_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, technicalResultsScroll)) return;
+        if (technicalBottomSpace is { } last && e.VerticalChange < 0 && e.ExtentHeightChange == 0
+            && e.VerticalOffset + last.Margin.Bottom <= e.ExtentHeight - e.ViewportHeight + 0.5)
+            ClearTechnicalBottomSpace();
         UpdateTechnicalOverlays();
     }
 
