@@ -56,6 +56,12 @@ public sealed partial class SqliteSha256Cache
                 command.CommandText = "ALTER TABLE metadata DROP COLUMN application_version;";
                 command.ExecuteNonQuery();
             }
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('metadata') WHERE name = 'deleted_count');";
+            if (Equals(command.ExecuteScalar(), 0L))
+            {
+                command.CommandText = "ALTER TABLE metadata ADD COLUMN deleted_count INTEGER NOT NULL DEFAULT 0;";
+                command.ExecuteNonQuery();
+            }
             command.CommandText = """
                 SELECT generation FROM metadata WHERE id = 1 AND algorithm_version = $algorithm
                 AND schema_version = $schema AND path_key_version = $path;
@@ -286,7 +292,7 @@ public sealed partial class SqliteSha256Cache
             }
         }
 
-        public bool Commit(CancellationToken cancellationToken = default)
+        public bool Commit(CancellationToken cancellationToken = default, ScanCoverage? coverage = null)
         {
             lock (_gate)
             {
@@ -294,7 +300,7 @@ public sealed partial class SqliteSha256Cache
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (!_owner._available || _connection is null) return false;
-                    if (!_hasStagedRows) return true;
+                    if (!_hasStagedRows && coverage?.HasDirectories != true) return true;
                     using var transaction = _connection.BeginTransaction();
                     using var command = _connection.CreateCommand();
                     command.Transaction = transaction;
@@ -304,6 +310,7 @@ public sealed partial class SqliteSha256Cache
                         _owner._available = false;
                         return false;
                     }
+                    var removed = coverage?.HasDirectories == true ? PruneMissing(_connection, command, coverage) : 0;
                     // Across identity modes, only an exact path match can retire an older version.
                     command.CommandText = """
                         DELETE FROM main.hashes WHERE generation = $generation
@@ -314,9 +321,12 @@ public sealed partial class SqliteSha256Cache
                         """ + PublishResourceHashes;
                     command.Parameters.AddWithValue("$generation", _owner._generation);
                     command.ExecuteNonQuery();
+                    var compactCount = removed > 0 ? CountForCompaction(command, removed) : 0;
                     // Cancellation after this check may race with the complete atomic publication.
                     cancellationToken.ThrowIfCancellationRequested();
                     transaction.Commit();
+                    if (compactCount > 0 && !cancellationToken.IsCancellationRequested)
+                        TryCompact(_connection, _owner._generation, compactCount);
                     return true;
                 }
                 catch (Exception ex) when (IsStorageFailure(ex))

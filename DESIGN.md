@@ -98,6 +98,8 @@
 
 警告弹窗局部资源 `WarningDialogBodyMinWidth` = 300 DIP，用于正文区的最小宽度。
 
+常规设置的「扫描性能」卡片沿用 `SettingsGroup`，缓存行使用 `SettingsButton` 和上下留白对应 `SpaceL` 的 `SettingsGroupRowInset`。`SettingsGroupDivider` 共用于游戏文件夹和扫描性能卡片，颜色为 `#ECE9E5`，高 1 DIP。
+
 ## 圆角
 
 | 令牌 | 值 | 用在 |

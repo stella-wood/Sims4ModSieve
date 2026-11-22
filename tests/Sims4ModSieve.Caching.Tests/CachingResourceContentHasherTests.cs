@@ -178,6 +178,75 @@ public sealed class CachingResourceContentHasherTests
     private static ResourceContentResult Success(ResourceContentTarget target) => ResourceContentResult.Success(
         target, Convert.ToHexString(SHA256.HashData(BitConverter.GetBytes(target.Ordinal))), target.Ordinal + 7);
 
+    [TestMethod]
+    public async Task ClearEmptiesBothTablesShrinksDatabaseAndMakesNextScanMiss()
+    {
+        using var fixture = new ScanFixture();
+        var path = fixture.WritePackage("Mods/a.package");
+        var targets = Enumerable.Range(0, 256).Select(i => First with { Ordinal = i }).ToArray();
+        await fixture.ScanFilesAsync([path], targets);
+        Assert.AreEqual(1L, fixture.Sql("SELECT count(*) FROM hashes;"));
+        Assert.AreEqual(256L, fixture.CountRows());
+        var before = new FileInfo(fixture.Database).Length;
+
+        using var pending = CachingStableFileHasher.Open(fixture.Root);
+        await pending.HashAsync(fixture.WritePackage("Mods/pending.package"));
+        Assert.IsTrue(SqliteSha256Cache.Clear(fixture.Root));
+        Assert.IsFalse(pending.Commit());
+        Assert.AreEqual(0L, fixture.Sql("SELECT count(*) FROM hashes;"));
+        Assert.AreEqual(0L, fixture.CountRows());
+        Assert.IsLessThan(before, new FileInfo(fixture.Database).Length);
+        var (hits, misses, resourceHits, resourceMisses) = await fixture.ScanFilesAsync([path], targets, "Mods");
+        Assert.AreEqual((0, 1, 0L, 256L), (hits, misses, resourceHits, resourceMisses));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ScopedCommitPrunesDeletedAndMovedFilesUnlessCanceled(bool cancel)
+    {
+        using var fixture = new ScanFixture();
+        var keep = fixture.WritePackage("Mods/keep.package");
+        var deleted = fixture.WritePackage("Mods/removed/deleted.package");
+        var moved = fixture.WritePackage("Mods/moved.package");
+        var outside = fixture.WritePackage("ModsBackup/outside.package");
+        var targets = new[] { First };
+        await fixture.ScanFilesAsync([keep, deleted, moved, outside], targets);
+        File.Delete(deleted);
+        Directory.Delete(Path.GetDirectoryName(deleted)!);
+        File.Move(moved, Path.Combine(fixture.Root, "ModsBackup", "moved.package"));
+
+        Assert.AreEqual((1, 0, 1L, 0L), await fixture.ScanFilesAsync([keep], targets, "Mods", cancel));
+        foreach (var table in new[] { "hashes", "resource_hashes" })
+        {
+            foreach (var path in new[] { keep, outside })
+                Assert.AreEqual(1L, fixture.Sql($"SELECT count(*) FROM {table} WHERE path = $path;", path));
+            foreach (var path in new[] { deleted, moved })
+                Assert.AreEqual(cancel ? 1L : 0L, fixture.Sql($"SELECT count(*) FROM {table} WHERE path = $path;", path));
+        }
+    }
+
+    [TestMethod]
+    public async Task CompactionUsesCumulativeRemovalAcrossCommits()
+    {
+        using var fixture = new ScanFixture();
+        var paths = Enumerable.Range(0, 8).Select(i => fixture.WritePackage($"Mods/{i}.package")).ToArray();
+        var targets = Enumerable.Range(0, 64).Select(i => First with { Ordinal = i }).ToArray();
+        await fixture.ScanFilesAsync(paths, targets);
+        var before = new FileInfo(fixture.Database).Length;
+        File.Delete(paths[0]);
+        File.Delete(paths[1]);
+        await fixture.ScanFilesAsync([], targets, "Mods");
+        Assert.AreEqual(130L, fixture.Sql("SELECT deleted_count FROM metadata;"));
+        Assert.AreEqual(before, new FileInfo(fixture.Database).Length);
+
+        File.Delete(paths[2]);
+        await fixture.ScanFilesAsync([], targets, "Mods");
+        Assert.AreEqual(0L, fixture.Sql("SELECT deleted_count FROM metadata;"));
+        Assert.IsLessThan(before, new FileInfo(fixture.Database).Length);
+        Assert.AreEqual(320L, fixture.CountRows());
+    }
+
     private static ResourceContentBudget Unlimited() => new(long.MaxValue);
 
     private static void AssertBatchEqual(ResourceContentBatchResult expected, ResourceContentBatchResult actual)
@@ -221,22 +290,53 @@ public sealed class CachingResourceContentHasherTests
         public ScanFixture()
         {
             _package = _temp.WriteFile("test.package", "fixture");
+            Directory.CreateDirectory(Path.GetDirectoryName(Database)!);
             Hasher = new(Files);
         }
 
-        public string Database => Path.Combine(_temp.Path, "hashes.sqlite3");
+        public string Root => _temp.Path;
+        public string Database => SqliteSha256Cache.DatabasePath(Root);
         public PhysicalFileSystemAccess Files { get; } = new();
         public LiveHasher Hasher { get; }
         public long Hits { get; private set; }
         public long Misses { get; private set; }
 
         public string NewPackage() => _temp.WriteFile("other.package", "fixture");
+        public string WritePackage(string path) => _temp.WriteFile(path, path);
         public void ChangeStamp() => File.SetLastWriteTimeUtc(_package, Files.GetFileStamp(_package).LastWriteTimeUtc.AddMinutes(1));
         public ResourceContentBatchRequest Request(params ResourceContentTarget[] targets) =>
             new(_package, Files.GetFileStamp(_package), targets, ResourceContentLimits.Default);
 
         public Task<ResourceContentBatchResult> ScanAsync(ResourceContentBatchRequest request, ResourceContentBudget? budget = null) =>
             WithCacheAsync(hasher => hasher.HashAsync(request, budget ?? Unlimited()));
+
+        public async Task<(int Hits, int Misses, long ResourceHits, long ResourceMisses)> ScanFilesAsync(
+            string[] paths, ResourceContentTarget[] targets, string? folder = null, bool cancel = false)
+        {
+            using var cache = CachingStableFileHasher.Open(Root);
+            using var cancellation = new CancellationTokenSource();
+            await cache.RunAsync(Hasher, async (fileHasher, resourceHasher) =>
+            {
+                if (folder is not null)
+                    await DuplicateScanner.CreateDefault().ScanAsync(
+                        new([new("scan", Path.Combine(Root, folder))]) { Coverage = cache.Coverage }, cancellation.Token);
+                foreach (var path in paths)
+                {
+                    await fileHasher.HashAsync(path, cancellation.Token);
+                    await resourceHasher.HashAsync(new(path, Files.GetFileStamp(path), targets, ResourceContentLimits.Default),
+                        Unlimited(), cancellation.Token);
+                }
+                return true;
+            }, cancellation.Token);
+            if (cancel)
+            {
+                cancellation.Cancel();
+                Assert.ThrowsExactly<OperationCanceledException>(() => cache.Commit(cancellation.Token));
+            }
+            else
+                Assert.IsTrue(cache.Commit());
+            return (cache.Hits, cache.Misses, cache.ResourceHits, cache.ResourceMisses);
+        }
 
         public async Task<T> WithCacheAsync<T>(Func<IResourceContentHasher, Task<T>> run, bool expectCommit = true)
         {

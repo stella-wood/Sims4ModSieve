@@ -353,11 +353,12 @@ public sealed class SettingsViewModelTests
             return path;
         }
         public MainWindowViewModel Model(Picker? picker = null, IDuplicateRunService? run = null,
-            IFileActionService? actions = null, Dialogs? dialogs = null, SettingsSupportService? support = null,
-            Func<DownloadedUpdate, Task>? startUpdate = null) => new(
+            IFileActionService? actions = null, IFileActionDialogService? dialogs = null, SettingsSupportService? support = null,
+            Func<DownloadedUpdate, Task>? startUpdate = null, string? scanCacheDirectory = null) => new(
                 run ?? new DuplicateRunService(DuplicateScanner.CreateDefault()), picker ?? new Picker(), Store,
                 fileActionService: actions, fileActionDialogs: dialogs ?? new Dialogs(),
-                settingsSupport: support ?? new SettingsSupportService(Root, Folder("Documents")), startUpdate: startUpdate);
+                settingsSupport: support ?? new SettingsSupportService(Root, Folder("Documents")), startUpdate: startUpdate,
+                scanCacheDirectory: scanCacheDirectory);
         public void Dispose() { Directory.Delete(Root, recursive: true); }
     }
 
@@ -380,7 +381,7 @@ public sealed class SettingsViewModelTests
         public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures) => Problems.AddRange(failures);
     }
 
-    private sealed class WaitingRun : IDuplicateRunService
+    internal sealed class WaitingRun : IDuplicateRunService
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task<DuplicateReport> RunAsync(DuplicateRunInput input, IProgress<DuplicateScanProgress>? progress = null, CancellationToken cancellationToken = default)

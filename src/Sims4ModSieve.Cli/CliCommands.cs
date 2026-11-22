@@ -143,7 +143,7 @@ internal static class CliCommands
                     error.WriteLine(size.DiagnosticText);
                     if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);
                 }, memoryObserved: error.WriteLine,
-                scanOptions: scanOptions, fileHasher: hasher, resourceHasher: resourceHasher);
+                scanOptions: scanOptions, fileHasher: hasher, resourceHasher: resourceHasher, coverage: cache?.Coverage);
             await report.RunAsync(sources, modsRoot, extensions);
             return report;
         }
