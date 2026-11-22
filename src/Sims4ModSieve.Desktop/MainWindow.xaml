@@ -408,7 +408,8 @@
                             </Grid>
                         </Border>
 
-                        <Grid x:Name="DuplicateResultsBody" Grid.Row="1" Background="Transparent" Focusable="True"
+                        <Grid Grid.Row="1" ClipToBounds="True">
+                        <Grid x:Name="DuplicateResultsBody" Background="Transparent" Focusable="True"
                               FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
                             <TextBlock Text="{Binding DuplicateSearchStatus}" Style="{StaticResource SearchResultCountStyle}" VerticalAlignment="Top" Visibility="{Binding ShowDuplicatePlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -417,7 +418,6 @@
                             </StackPanel>
 
                             <ListBox x:Name="DuplicateGroupsList" ItemsSource="{Binding VisibleDuplicateGroups}"
-                                     Tag="{Binding DuplicateSearchStatus}"
                                      Padding="20,6,8,12"
                                      Background="Transparent"
                                      BorderThickness="0"
@@ -426,7 +426,17 @@
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      VirtualizingPanel.IsVirtualizing="True"
                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                     VirtualizingPanel.ScrollUnit="Pixel"
                                      Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ListBox.Style>
+                                    <Style TargetType="ListBox">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsExpanded, ElementName=DuplicatePathSearch}" Value="True">
+                                                <Setter Property="Tag" Value="{Binding DuplicateSearchStatus}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ListBox.Style>
                                 <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
@@ -442,7 +452,9 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel>
-                                            <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,8" Style="{StaticResource PlainExpanderStyle}">
+                                            <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,8" Style="{StaticResource PlainExpanderStyle}"
+                                                      ButtonBase.Click="DuplicateGroupToggle_Click" RequestBringIntoView="DuplicateGroup_RequestBringIntoView"
+                                                      DataContextChanged="DuplicateGroup_DataContextChanged">
                                                 <Expander.Header>
                                                     <Grid HorizontalAlignment="Stretch">
                                                         <Grid.ColumnDefinitions>
@@ -494,7 +506,7 @@
                                                     </Grid>
                                                 </Expander.Header>
                                                 <Border Margin="20,3,0,7" Background="#F3F1ED" Padding="8,4">
-                                                    <ItemsControl ItemsSource="{Binding Files}">
+                                                    <ItemsControl x:Name="DuplicateFileList" ItemsSource="{Binding Files}">
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
                                                                 <Grid Margin="8,9">
@@ -540,6 +552,7 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                        </Grid>
                         </Grid>
 
                         <Border Grid.Row="2"

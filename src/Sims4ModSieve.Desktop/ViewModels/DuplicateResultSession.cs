@@ -27,13 +27,21 @@ public sealed class DuplicateResultSession : ObservableObject
     public string DuplicatePathQuery
     {
         get => duplicatePathQuery;
-        set
-        {
-            if (SetProperty(ref duplicatePathQuery, value)) RefreshVisibleDuplicateGroups();
-        }
+        set => SetPathQuery(value, null);
+    }
+
+    internal Task SetPathQuery(string value, Func<Action, Task>? transition)
+    {
+        var changed = SetProperty(ref duplicatePathQuery, value, nameof(DuplicatePathQuery));
+        if (!changed && transition is null) return Task.CompletedTask;
+        void Apply() { if (duplicatePathQuery == value && appliedDuplicatePathQuery != value) RefreshVisibleDuplicateGroups(); }
+        if (transition is not null) return transition(Apply);
+        Apply();
+        return Task.CompletedTask;
     }
 
     public IReadOnlyList<DuplicateGroupViewModel> VisibleDuplicateGroups { get; private set; } = [];
+    private string appliedDuplicatePathQuery = "";
     public PathSearch DuplicateSearch { get; private set; } = new("");
 
     public string DuplicateSearchStatus => DuplicateSearch.IsActive ? $"找到 {VisibleDuplicateGroups.Count} 组" : "";
@@ -108,7 +116,8 @@ public sealed class DuplicateResultSession : ObservableObject
 
     private void RefreshVisibleDuplicateGroups()
     {
-        DuplicateSearch = new(DuplicatePathQuery);
+        appliedDuplicatePathQuery = DuplicatePathQuery;
+        DuplicateSearch = new(appliedDuplicatePathQuery);
         VisibleDuplicateGroups = !DuplicateSearch.IsActive ? Groups : Groups
             .Select(group => (Group: group, Rank: DuplicateSearch.Rank(group.Files.Select(file => file.Path))))
             .Where(result => result.Rank >= 0).OrderByDescending(result => result.Rank).Select(result => result.Group).ToArray();

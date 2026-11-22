@@ -410,7 +410,9 @@ public sealed class ConflictRelationshipsDialogTests
     });
 
     [TestMethod]
-    public Task FileActionsHaveRectangularHitAreasAndTechnicalTableStaysInline() => WpfTestHost.RunAsync(async () =>
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task FileActionsHaveRectangularHitAreasAndTechnicalTableStaysInline(bool smallWorkArea) => WpfTestHost.RunAsync(async () =>
     {
         var copied = string.Empty;
         var model = CreateModel(text => copied = text);
@@ -439,7 +441,7 @@ public sealed class ConflictRelationshipsDialogTests
         list.ScrollIntoView(detail);
         await WpfTestHost.LayoutAsync(window);
         var detailButton = Descendants<Button>(list).Single(button => ReferenceEquals(button.DataContext, detail));
-        WpfTestHost.PlaceOnScreen(window);
+        WpfTestHost.PlaceOnScreen(window, workArea: smallWorkArea ? new Rect(0, 0, 1024, 720) : null);
         await WpfTestHost.LayoutAsync(window);
         detailButton.Focus();
         Assert.IsTrue(detailButton.IsKeyboardFocused);

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +22,9 @@ public partial class ConflictPage : UserControl
     private TimeSpan? technicalScrollFrame;
     private double technicalScrollRemaining;
     private double technicalScrollVelocity;
+    private Action? finishGroupAnimation;
+    private ListBoxItem? technicalBottomSpace;
+    private readonly ResultListTransitions resultTransitions;
     private readonly HashSet<ListBoxItem> technicalFadedRows = [];
     private readonly LinearGradientBrush technicalEdge = new(Colors.Transparent, Colors.Black, new Point(0, 0), new Point(24, 0))
         { MappingMode = BrushMappingMode.Absolute };
@@ -28,27 +32,42 @@ public partial class ConflictPage : UserControl
     public ConflictPage()
     {
         InitializeComponent();
+        resultTransitions = new(TechnicalViewport, ConflictRowsList);
+        ConflictPathSearch.SubmitQuery = query => { if (DataContext is MainWindowViewModel model) model.SubmitConflictSearch(query); };
+        ConflictPathSearch.CancelResultTransition = resultTransitions.CancelSwitch;
         technicalEdge.Freeze();
-        IsVisibleChanged += (_, _) => { if (!IsVisible) { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); } };
-        Unloaded += (_, _) => { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); };
-        ((INotifyCollectionChanged)ConflictRowsList.Items).CollectionChanged += (_, _) => { StopTechnicalScroll(); CloseFileMenu(); };
+        IsVisibleChanged += (_, _) => { if (!IsVisible) { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); FinishGroupAnimation(); } };
+        Unloaded += (_, _) => { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); FinishGroupAnimation(); };
+        ((INotifyCollectionChanged)ConflictRowsList.Items).CollectionChanged += (_, _) =>
+        {
+            StopTechnicalScroll();
+            CloseFileMenu();
+            ClearTechnicalBottomSpace();
+        };
         ConflictRowsList.RequestBringIntoView += (_, _) => StopTechnicalScroll();
         ConflictRowsList.IsVisibleChanged += (_, _) => { if (!ConflictRowsList.IsVisible) StopTechnicalScroll(); };
         ConflictFilterPopup.CustomPopupPlacementCallback = (popupSize, targetSize, offset) =>
             [new CustomPopupPlacement(new Point(targetSize.Width - popupSize.Width, targetSize.Height), PopupPrimaryAxis.Horizontal)];
         DataContextChanged += (_, e) =>
         {
+            FinishGroupAnimation();
             StopTechnicalScroll();
             HideTechnicalOverlays();
             if (e.OldValue is MainWindowViewModel oldModel)
             {
                 oldModel.ConflictGroupLocationRequested -= LocateGroup;
                 oldModel.ConflictViewportCaptureRequested -= CaptureConflictViewport;
+                oldModel.ConflictSearchTransitionRequested -= resultTransitions.SwitchAsync;
+                oldModel.ConflictSearchTransitionCanceled -= resultTransitions.CancelSwitch;
+                oldModel.ConflictRemovalTransitionRequested -= AnimateConflictRemovalAsync;
             }
             if (e.NewValue is MainWindowViewModel newModel)
             {
                 newModel.ConflictGroupLocationRequested += LocateGroup;
                 newModel.ConflictViewportCaptureRequested += CaptureConflictViewport;
+                newModel.ConflictSearchTransitionRequested += resultTransitions.SwitchAsync;
+                newModel.ConflictSearchTransitionCanceled += resultTransitions.CancelSwitch;
+                newModel.ConflictRemovalTransitionRequested += AnimateConflictRemovalAsync;
             }
         };
     }
@@ -96,6 +115,24 @@ public partial class ConflictPage : UserControl
     {
         if (DataContext is not MainWindowViewModel model || sender is not CheckBox { DataContext: ConflictResultRow row }) return;
         model.ToggleConflictGroupSelection(row);
+    }
+
+    private async void QuickStatusTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { CommandParameter: string filter } || DataContext is not MainWindowViewModel model
+            || model.ConflictFilter == filter) return;
+        FinishGroupAnimation();
+        StopTechnicalScroll();
+        var previousRows = model.ConflictRows;
+        model.SelectConflictFilterCommand.Execute(filter);
+        var refresh = model.ConflictRowsRefreshTask;
+        await refresh;
+        if (ReferenceEquals(DataContext, model) && ConflictRowsList.IsVisible && ReferenceEquals(model.ConflictRowsRefreshTask, refresh)
+            && !ReferenceEquals(model.ConflictRows, previousRows))
+        {
+            StopTechnicalScroll();
+            technicalResultsScroll?.ScrollToTop();
+        }
     }
 
     private void ConflictFilterPopup_Opened(object? sender, EventArgs e)
@@ -176,8 +213,9 @@ public partial class ConflictPage : UserControl
         }
     }, DispatcherPriority.Loaded);
 
-    private Action<IReadOnlyList<ConflictResultRow>>? CaptureConflictViewport(bool anchorToGroup)
+    private ConflictViewportCapture? CaptureConflictViewport(bool anchorToGroup)
     {
+        if (anchorToGroup) return CaptureBulkGroupViewport() is { } restoreBulk ? new(restoreBulk) : null;
         if (DataContext is not MainWindowViewModel model || !ConflictRowsList.IsVisible || technicalResultsScroll is not { } scroll) return null;
         var presenter = TechnicalVisuals<ScrollContentPresenter>(scroll).FirstOrDefault();
         var panel = TechnicalVisuals<VirtualizingStackPanel>(ConflictRowsList).FirstOrDefault();
@@ -189,30 +227,21 @@ public partial class ConflictPage : UserControl
             .Where(item => item.DataContext is ConflictResultRow)
             .Select(item => (Row: (ConflictResultRow)item.DataContext, Top: item.TranslatePoint(new Point(), presenter).Y, Height: item.ActualHeight))
             .OrderBy(item => item.Top).ToArray();
-        return replacement =>
+        bool IsOriginal() => ReferenceEquals(DataContext, model) && ConflictRowsList.IsVisible && ReferenceEquals(model.ConflictRows, originalRows);
+        (ConflictResultRow Row, double Top)? VisibleAnchor(IReadOnlySet<string> keys)
         {
-            if (!ReferenceEquals(DataContext, model) || !ConflictRowsList.IsVisible || !ReferenceEquals(model.ConflictRows, originalRows)) return;
+            if (!IsOriginal()) return null;
+            var first = candidates.FirstOrDefault(item => keys.Contains(item.Row.Key) && item.Top + item.Height > 0 && item.Top < presenter.ActualHeight);
+            return first.Row is null ? null : (first.Row, first.Top);
+        }
+        void Restore(IReadOnlyList<ConflictResultRow> replacement)
+        {
+            if (!IsOriginal()) return;
             var survivingKeys = replacement.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
-            var surviving = candidates.Where(item => survivingKeys.Contains(item.Row.Key)).ToArray();
-            // 顶行被删除时，保留相邻存活行原来的位置，而不是将下一组顶到视口顶部。
-            var visible = surviving.Where(item => item.Top + item.Height > 0 && item.Top < presenter.ActualHeight).ToArray();
-            var anchor = visible.Length > 0 ? visible[0] : surviving.OrderBy(item => Math.Abs(item.Top)).FirstOrDefault();
+            var fallback = candidates.Where(item => survivingKeys.Contains(item.Row.Key)).OrderBy(item => Math.Abs(item.Top)).FirstOrDefault();
+            var anchor = VisibleAnchor(survivingKeys) ?? (fallback.Row, fallback.Top);
             var row = anchor.Row is null ? null : replacement.First(item => item.Key == anchor.Row.Key);
             var anchorTop = anchor.Top;
-            if (anchorToGroup)
-            {
-                var source = candidates.FirstOrDefault(item => item.Top + item.Height > 0 && item.Top < presenter.ActualHeight);
-                if (source.Row is not null)
-                {
-                    var ownerKey = source.Row.IsCardStart ? source.Row.Key : source.Row.OwnerKey;
-                    var owner = replacement.FirstOrDefault(item => item.IsCardStart && item.Key == ownerKey);
-                    if (owner is not null)
-                    {
-                        row = owner;
-                        anchorTop = source.Row.IsCardStart ? source.Top : 0;
-                    }
-                }
-            }
             if (row is null) return;
             bool IsCurrent() => ReferenceEquals(DataContext, model) && ConflictRowsList.IsVisible
                 && ReferenceEquals(model.ConflictRows, replacement);
@@ -234,7 +263,210 @@ public partial class ConflictPage : UserControl
                 RestoreAnchor();
                 Dispatcher.BeginInvoke(RestoreAnchor, DispatcherPriority.ApplicationIdle);
             }, DispatcherPriority.Loaded);
+        }
+        return new(Restore, VisibleAnchor);
+    }
+
+    private Action<IReadOnlyList<ConflictResultRow>>? CaptureBulkGroupViewport()
+    {
+        StopTechnicalScroll();
+        var viewport = ResultListViewport.Capture(ConflictRowsList);
+        var center = viewport?.CenterItem();
+        var middle = center?.DataContext as ConflictResultRow ?? center?.Tag as ConflictResultRow;
+        var key = middle?.IsCardStart == true ? middle.Key : middle?.OwnerKey;
+        var item = key is null ? null : viewport!.RealizedItems.FirstOrDefault(item => item.DataContext is ConflictResultRow row && row.Key == key);
+        var top = item is null ? 0 : viewport!.Top(item);
+        FinishGroupAnimation();
+        if (DataContext is not MainWindowViewModel model || viewport is null || key is null) return null;
+        return replacement =>
+        {
+            var updated = replacement.FirstOrDefault(row => row.Key == key);
+            if (updated is not null)
+                viewport.RestoreAfterLayout(updated, top, () => ConflictRowsList.IsVisible
+                    && ReferenceEquals(DataContext, model) && ReferenceEquals(model.ConflictRows, replacement));
         };
+    }
+
+    private void ResultAction_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e) =>
+        ResultListViewport.SuppressMouseFocusScroll(sender, e);
+
+    private async Task AnimateConflictRemovalAsync(IReadOnlyList<ConflictResultRow> replacement, Action apply,
+        ConflictViewportCapture? capture, CancellationToken cancellation)
+    {
+        if (DataContext is not MainWindowViewModel model || ResultListViewport.Capture(ConflictRowsList) is not { } viewport)
+        {
+            apply();
+            return;
+        }
+
+        FinishGroupAnimation();
+        StopTechnicalScroll();
+        var oldRows = model.ConflictRows;
+        var remaining = replacement.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
+        if (oldRows.All(row => remaining.Contains(row.Key))) { apply(); return; }
+        var originalAnchor = capture?.VisibleAnchor?.Invoke(remaining);
+        if (originalAnchor is { } original) resultTransitions.Position(viewport, original.Row, original.Top);
+        var visible = viewport.VisibleItems.Where(item => item.DataContext is ConflictResultRow).ToArray();
+        var departing = visible.Select(item => (ConflictResultRow)item.DataContext).Where(row => !remaining.Contains(row.Key)
+            && (row.File is not null || row.IsCardStart || !remaining.Contains(row.OwnerKey))).ToHashSet();
+        // 冲突卡由相邻的行组成，标题滚出视口时，用卡片仍可见的第一行定位。
+        var anchorItem = visible.FirstOrDefault(item => remaining.Contains(((ConflictResultRow)item.DataContext).Key));
+        var anchor = originalAnchor?.Row ?? anchorItem?.DataContext as ConflictResultRow;
+        var top = originalAnchor?.Top ?? (anchorItem is null ? 0 : viewport.Top(anchorItem));
+        void Publish()
+        {
+            apply();
+            if (anchor is not null && ConflictRowsList.IsVisible && ReferenceEquals(DataContext, model)
+                && model.ConflictRows.FirstOrDefault(row => row.Key == anchor.Key) is { } surviving)
+                resultTransitions.Position(viewport, surviving, top);
+        }
+        if (departing.Count == 0 || !resultTransitions.CanAnimate) { Publish(); return; }
+
+        var preview = oldRows.Where(row => remaining.Contains(row.Key) || departing.Contains(row)).ToArray();
+        try
+        {
+            if (preview.Length != oldRows.Count)
+            {
+                var first = visible[0];
+                var firstTop = viewport.Top(first);
+                var firstRow = (ConflictResultRow)first.DataContext;
+                ConflictRowsList.SetCurrentValue(ItemsControl.ItemsSourceProperty, preview);
+                if (anchor is not null) resultTransitions.Position(viewport, anchor, top);
+                else viewport.Restore(firstRow, firstTop);
+            }
+            var elements = departing.Select(viewport.Container).OfType<FrameworkElement>().ToArray();
+            await resultTransitions.ExitAsync(viewport, elements, anchor is null ? null : viewport.Container(anchor), Publish, cancellation);
+        }
+        finally
+        {
+            if (ReferenceEquals(ConflictRowsList.ItemsSource, preview))
+                ConflictRowsList.GetBindingExpression(ItemsControl.ItemsSourceProperty)?.UpdateTarget();
+        }
+    }
+
+    private void ExpandToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ConflictResultRow { IsExpandable: true } row }
+            || DataContext is not MainWindowViewModel model) return;
+        StopTechnicalScroll();
+        if (ResultListViewport.Capture(ConflictRowsList) is not { } viewport || viewport.Container(row) is not { } item)
+        {
+            FinishGroupAnimation();
+            model.ToggleConflictExpanded(row);
+            return;
+        }
+
+        var top = viewport.Top(item);
+        FinishGroupAnimation();
+        var original = model.ConflictRows;
+        // 先完成位置恢复，再让刷新任务的调用方继续滚动。
+        model.ToggleConflictExpanded(row, replacement =>
+        {
+            bool IsCurrent() => ConflictRowsList.IsVisible && ReferenceEquals(DataContext, model)
+                && ReferenceEquals(model.ConflictRows, replacement);
+            if (!IsCurrent() || replacement.FirstOrDefault(candidate => candidate.Key == row.Key) is not { } updated) return;
+            if (row.IsCardStart && SystemParameters.ClientAreaAnimation && updated.IsExpanded != row.IsExpanded)
+                AnimateGroup(viewport, updated, row.IsExpanded ? original : replacement, replacement, top, IsCurrent);
+            else if (updated.IsTechnicalToggle)
+                RestoreTechnicalToggle(viewport, updated, top, replacement[^1]);
+            else
+                viewport.Restore(updated, top);
+        });
+    }
+
+    private void RestoreTechnicalToggle(ResultListViewport viewport, ConflictResultRow toggle, double top, ConflictResultRow lastRow)
+    {
+        viewport.Restore(toggle, top);
+        if (toggle.IsExpanded || technicalResultsScroll is not { } scroll || scroll.ScrollableHeight - scroll.VerticalOffset > 0.5
+            || viewport.Container(toggle) is not { } anchor || viewport.Container(lastRow) is not { } last) return;
+        var missingSpace = viewport.Top(anchor) - top;
+        if (missingSpace <= 0.5) return;
+
+        // 收起末尾的技术详情后，滚动范围可能短到无法保持按钮位置。
+        technicalBottomSpace = last;
+        last.DataContextChanged += TechnicalBottomSpace_DataContextChanged;
+        last.Margin = new Thickness(0, 0, 0, missingSpace);
+        viewport.Restore(toggle, top);
+    }
+
+    private void TechnicalBottomSpace_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e) => ClearTechnicalBottomSpace();
+
+    private void ClearTechnicalBottomSpace()
+    {
+        if (technicalBottomSpace is not { } last) return;
+        technicalBottomSpace = null;
+        last.DataContextChanged -= TechnicalBottomSpace_DataContextChanged;
+        last.ClearValue(MarginProperty);
+    }
+
+    private void AnimateGroup(ResultListViewport viewport, ConflictResultRow header, IReadOnlyList<ConflictResultRow> expandedRows,
+        IReadOnlyList<ConflictResultRow> replacement, double top, Func<bool> isCurrent)
+    {
+        var group = expandedRows.SkipWhile(row => row.Key != header.Key);
+        var expandedHeader = group.First();
+        var children = group.Skip(1).TakeWhile(row => !row.IsCardStart).ToArray();
+        var content = new StackPanel();
+        var body = new Border { Child = content, ClipToBounds = true, Height = 0, IsHitTestVisible = false };
+        var animationItem = new ListBoxItem { Content = body, Tag = header, Focusable = false, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        var previewHeader = header with { IsCardEnd = expandedHeader.IsCardEnd };
+        var preview = new ObservableCollection<object>();
+        var headerIndex = 0;
+        foreach (var row in replacement)
+        {
+            if (row.Key == header.Key)
+            {
+                headerIndex = preview.Count;
+                preview.Add(previewHeader);
+                preview.Add(animationItem);
+            }
+            else if (row.IsCardStart || row.OwnerKey != header.Key) preview.Add(row);
+        }
+
+        ConflictRowsList.SetCurrentValue(ItemsControl.ItemsSourceProperty, preview);
+        viewport.Restore(previewHeader, top);
+        // 只布置动画期间会进入视口的行，大组的其余行继续由列表虚拟化。
+        var title = viewport.Container(previewHeader);
+        var width = title?.ActualWidth ?? ConflictRowsList.ActualWidth;
+        var height = 0d;
+        foreach (var row in children)
+        {
+            var contentRow = new ContentPresenter { Content = row, ContentTemplate = ConflictRowsList.ItemTemplate };
+            content.Children.Add(contentRow);
+            contentRow.Measure(new Size(width, double.PositiveInfinity));
+            height += contentRow.DesiredSize.Height;
+            if (height >= viewport.Height) break;
+        }
+
+        finishGroupAnimation = () =>
+        {
+            body.BeginAnimation(HeightProperty, null);
+            body.ClearValue(HeightProperty);
+            if (!ReferenceEquals(ConflictRowsList.ItemsSource, preview)) return;
+            var currentItem = viewport.Container(previewHeader);
+            var position = currentItem is null ? top : viewport.Top(currentItem);
+            if (header.IsExpanded && content.Children.Count < children.Length)
+            {
+                // 大组一次发布剩下的虚拟行，避免逐条更新列表。
+                ConflictRowsList.GetBindingExpression(ItemsControl.ItemsSourceProperty)?.UpdateTarget();
+                if (isCurrent()) viewport.Restore(header, position);
+                return;
+            }
+            // 保留标题控件，动画结束时仍可接住紧接的一次点击。
+            preview.RemoveAt(headerIndex + 1);
+            if (previewHeader.IsCardEnd != header.IsCardEnd) preview[headerIndex] = header;
+            if (header.IsExpanded)
+                for (var index = 0; index < children.Length; index++) preview.Insert(headerIndex + 1 + index, children[index]);
+        };
+        var visibleHeight = title is null ? 0 : viewport.VisibleExpansionHeight(title, height);
+        ResultListViewport.AnimateHeight(body, header.IsExpanded ? 0 : height, header.IsExpanded ? height : 0,
+            header.IsExpanded, visibleHeight, FinishGroupAnimation);
+    }
+
+    private void FinishGroupAnimation()
+    {
+        var finish = finishGroupAnimation;
+        finishGroupAnimation = null;
+        finish?.Invoke();
     }
 
     private void TechnicalColumns_Loaded(object sender, RoutedEventArgs e) => SubscribeTechnicalColumns((ScrollViewer)sender);
@@ -361,6 +593,7 @@ public partial class ConflictPage : UserControl
     private void TechnicalResults_Unloaded(object sender, RoutedEventArgs e)
     {
         StopTechnicalScroll();
+        ClearTechnicalBottomSpace();
         if (technicalResultsScroll is not null) technicalResultsScroll.ScrollChanged -= TechnicalResults_ScrollChanged;
         technicalResultsScroll = null;
         HideTechnicalOverlays();
@@ -369,6 +602,9 @@ public partial class ConflictPage : UserControl
     private void TechnicalResults_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, technicalResultsScroll)) return;
+        if (technicalBottomSpace is { } last && e.VerticalChange < 0 && e.ExtentHeightChange == 0
+            && e.VerticalOffset + last.Margin.Bottom <= e.ExtentHeight - e.ViewportHeight + 0.5)
+            ClearTechnicalBottomSpace();
         UpdateTechnicalOverlays();
     }
 

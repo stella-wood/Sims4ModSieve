@@ -152,6 +152,87 @@ public sealed class ConflictV2SessionTests
         Save(window, $"conflict-explanation-{card.Type}-{fileCount}.png");
     });
 
+    [TestMethod]
+    public Task SuspectedModExplanationKeepsItsWordingAfterDeletionAndUndo() => WpfTestHost.RunAsync(async () =>
+    {
+        var paths = Enumerable.Range(0, 7).Select(index => $@"C:\Mods\suspected-{index}.package").ToArray();
+        var removed = paths.Take(4).ToArray();
+        var session = V2([
+            Resource(1, paths.Select(path => (path, (string?)"same")).ToArray()),
+            Resource(2, removed.Select((path, index) => (path, (string?)$"version-{index}")).ToArray()),
+        ], paths.Select(path => (path, 2)).ToArray());
+        var card = session.Cards.Single();
+        Assert.AreEqual("suspected", card.Type);
+        session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+
+        await AssertExplanation(7, 2, 1);
+        session.ApplyDeletedPaths(removed);
+        await AssertExplanation(3, 1, 0);
+        Save(window, "suspected-mod-wording-after-deletion.png");
+        session.ApplyRestoredPaths(removed);
+        await AssertExplanation(7, 2, 1);
+
+        async Task AssertExplanation(int files, int shared, int different)
+        {
+            await SetSessionAsync(model, session, "all");
+            await WpfTestHost.LayoutAsync(window);
+            var row = model.ConflictRows.Single(item => item.Key == card.Key + "/explanation");
+            var text = Descendants<TextBlock>(window).Single(item => ReferenceEquals(item.DataContext, row) && item.Name == "Title");
+            Assert.IsTrue(text.IsVisible);
+            Assert.AreEqual($"这 {files} 份文件有 {shared} 项资源编号相同，其中 {different} 项内容不同，可能是同一 mod 的不同版本", text.Text);
+        }
+    });
+
+    [TestMethod]
+    [DataRow("override", "这 3 份文件有 1 项资源编号相同，其中 1 项内容不同；游戏对每个编号只会使用一份资源",
+        "这 2 份文件有 1 项资源编号相同，其中 1 项内容不同；游戏对每个编号只会使用一份资源")]
+    [DataRow("collection", "合集里包含 2 个另外单独放着的文件，1 个已被包含，1 个存在不同。还有 4 样资源只在合集里有",
+        "合集里包含 1 个另外单独放着的文件，1 个已被包含，0 个存在不同。还有 7 样资源只在合集里有")]
+    [DataRow("script-conflict", "这 3 份文件都带了 kit，共 1 个模块，其中 1 个内容不同、0 个没比完。游戏对同名模块只会加载一份",
+        "这 2 份文件都带了 kit，共 1 个模块，其中 1 个内容不同、0 个没比完。游戏对同名模块只会加载一份")]
+    [DataRow("script-duplicate", "这 3 份文件都带了 kit，共 1 个模块，内容都相同", "这 2 份文件都带了 kit，共 1 个模块，内容都相同")]
+    [DataRow("duplicates", "共有 1 组重复，", "共有 0 组重复")]
+    public Task OtherConflictExplanationsUseCurrentFactsAfterDeletionAndUndo(string type, string original, string after) => WpfTestHost.RunAsync(async () =>
+    {
+        var session = type switch
+        {
+            "override" => V2([Resource(1, (A, "one"), (B, "two"), (C, "three"))], [(A, 10), (B, 10), (C, 10)]),
+            "collection" => V2([
+                Resource(1, (A, "same"), (B, "same")), Resource(2, (A, "same"), (B, "same")),
+                Resource(3, (A, "same"), (B, "same")), Resource(4, (B, "same"), (C, "same")),
+                Resource(5, (B, "same"), (C, "same")), Resource(6, (B, "same"), (C, "different")),
+            ], [(A, 3), (B, 10), (C, 3)]),
+            "duplicates" => V2([], [], Duplicates(A, C)),
+            _ => V2([], [], scripts: Scripts([Collision("kit.main", (A, "same"), (B, type == "script-conflict" ? "different" : "same"), (C, "same"))])),
+        };
+        var card = session.Cards.Single(item => item.Type == type);
+        session.ToggleExpanded(card.Key);
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+
+        await AssertExplanation(original);
+        session.ApplyDeletedPaths([C]);
+        await AssertExplanation(after);
+        session.ApplyRestoredPaths([C]);
+        await AssertExplanation(original);
+
+        async Task AssertExplanation(string expected)
+        {
+            await SetSessionAsync(model, session, "all");
+            await WpfTestHost.LayoutAsync(window);
+            var row = model.ConflictRows.Single(item => item.Key == card.Key + "/explanation");
+            var text = Descendants<TextBlock>(window).Single(item => ReferenceEquals(item.DataContext, row) && item.Name == "Title");
+            Assert.IsTrue(text.IsVisible);
+            Assert.AreEqual(expected, text.Text);
+        }
+    });
+
     internal static ConflictResultSession VersionSession(bool tiedLatest = false)
     {
         var stamps = new Dictionary<string, FileStamp>
@@ -707,8 +788,14 @@ public sealed class ConflictV2SessionTests
         Assert.AreEqual(original.Key, remaining.Key);
         Assert.AreEqual(original.GroupIndex, remaining.GroupIndex);
         Assert.AreEqual(B, remaining.Files.Single().Path);
-        Assert.AreEqual("已移除 1 个文件，剩余 1 个文件", remaining.Explanation);
         var rows = Rows(session, "all");
+        var expectedExplanation = kind switch
+        {
+            "resources" => "这 1 份文件有 0 项资源编号相同，其中 0 项内容不同；游戏对每个编号只会使用一份资源",
+            "scripts" => "这 1 份文件都带了 pkg，共 1 个模块，其中 0 个内容不同、0 个没比完。游戏对同名模块只会加载一份",
+            _ => "共有 0 组重复",
+        };
+        Assert.AreEqual(expectedExplanation, rows.Single(row => row.Kind == ConflictRowKind.Explanation).Title);
         Assert.IsTrue(rows.Single(row => row.IsCardStart).IsExpanded);
         Assert.AreEqual(B, rows.Single(row => row.File is not null).File!.Path);
         Assert.IsFalse(rows.Any(row => row.IsTechnicalToggle));
@@ -791,6 +878,8 @@ public sealed class ConflictV2SessionTests
         session.ApplyRestoredPaths([A]);
         session.ApplyDeletedPaths([B]);
         Assert.IsNull(session.Cards.Single().Package!.BundlePath);
+        Assert.AreEqual("合集里包含 0 个另外单独放着的文件，0 个已被包含，0 个存在不同。还有 0 样资源只在合集里有",
+            Rows(session).Single(row => row.Kind == ConflictRowKind.Explanation).Title);
         foreach (var row in Rows(session).Where(row => row.File is not null))
         {
             Assert.AreEqual("撞 0 样 · 独有 3 样", row.Annotation);

@@ -27,33 +27,33 @@
         <SolidColorBrush x:Key="ComboBoxFillBrush" Color="#F2F1EF" />
         <SolidColorBrush x:Key="ComboBoxActiveFillBrush" Color="#E9E6E2" />
         <sys:Double x:Key="FontSizeLarge">28</sys:Double>
+        <sys:Double x:Key="SearchResultCountHeight">16</sys:Double>
         <Style x:Key="SearchResultCountStyle" TargetType="TextBlock">
             <Setter Property="Margin" Value="20,5,8,0" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="IsHitTestVisible" Value="False" />
-            <Style.Triggers>
-                <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="SearchResultFlashStyle" TargetType="FrameworkElement">
-            <Style.Triggers>
-                <Trigger Property="IsHitTestVisible" Value="False"><Setter Property="Opacity" Value="0" /></Trigger>
-            </Style.Triggers>
+            <Setter Property="Height" Value="{StaticResource SearchResultCountHeight}" />
         </Style>
         <ControlTemplate x:Key="SearchResultItemTemplate" TargetType="ListBoxItem">
             <StackPanel>
-                <TextBlock x:Name="ResultCount" Style="{StaticResource SearchResultCountStyle}" Margin="0,0,0,6">
-                    <TextBlock.Text>
+                <TextBlock x:Name="ResultCount" Style="{StaticResource SearchResultCountStyle}" Margin="0,0,0,6"
+                           Text="{Binding Tag, RelativeSource={RelativeSource Self}}">
+                    <TextBlock.Tag>
                         <MultiBinding Converter="{StaticResource SearchResultCountConverter}">
                             <Binding />
                             <Binding Path="ItemsSource" RelativeSource="{RelativeSource AncestorType=ListBox}" />
                             <Binding Path="Tag" RelativeSource="{RelativeSource AncestorType=ListBox}" />
                         </MultiBinding>
-                    </TextBlock.Text>
+                    </TextBlock.Tag>
                 </TextBlock>
-                <ContentPresenter Style="{StaticResource SearchResultFlashStyle}" />
+                <ContentPresenter />
             </StackPanel>
+            <ControlTemplate.Triggers>
+                <Trigger SourceName="ResultCount" Property="Tag" Value="{x:Null}">
+                    <Setter TargetName="ResultCount" Property="Visibility" Value="Collapsed" />
+                </Trigger>
+            </ControlTemplate.Triggers>
         </ControlTemplate>
 
         <Style x:Key="ResultVerticalScrollBarStyle" TargetType="ScrollBar">
@@ -411,7 +411,7 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <Grid Grid.Row="0">
+                            <Grid x:Name="ExpanderHeader" Grid.Row="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="20" />
                                     <ColumnDefinition Width="*" />
@@ -450,11 +450,11 @@
                                                   VerticalAlignment="Center" />
                             </Grid>
 
-                            <ContentPresenter x:Name="ExpandedContent"
-                                              Grid.Row="1"
-                                              Content="{TemplateBinding Content}"
-                                              ContentTemplate="{TemplateBinding ContentTemplate}"
-                                              Visibility="Collapsed" />
+                            <Border x:Name="ExpandedContent" Grid.Row="1" ClipToBounds="True" Visibility="Collapsed">
+                                <StackPanel>
+                                    <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                </StackPanel>
+                            </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsExpanded" Value="True">

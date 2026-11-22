@@ -244,7 +244,7 @@
             <Grid Margin="0,6">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
                 <Button x:Name="ChevronButton" Style="{StaticResource ConflictChevronButtonStyle}" VerticalAlignment="Center"
-                        Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                        Click="ExpandToggle_Click" RequestBringIntoView="ResultAction_RequestBringIntoView" />
                 <CheckBox x:Name="GroupSelection"
                           Grid.Column="1"
                           Margin="0,0,8,0"
@@ -255,7 +255,8 @@
                           Visibility="Collapsed"
                           Click="ConflictGroupSelection_Click"
                           AutomationProperties.Name="选择本组文件" />
-                <Button x:Name="ExpandButton" Grid.Column="2" Margin="5,0,8,0" Style="{StaticResource ConflictHeaderContentButtonStyle}" Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+                <Button x:Name="ExpandButton" Grid.Column="2" Margin="5,0,8,0" Style="{StaticResource ConflictHeaderContentButtonStyle}"
+                        Click="ExpandToggle_Click" RequestBringIntoView="ResultAction_RequestBringIntoView">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Ellipse x:Name="StateDot" Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
@@ -267,6 +268,7 @@
                     </Grid>
                 </Button>
                 <Button Grid.Column="3" Style="{StaticResource ConflictRowActionStyle}" ToolTip="忽略／取消忽略本组" AutomationProperties.Name="忽略／取消忽略本组"
+                        RequestBringIntoView="ResultAction_RequestBringIntoView"
                         Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
             </Grid>
             <DataTemplate.Triggers>
@@ -362,8 +364,8 @@
                         <Button Style="{StaticResource ConflictRowActionStyle}" ToolTip="打开所在文件夹" AutomationProperties.Name="打开所在文件夹" Command="{Binding DataContext.OpenConflictFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                             <Path Width="16" Height="16" IsHitTestVisible="False" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Data="M1,4 L6,4 L8,6 L15,6 L15,14 L1,14 Z M1,6 L1,2 L6,2 L8,4 L14,4 L14,6" />
                         </Button>
-                        <Button x:Name="FileIgnoreButton" Style="{StaticResource ConflictRowActionStyle}" ToolTip="{Binding IgnoreMenuText}" AutomationProperties.Name="{Binding IgnoreMenuText}" Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
-                        <Button Style="{StaticResource ConflictRowActionStyle}" IsEnabled="{Binding File.HasStamp}" ToolTip="{Binding DeleteTooltip}" AutomationProperties.Name="{Binding DeleteTooltip}" Command="{Binding DataContext.DeleteConflictFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+                        <Button x:Name="FileIgnoreButton" Style="{StaticResource ConflictRowActionStyle}" ToolTip="{Binding IgnoreMenuText}" AutomationProperties.Name="{Binding IgnoreMenuText}" RequestBringIntoView="ResultAction_RequestBringIntoView" Command="{Binding DataContext.IgnoreConflictCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"><Path Style="{StaticResource ConflictEyeStyle}" /></Button>
+                        <Button Style="{StaticResource ConflictRowActionStyle}" IsEnabled="{Binding File.HasStamp}" ToolTip="{Binding DeleteTooltip}" AutomationProperties.Name="{Binding DeleteTooltip}" RequestBringIntoView="ResultAction_RequestBringIntoView" Command="{Binding DataContext.DeleteConflictFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
                             <Path Width="16" Height="16" IsHitTestVisible="False" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Data="M2,4 L14,4 M6,4 L6,2 L10,2 L10,4 M4,4 L5,14 L11,14 L12,4 M7,6 L7,12 M9,6 L9,12" />
                         </Button>
                     </StackPanel>
@@ -419,7 +421,7 @@
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalToggleTemplate">
             <Button x:Name="TechnicalToggleButton" Margin="26,5,0,0" HorizontalAlignment="Right" Content="{Binding Title}" Style="{StaticResource ConflictTechnicalButtonStyle}"
-                    Command="{Binding DataContext.ToggleConflictExpandedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                    Click="ExpandToggle_Click" RequestBringIntoView="ResultAction_RequestBringIntoView" />
         </DataTemplate>
         <DataTemplate x:Key="ConflictTechnicalRelatedLinkTemplate">
             <Button Content="{Binding TechnicalLabel}" Style="{StaticResource ConflictTechnicalButtonStyle}" Foreground="#8B72A0" Padding="0" Margin="0,0,12,6" FontSize="10"
@@ -680,14 +682,14 @@
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsConflictNotScanning}">
-                            <Button x:Name="ConflictAllFilter" Content="全部" Tag="{Binding IsAllFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="all" Style="{StaticResource ConflictAllFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="全部" />
-                            <Button x:Name="ConflictNeedsReviewFilter" Tag="{Binding IsDifferentFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="different" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="异常">
+                            <Button x:Name="ConflictAllFilter" Content="全部" Tag="{Binding IsAllFilterSelected}" Click="QuickStatusTab_Click" CommandParameter="all" Style="{StaticResource ConflictAllFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="全部" />
+                            <Button x:Name="ConflictNeedsReviewFilter" Tag="{Binding IsDifferentFilterSelected}" Click="QuickStatusTab_Click" CommandParameter="different" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="异常">
                                 <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictNeedReviewBrush}" Margin="0,0,6,0" /><TextBlock Text="异常" /></StackPanel>
                             </Button>
-                            <Button x:Name="ConflictCanOrganizeFilter" Tag="{Binding IsSameFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="same" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="有隐患">
+                            <Button x:Name="ConflictCanOrganizeFilter" Tag="{Binding IsSameFilterSelected}" Click="QuickStatusTab_Click" CommandParameter="same" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="有隐患">
                                 <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictCanOrganizeBrush}" Margin="0,0,6,0" /><TextBlock Text="有隐患" /></StackPanel>
                             </Button>
-                            <Button x:Name="ConflictIncompleteFilter" Tag="{Binding IsIncompleteFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="incomplete" Style="{StaticResource ConflictQuickFilterStyle}" AutomationProperties.Name="未分析">
+                            <Button x:Name="ConflictIncompleteFilter" Tag="{Binding IsIncompleteFilterSelected}" Click="QuickStatusTab_Click" CommandParameter="incomplete" Style="{StaticResource ConflictQuickFilterStyle}" AutomationProperties.Name="未分析">
                                 <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,6,0" /><TextBlock Text="未分析" /></StackPanel>
                             </Button>
                         </StackPanel>
@@ -732,12 +734,22 @@
                         </Popup>
                         </Grid>
                     </Border>
-                    <Grid x:Name="TechnicalViewport" Grid.Row="2" ClipToBounds="True" Background="Transparent" Focusable="True"
+                    <Grid Grid.Row="2" ClipToBounds="True">
+                    <Grid x:Name="TechnicalViewport" ClipToBounds="True" Background="Transparent" Focusable="True"
                           FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
                         <TextBlock Text="{Binding ConflictStatus}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowConflictPlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" Tag="{Binding ConflictSearchStatus}" ItemTemplate="{StaticResource ConflictRowTemplate}" Style="{StaticResource ConflictListStyle}" VirtualizingPanel.ScrollUnit="Pixel"
+                        <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" ItemTemplate="{StaticResource ConflictRowTemplate}" VirtualizingPanel.ScrollUnit="Pixel"
                                  PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel" PreviewMouseDown="TechnicalResults_PreviewMouseDown" PreviewKeyDown="TechnicalResults_PreviewKeyDown"
                                  Loaded="TechnicalResults_Loaded" Unloaded="TechnicalResults_Unloaded" LayoutUpdated="TechnicalResults_LayoutUpdated">
+                            <ListBox.Style>
+                                <Style TargetType="ListBox" BasedOn="{StaticResource ConflictListStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsExpanded, ElementName=ConflictPathSearch}" Value="True">
+                                            <Setter Property="Tag" Value="{Binding ConflictSearchStatus}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Style>
                             <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">
@@ -749,7 +761,7 @@
                                 </Style>
                             </ListBox.ItemContainerStyle>
                         </ListBox>
-                        <Canvas x:Name="TechnicalOverlay" Style="{StaticResource SearchResultFlashStyle}">
+                        <Canvas x:Name="TechnicalOverlay">
                             <Border x:Name="StickyTechnicalHeader" Background="{StaticResource SurfaceBrush}" Visibility="Collapsed" PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel">
                                 <ContentControl x:Name="StickyTechnicalContent" ContentTemplate="{StaticResource ConflictTechnicalTableTemplate}" HorizontalContentAlignment="Stretch" />
                             </Border>
@@ -774,6 +786,7 @@
                         </Canvas>
                         <TextBlock Text="{Binding EmptyConflictText}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowEmptyConflictRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <TextBlock Text="{Binding ConflictSearchStatus}" Style="{StaticResource SearchResultCountStyle}" VerticalAlignment="Top" Visibility="{Binding ShowEmptyConflictRows, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </Grid>
                     </Grid>
                     <Border Grid.Row="3" Padding="20,10,20,10" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
                         <Border.Style>

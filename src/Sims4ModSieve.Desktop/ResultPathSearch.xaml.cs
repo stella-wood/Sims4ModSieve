@@ -13,18 +13,22 @@ public partial class ResultPathSearch : UserControl
     private static readonly TimeSpan ExpandDuration = TimeSpan.FromMilliseconds(220);
     private readonly DispatcherTimer searchDelay = new() { Interval = TimeSpan.FromMilliseconds(175) };
     private readonly DispatcherTimer collapseDelay = new() { Interval = TimeSpan.FromMilliseconds(120) };
-    private readonly DispatcherTimer flashDelay = new() { Interval = TimeSpan.FromMilliseconds(70) };
-    private bool expanded;
     private double targetWidth = CollapsedWidth;
 
+    private static readonly DependencyPropertyKey IsExpandedPropertyKey = DependencyProperty.RegisterReadOnly(nameof(IsExpanded), typeof(bool),
+        typeof(ResultPathSearch), new PropertyMetadata(false));
+    public static readonly DependencyProperty IsExpandedProperty = IsExpandedPropertyKey.DependencyProperty;
     public static readonly DependencyProperty QueryProperty = DependencyProperty.Register(nameof(Query), typeof(string),
         typeof(ResultPathSearch), new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, QueryChanged));
     public static readonly DependencyProperty ResultSurfaceProperty = DependencyProperty.Register(nameof(ResultSurface),
         typeof(FrameworkElement), typeof(ResultPathSearch), new PropertyMetadata(null, ResultSurfaceChanged));
 
     public string Query { get => (string)GetValue(QueryProperty); set => SetValue(QueryProperty, value); }
+    public bool IsExpanded => (bool)GetValue(IsExpandedProperty);
     public FrameworkElement? ResultSurface { get => (FrameworkElement?)GetValue(ResultSurfaceProperty); set => SetValue(ResultSurfaceProperty, value); }
     public bool Compact { get; set; }
+    internal Action<string>? SubmitQuery { get; set; }
+    internal Action? CancelResultTransition { get; set; }
 
     public ResultPathSearch()
     {
@@ -52,7 +56,6 @@ public partial class ResultPathSearch : UserControl
             DismissFocus();
             RefreshExpansion();
         };
-        flashDelay.Tick += (_, _) => EndFlash();
         MouseEnter += (_, _) => { collapseDelay.Stop(); RefreshExpansion(); };
         MouseLeave += (_, _) => { if (QueryInput.Text.Length == 0) collapseDelay.Start(); };
         IsKeyboardFocusWithinChanged += (_, _) => RefreshExpansion();
@@ -61,11 +64,10 @@ public partial class ResultPathSearch : UserControl
             if (IsEnabled) return;
             searchDelay.Stop();
             collapseDelay.Stop();
-            EndFlash();
             QueryInput.Text = Query;
             RefreshExpansion();
         };
-        Unloaded += (_, _) => { searchDelay.Stop(); collapseDelay.Stop(); EndFlash(); };
+        Unloaded += (_, _) => { searchDelay.Stop(); collapseDelay.Stop(); };
     }
 
     internal void FocusInput()
@@ -112,28 +114,19 @@ public partial class ResultPathSearch : UserControl
     private void ApplyQuery()
     {
         searchDelay.Stop();
+        if (QueryInput.Text == Query) return;
+        CancelResultTransition?.Invoke();
         SetCurrentValue(QueryProperty, QueryInput.Text);
     }
 
     private void QueryInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
-        ApplyQuery();
+        searchDelay.Stop();
+        if (SubmitQuery is { } submit) submit(QueryInput.Text);
+        else ApplyQuery();
         DismissFocus();
-        if (ResultSurface is { } surface)
-        {
-            flashDelay.Stop();
-            surface.IsHitTestVisible = false;
-            flashDelay.Start();
-        }
         e.Handled = true;
-    }
-
-    private void EndFlash()
-    {
-        flashDelay.Stop();
-        if (ResultSurface is not { } surface) return;
-        surface.IsHitTestVisible = true;
     }
 
     private void ResultSurface_PreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -156,9 +149,9 @@ public partial class ResultPathSearch : UserControl
     private void SetExpanded(bool value)
     {
         var width = value ? MeasureExpandedWidth() : CollapsedWidth;
-        var stateChanged = expanded != value;
+        var stateChanged = IsExpanded != value;
         if (!stateChanged && width == targetWidth) return;
-        expanded = value;
+        SetValue(IsExpandedPropertyKey, value);
         targetWidth = width;
         if (value) QueryInput.Visibility = Visibility.Visible;
         var animation = new DoubleAnimation(SearchBox.Width, width,
@@ -168,7 +161,7 @@ public partial class ResultPathSearch : UserControl
                 : new CubicEase { EasingMode = EasingMode.EaseOut },
             FillBehavior = FillBehavior.Stop,
         };
-        animation.Completed += (_, _) => { if (!expanded) QueryInput.Visibility = Visibility.Collapsed; };
+        animation.Completed += (_, _) => { if (!IsExpanded) QueryInput.Visibility = Visibility.Collapsed; };
         SearchBox.Width = width;
         SearchBox.BeginAnimation(WidthProperty, animation);
         if (!stateChanged) return;

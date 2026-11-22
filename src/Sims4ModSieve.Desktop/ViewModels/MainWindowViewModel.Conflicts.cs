@@ -9,6 +9,9 @@ using Sims4ModSieve.Desktop.Infrastructure;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
 
+internal sealed record ConflictViewportCapture(Action<IReadOnlyList<ConflictResultRow>> Restore,
+    Func<IReadOnlySet<string>, (ConflictResultRow Row, double Top)?>? VisibleAnchor = null);
+
 public sealed partial class MainWindowViewModel
 {
     private ConflictResultSession conflictSession = new();
@@ -22,7 +25,11 @@ public sealed partial class MainWindowViewModel
     private IReadOnlyList<ConflictResultRow> conflictRows = [];
     private int visibleConflictParentCount;
     public Task ConflictRowsRefreshTask { get; private set; } = Task.CompletedTask;
-    public event Func<bool, Action<IReadOnlyList<ConflictResultRow>>?>? ConflictViewportCaptureRequested;
+    internal event Func<bool, ConflictViewportCapture?>? ConflictViewportCaptureRequested;
+    internal event Func<Action, CancellationToken, Task>? ConflictSearchTransitionRequested;
+    internal event Action? ConflictSearchTransitionCanceled;
+    internal event Func<IReadOnlyList<ConflictResultRow>, Action, ConflictViewportCapture?, CancellationToken, Task>? ConflictRemovalTransitionRequested;
+    private PathSearch pendingConflictSearch = PathSearch.Empty;
     private string conflictSection = "overview";
     private string conflictView = "all";
     private string conflictFilter = "all";
@@ -135,15 +142,32 @@ public sealed partial class MainWindowViewModel
     public string ConflictPathQuery
     {
         get => conflictPathQuery;
-        set
+        set => SetConflictPathQuery(value, submitted: false);
+    }
+
+    internal void SubmitConflictSearch(string query) => SetConflictPathQuery(query, submitted: true);
+
+    private void SetConflictPathQuery(string query, bool submitted)
+    {
+        var changed = SetProperty(ref conflictPathQuery, query, nameof(ConflictPathQuery));
+        if (!changed && !submitted) return;
+        if (changed) pendingConflictSearch = new(query);
+        if (!IsConflictComplete) { ApplyConflictSearch(pendingConflictSearch); return; }
+
+        if (!changed && ReferenceEquals(ConflictSearch, pendingConflictSearch) && ConflictRowsRefreshTask.IsCompleted)
         {
-            if (!SetProperty(ref conflictPathQuery, value)) return;
-            ConflictSearch = new(value);
-            OnPropertyChanged(nameof(ConflictSearch));
-            if (IsConflictComplete) QueueConflictRowsRefresh();
+            if (ConflictSearchTransitionRequested is { } transition) ConflictRowsRefreshTask = transition(() => { }, default);
+            return;
         }
+        QueueConflictRowsRefresh(animateSearch: submitted);
     }
     public PathSearch ConflictSearch { get; private set; } = PathSearch.Empty;
+    private void ApplyConflictSearch(PathSearch search)
+    {
+        if (ReferenceEquals(ConflictSearch, search)) return;
+        ConflictSearch = search;
+        OnPropertyChanged(nameof(ConflictSearch));
+    }
     public string ConflictSearchStatus => ConflictSearch.IsActive ? $"找到 {visibleConflictParentCount} 组" : "";
     public bool ShowCollapseAllConflictIcon => conflictRows.Any(row => row.IsCardStart && row.IsExpandable)
         && conflictRows.Where(row => row.IsCardStart && row.IsExpandable).All(row => row.IsExpanded);
@@ -172,15 +196,13 @@ public sealed partial class MainWindowViewModel
         SelectConflictFilterCommand = new RelayCommand(filter => SelectConflictFilter(filter as string));
         ToggleConflictExpandedCommand = new RelayCommand(value =>
         {
-            if (value is not ConflictResultRow { IsExpandable: true } row || !IsConflictComplete) return;
-            conflictSession.ToggleExpanded(row.Key);
-            QueueConflictRowsRefresh();
+            if (value is ConflictResultRow row) ToggleConflictExpanded(row);
         });
         ToggleAllConflictGroupsCommand = new RelayCommand(_ =>
         {
             var restoreViewport = ConflictViewportCaptureRequested?.Invoke(true);
             conflictSession.ToggleAllGroups(conflictRows);
-            ConflictRowsRefreshTask = RefreshConflictRowsAsync(restoreViewport);
+            ConflictRowsRefreshTask = RefreshConflictRowsAsync(restoreViewport?.Restore);
         }, _ => !IsBusy && IsConflictComplete && conflictRows.Any(row => row.IsCardStart && row.IsExpandable));
         StartConflictScanCommand = new AsyncRelayCommand(StartConflictScanAsync,
             exception => ReportConflictFailure(exception), () => !IsBusy && ConflictSources.Any(source => source.IsEnabled));
@@ -263,9 +285,22 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(EmptyConflictText));
     }
 
-    private void QueueConflictRowsRefresh() => ConflictRowsRefreshTask = RefreshConflictRowsAsync();
+    internal void ToggleConflictExpanded(ConflictResultRow row, Action<IReadOnlyList<ConflictResultRow>>? afterPublish = null)
+    {
+        if (!row.IsExpandable || !IsConflictComplete) return;
+        conflictSession.ToggleExpanded(row.Key);
+        ConflictRowsRefreshTask = RefreshConflictRowsAsync(afterPublish: afterPublish);
+    }
 
-    private async Task RefreshConflictRowsAsync(Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
+    private void QueueConflictRowsRefresh(bool animateSearch = false, bool animateRemoval = false)
+    {
+        if (!animateSearch) ConflictSearchTransitionCanceled?.Invoke();
+        ConflictRowsRefreshTask = RefreshConflictRowsAsync(animateSearch: animateSearch, animateRemoval: animateRemoval);
+    }
+
+    private async Task RefreshConflictRowsAsync(Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null,
+        bool animateSearch = false, bool animateRemoval = false, ConflictViewportCapture? removalViewport = null,
+        Action<IReadOnlyList<ConflictResultRow>>? afterPublish = null)
     {
         var session = conflictSession;
         var request = ++conflictRowsRequest;
@@ -274,7 +309,7 @@ public sealed partial class MainWindowViewModel
         conflictRowsCancellation = cancellation;
         var view = conflictView;
         var filter = conflictFilter;
-        var search = ConflictSearch;
+        var search = pendingConflictSearch;
         var expanded = session.GetExpandedKeysSnapshot();
         var snapshot = session.ProjectionSnapshot();
         var types = new HashSet<string>(conflictTypes, StringComparer.Ordinal);
@@ -288,7 +323,18 @@ public sealed partial class MainWindowViewModel
                 return (Rows: rows, ParentCount: rows.Count(row => row.Depth == 0));
             }, cancellation.Token);
             if (!ReferenceEquals(session, conflictSession) || request != conflictRowsRequest || !IsConflictComplete) return;
-            PublishConflictRows(projection.Rows, projection.ParentCount, restoreViewport);
+            void Apply()
+            {
+                if (cancellation.IsCancellationRequested || !ReferenceEquals(session, conflictSession) || request != conflictRowsRequest || !IsConflictComplete) return;
+                ApplyConflictSearch(search);
+                var publishedRows = PublishConflictRows(projection.Rows, projection.ParentCount, restoreViewport);
+                afterPublish?.Invoke(publishedRows);
+            }
+            if (animateRemoval && ConflictRemovalTransitionRequested is { } remove)
+                await remove(projection.Rows, Apply, removalViewport, cancellation.Token);
+            else if (animateSearch && ConflictSearchTransitionRequested is { } searchTransition)
+                await searchTransition(Apply, cancellation.Token);
+            else Apply();
         }
         catch (OperationCanceledException) { }
         catch (Exception)
@@ -303,7 +349,7 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    private void PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount,
+    private IReadOnlyList<ConflictResultRow> PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount,
         Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
     {
         var disabledByPath = disabledRecords.ToDictionary(record => record.OriginalPath, StringComparer.OrdinalIgnoreCase);
@@ -340,6 +386,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(ShowExpandAllConflictIcon));
         OnPropertyChanged(nameof(ConflictExpandCollapseToolTip));
         ToggleAllConflictGroupsCommand?.RaiseCanExecuteChanged();
+        return publishedRows;
     }
 
     private void ResetConflictSession()
@@ -359,7 +406,7 @@ public sealed partial class MainWindowViewModel
         conflictSession.SetIgnoredFiles(ignoredRecords.Select(record => record.Path));
         IsConflictMultiSelect = false;
         conflictPathQuery = "";
-        ConflictSearch = PathSearch.Empty;
+        ConflictSearch = pendingConflictSearch = PathSearch.Empty;
         OnPropertyChanged(nameof(ConflictPathQuery));
         OnPropertyChanged(nameof(ConflictSearch));
         PublishConflictRows([], 0);

@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Settings;
 using Sims4ModSieve.Core.Tests;
@@ -112,7 +113,7 @@ public sealed class ResultPathSearchTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task SearchInputUpdatesResultsAndClearsOnEscape(bool conflict) => WpfTestHost.RunAsync(async () =>
+    public Task ResultTransitionRunsOnlyWhenSearchIsSubmittedWithEnter(bool conflict) => WpfTestHost.RunAsync(async () =>
     {
         using var temp = new TempDirectory();
         var duplicates = new DuplicateResultSession();
@@ -130,31 +131,44 @@ public sealed class ResultPathSearchTests
         else model.OpenDuplicateScannerCommand.Execute(null);
 
         var window = OpenWindow(model);
+        WpfTestHost.PlaceOnScreen(window);
         await WpfTestHost.LayoutAsync(window);
         var search = Descendants<ResultPathSearch>(window).Single(control => control.IsVisible);
         var input = (TextBox)search.FindName("QueryInput");
+        var surface = search.ResultSurface!;
+        var list = Descendants<ListBox>(window).Single(control => control.Name == (conflict ? "ConflictRowsList" : "DuplicateGroupsList"));
+        var presenter = Descendants<ScrollContentPresenter>(list).First();
+        TextBlock CountLine() => Descendants<TextBlock>(presenter).Single(text => text.Name == "ResultCount" && text.IsVisible);
+        double FirstCardTop() => Descendants<ContentPresenter>(CountLine().Parent).First().TranslatePoint(new Point(), presenter).Y;
+        Assert.IsFalse(Descendants<TextBlock>(presenter).Any(text => text.Name == "ResultCount" && text.IsVisible),
+            "搜索关闭时不应保留计数行");
         search.FocusInput();
+        await WpfTestHost.LayoutAsync(window);
+        var before = FirstCardTop();
+        Assert.AreEqual("", CountLine().Text);
         input.Text = "Creator Mouth";
-        SendKey(Key.Enter);
-        Assert.IsFalse(search.ResultSurface!.IsHitTestVisible);
-        await Refresh();
+        await CheckTransition(() => SendKey(Key.Enter), () => conflict ? model.ConflictSearch.IsActive : model.DuplicateSearch.IsActive);
         Assert.AreEqual("Creator Mouth", conflict ? model.ConflictPathQuery : model.DuplicatePathQuery);
         var matches = Descendants<TextBlock>(window).Where(text => text.IsVisible)
             .SelectMany(text => text.Inlines.OfType<Run>()).Where(run => run.Background is not null).Select(run => run.Text).ToArray();
         CollectionAssert.IsSubsetOf(new[] { "Creator", "Mouth" }, matches);
-        var list = Descendants<ListBox>(window).Single(control => control.Name == (conflict ? "ConflictRowsList" : "DuplicateGroupsList"));
         list.AlternationCount = 1; // 每个已生成的容器都可能拿到 0，计数仍只能跟着真正的首项。
-        var presenter = Descendants<ScrollContentPresenter>(list).First();
-        var count = Descendants<TextBlock>(presenter).Single(text => text.Name == "ResultCount" && text.IsVisible);
+        var count = CountLine();
         Assert.AreSame(list.Items[0], count.DataContext);
         Assert.AreEqual("找到 1 组", count.Text);
-        SendKey(Key.Enter);
-        Assert.AreEqual(0d, Descendants<ContentPresenter>(count.Parent).First().Opacity);
-        Assert.AreEqual(1d, count.Opacity);
-        for (var attempt = 0; attempt < 50 && !search.ResultSurface!.IsHitTestVisible; attempt++)
-            await Task.Delay(10);
-        Assert.IsTrue(search.ResultSurface!.IsHitTestVisible);
-        if (conflict) Save(window, "result-path-search.png", (FrameworkElement)search.ResultSurface.Parent);
+        Assert.AreEqual(before, FirstCardTop(), 1d, "组数文字出现时首组应保持位置");
+        await CheckTransition(() => SendKey(Key.Enter), () => true, alreadyApplied: true);
+        Assert.AreEqual(before, FirstCardTop(), 1d, "已应用的搜索回车时保留列表位置");
+        if (conflict)
+        {
+            await CheckTransition(() =>
+            {
+                SendKey(Key.Enter);
+                model.SelectConflictFilterCommand.Execute("same");
+            }, () => model.ConflictRows.Count == 0, animate: false);
+            await CheckTransition(() => model.SelectConflictFilterCommand.Execute("all"), () => model.ConflictRows.Count > 0, animate: false);
+        }
+        if (conflict) Save(window, "result-path-search.png", surface);
         model.GoHomeCommand.Execute(null);
         if (conflict)
         {
@@ -166,13 +180,13 @@ public sealed class ResultPathSearchTests
         Assert.IsTrue(input.IsVisible);
         Assert.AreEqual("Creator Mouth", input.Text);
 
-        input.Text = "missing";
-        SendKey(Key.Enter);
-        await Refresh();
+        await CheckTransition(() => input.Text = "missing", () => list.Items.Count == 0, animate: false, pendingInput: "missing");
         Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == "没找到相关文件"));
         Assert.IsTrue(Descendants<TextBlock>(window).Any(text => text.IsVisible && text.Text == "找到 0 组"));
-        SendKey(Key.Escape);
-        await Refresh();
+        await CheckTransition(() => ((Button)search.FindName("ClearSearch")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)),
+            () => list.Items.Count > 0, animate: false);
+        await CheckTransition(() => input.Text = "missing", () => list.Items.Count == 0, animate: false, pendingInput: "missing");
+        await CheckTransition(() => SendKey(Key.Escape), () => list.Items.Count > 0, animate: false);
         Assert.AreEqual("", input.Text);
         Assert.AreEqual("", conflict ? model.ConflictPathQuery : model.DuplicatePathQuery);
 
@@ -181,7 +195,40 @@ public sealed class ResultPathSearchTests
         async Task Refresh()
         {
             await model.ConflictRowsRefreshTask;
+            await model.DuplicateSearchRefreshTask;
             await WpfTestHost.LayoutAsync(window);
+        }
+
+        async Task CheckTransition(Action change, Func<bool> applied, bool animate = true, bool alreadyApplied = false, string? pendingInput = null)
+        {
+            var frames = new List<(bool Applied, double Opacity, double Offset)>();
+            void Render(object? sender, EventArgs e) => frames.Add((applied(), surface.Opacity,
+                (surface.RenderTransform as TranslateTransform)?.Y ?? 0));
+            CompositionTarget.Rendering += Render;
+            try
+            {
+                change();
+                if (pendingInput is not null)
+                {
+                    for (var attempt = 0; attempt < 50 && search.Query != pendingInput; attempt++) await Task.Delay(10);
+                    Assert.AreEqual(pendingInput, search.Query, "输入停顿后应自动应用搜索");
+                }
+                await Refresh();
+                await Task.Delay(180);
+                await WpfTestHost.LayoutAsync(window);
+            }
+            finally { CompositionTarget.Rendering -= Render; }
+            Assert.IsTrue(applied());
+            Assert.IsTrue(frames.Count > 0);
+            if (animate && SystemParameters.ClientAreaAnimation)
+            {
+                Assert.IsTrue(frames.Any(frame => (alreadyApplied || !frame.Applied) && frame.Opacity is > 0 and < 1 && frame.Offset == 0),
+                    $"旧结果应在原位淡出：{string.Join(", ", frames)}");
+                Assert.IsTrue(frames.Any(frame => frame.Applied && frame.Opacity is > 0 and < 1 && frame.Offset > 0),
+                    "新结果应在列表容器上同时淡入和上滑");
+            }
+            else Assert.IsTrue(frames.All(frame => frame.Opacity == 1 && frame.Offset == 0), "直接更新时列表应保持完全可见且不滑动");
+            Assert.AreEqual(1d, surface.Opacity);
         }
     });
 }

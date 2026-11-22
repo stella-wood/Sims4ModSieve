@@ -89,7 +89,7 @@ public sealed partial class MainWindowViewModel
 
     private static bool IsManagementException(Exception exception) => exception is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or ArgumentException;
 
-    private void PublishManagementData(FileManagementData data)
+    private void PublishManagementData(FileManagementData data, bool animateRemoval = false)
     {
         ignoredRecords = data.Ignored;
         IgnoredFiles.Replace(data.Ignored.OrderByDescending(record => record.IgnoredAtUtc).Select(record => new ManagedFileRow
@@ -100,12 +100,12 @@ public sealed partial class MainWindowViewModel
             CanDelete = true, DeleteCommand = ModChangeCommand(() => DeleteIgnoredFileAsync(record.Path)),
         }));
         conflictSession.SetIgnoredFiles(ignoredRecords.Select(record => record.Path));
-        if (IsConflictComplete) QueueConflictRowsRefresh();
+        if (IsConflictComplete) QueueConflictRowsRefresh(animateRemoval: animateRemoval);
     }
 
-    private bool ChangeManagementData(Func<FileManagementData, FileManagementData> change)
+    private bool ChangeManagementData(Func<FileManagementData, FileManagementData> change, bool animateRemoval = false)
     {
-        try { PublishManagementData(fileManagementStore.Update(change)); FileManagementFeedback = ""; return true; }
+        try { PublishManagementData(fileManagementStore.Update(change), animateRemoval); FileManagementFeedback = ""; return true; }
         catch (Exception exception) when (IsManagementException(exception))
         { FileManagementFeedback = "未保存：" + exception.Message; return false; }
     }
@@ -125,17 +125,17 @@ public sealed partial class MainWindowViewModel
             if (candidates.Length > 1 && !fileActionDialogs.ConfirmFiles("忽略文件",
                 MultiFileConfirmationWindow.ConfirmationMessage("忽略", candidates.Length, closeGame: false))) return;
             ChangeManagementData(data => data with { Ignored = data.Ignored.Concat(candidates)
-                .DistinctBy(record => record.Path, StringComparer.OrdinalIgnoreCase).ToArray() });
+                .DistinctBy(record => record.Path, StringComparer.OrdinalIgnoreCase).ToArray() }, animateRemoval: true);
         }
         catch (Exception exception) when (IsManagementException(exception)) { FileManagementFeedback = "无法添加文件：" + exception.Message; }
     }
 
     private void TogglePersistentIgnoredFile(ConflictResultRow row)
     {
-        if (row.File is null) { conflictSession.ToggleIgnored(row); QueueConflictRowsRefresh(); return; }
+        if (row.File is null) { conflictSession.ToggleIgnored(row); QueueConflictRowsRefresh(animateRemoval: true); return; }
         var path = Path.GetFullPath(row.File.Path);
         if (ignoredRecords.Any(record => StringComparer.OrdinalIgnoreCase.Equals(record.Path, path))) RemoveIgnoredFiles([path]);
-        else ChangeManagementData(data => data with { Ignored = data.Ignored.Append(new IgnoredFileRecord(path, row.File.Stamp?.Length ?? 0, DateTime.UtcNow)).ToArray() });
+        else ChangeManagementData(data => data with { Ignored = data.Ignored.Append(new IgnoredFileRecord(path, row.File.Stamp?.Length ?? 0, DateTime.UtcNow)).ToArray() }, animateRemoval: true);
     }
 
     public void RemoveIgnoredFiles(IReadOnlyList<string> paths)
