@@ -24,6 +24,13 @@ internal sealed class ResultListViewport(ListBox list, ScrollViewer scroll, Scro
     public IEnumerable<ListBoxItem> VisibleItems => RealizedItems.Where(IsVisible).OrderBy(Top);
     public ListBoxItem? Container(object item) => list.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem;
     public double Top(FrameworkElement item) => item.TranslatePoint(new Point(), presenter).Y;
+
+    public double VisibleExpansionHeight(FrameworkElement header, double contentHeight)
+    {
+        // 即使标题靠近视口底部，短组也沿用完整的展开曲线。
+        return contentHeight > Height / 2 ? Math.Max(0, Height - Top(header) - header.ActualHeight) : 0;
+    }
+
     public bool IsVisible(FrameworkElement element)
     {
         if (!element.IsVisible || !element.IsDescendantOf(presenter) || element.ActualHeight <= 0) return false;
@@ -71,15 +78,31 @@ internal sealed class ResultListViewport(ListBox list, ScrollViewer scroll, Scro
             e.Handled = true;
     }
 
-    public static void AnimateHeight(FrameworkElement body, double from, double to, bool expanding, Action completed)
+    public static void AnimateHeight(FrameworkElement body, double from, double to, bool expanding, double visibleHeight, Action completed)
     {
         body.Height = from;
-        var animation = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(expanding ? 190 : 140))
-        {
-            EasingFunction = new CubicEase { EasingMode = expanding ? EasingMode.EaseOut : EasingMode.EaseIn },
-        };
+        var animation = CreateHeightAnimation(from, to, expanding, visibleHeight);
         animation.Completed += (_, _) => completed();
         body.BeginAnimation(FrameworkElement.HeightProperty, animation);
+    }
+
+    internal static AnimationTimeline CreateHeightAnimation(double from, double to, bool expanding, double visibleHeight)
+    {
+        var duration = TimeSpan.FromMilliseconds(expanding ? 190 : 140);
+        var easing = new CubicEase { EasingMode = expanding ? EasingMode.EaseOut : EasingMode.EaseIn };
+        if (expanding && from < visibleHeight && visibleHeight < to)
+        {
+            return new DoubleAnimationUsingKeyFrames
+            {
+                Duration = duration,
+                KeyFrames =
+                [
+                    new EasingDoubleKeyFrame(visibleHeight, TimeSpan.FromMilliseconds(135), easing),
+                    new EasingDoubleKeyFrame(to, duration, new CubicEase { EasingMode = EasingMode.EaseIn }),
+                ],
+            };
+        }
+        return new DoubleAnimation(from, to, duration) { EasingFunction = easing };
     }
 
     internal static T? FindChild<T>(DependencyObject parent) where T : DependencyObject

@@ -144,8 +144,10 @@ public partial class MainWindow : Window
             content.Measure(new Size(group.ActualWidth, double.PositiveInfinity));
             var fullHeight = content.DesiredSize.Height;
             var from = animatedHeight ?? (group.IsExpanded ? 0 : fullHeight);
+            var visibleHeight = viewport is not null && group.Template.FindName("ExpanderHeader", group) is FrameworkElement header
+                ? viewport.VisibleExpansionHeight(header, fullHeight) : 0;
             animatedDuplicateBody = body;
-            ResultListViewport.AnimateHeight(body, from, group.IsExpanded ? fullHeight : 0, group.IsExpanded, FinishDuplicateAnimation);
+            ResultListViewport.AnimateHeight(body, from, group.IsExpanded ? fullHeight : 0, group.IsExpanded, visibleHeight, FinishDuplicateAnimation);
         }
         if (top is { } position)
             viewport!.RestoreAfterLayout(item, position, () => DuplicateGroupsList.IsVisible && ReferenceEquals(group.DataContext, item));

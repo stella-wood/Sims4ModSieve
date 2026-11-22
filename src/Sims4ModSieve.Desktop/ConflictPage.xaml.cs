@@ -424,7 +424,8 @@ public partial class ConflictPage : UserControl
         ConflictRowsList.SetCurrentValue(ItemsControl.ItemsSourceProperty, preview);
         viewport.Restore(previewHeader, top);
         // 只布置动画期间会进入视口的行，大组的其余行继续由列表虚拟化。
-        var width = viewport.Container(previewHeader)?.ActualWidth ?? ConflictRowsList.ActualWidth;
+        var title = viewport.Container(previewHeader);
+        var width = title?.ActualWidth ?? ConflictRowsList.ActualWidth;
         var height = 0d;
         foreach (var row in children)
         {
@@ -455,8 +456,9 @@ public partial class ConflictPage : UserControl
             if (header.IsExpanded)
                 for (var index = 0; index < children.Length; index++) preview.Insert(headerIndex + 1 + index, children[index]);
         };
+        var visibleHeight = title is null ? 0 : viewport.VisibleExpansionHeight(title, height);
         ResultListViewport.AnimateHeight(body, header.IsExpanded ? 0 : height, header.IsExpanded ? height : 0,
-            header.IsExpanded, FinishGroupAnimation);
+            header.IsExpanded, visibleHeight, FinishGroupAnimation);
     }
 
     private void FinishGroupAnimation()
