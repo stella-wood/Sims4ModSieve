@@ -12,8 +12,11 @@
         <sys:Double x:Key="ScanConcurrencyInfoTargetSize">24</sys:Double>
         <Thickness x:Key="ScanConcurrencyInfoGap">2,0,0,0</Thickness>
         <Thickness x:Key="SettingsSectionGap">0,36,0,0</Thickness>
-        <Thickness x:Key="SettingsInlineGap">8,0,0,0</Thickness>
         <Thickness x:Key="SettingsGroupRowInset">0,16,0,16</Thickness>
+        <Style x:Key="SettingsGroupDivider" TargetType="Border">
+            <Setter Property="Background" Value="#ECE9E5" />
+            <Setter Property="Height" Value="1" />
+        </Style>
         <Style x:Key="SettingsLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="Normal" />
@@ -315,14 +318,6 @@
                         <TextBlock Text="删除与忽略" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                 </RadioButton>
-                <RadioButton x:Name="CacheSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="缓存"
-                             IsChecked="{Binding IsCacheSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="cache">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Style="{StaticResource SettingsNavIcon}" Fill="{x:Null}"
-                              Data="M 4,5 A 8,3 0 1 1 20,5 A 8,3 0 1 1 4,5 M 4,5 V 19 A 8,3 0 0 0 20,19 V 5 M 4,12 A 8,3 0 0 0 20,12" />
-                        <TextBlock Text="缓存" Margin="{StaticResource SettingsInlineGap}" VerticalAlignment="Center" />
-                    </StackPanel>
-                </RadioButton>
                 <RadioButton x:Name="DiagnosticsSectionButton" Style="{StaticResource SettingsNav}" AutomationProperties.Name="诊断与反馈"
                              IsChecked="{Binding IsDiagnosticsSettings, Mode=TwoWay}" Command="{Binding SelectSettingsSectionCommand}" CommandParameter="diagnostics">
                     <StackPanel Orientation="Horizontal">
@@ -400,7 +395,7 @@
                                     <ContentControl Content="{Binding FolderCandidate}" ContentTemplate="{StaticResource FolderCandidateTemplate}" Visibility="{Binding HasModsFolderCandidate, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
                             </Grid>
-                            <Border Background="#ECE9E5" Height="1" />
+                            <Border Style="{StaticResource SettingsGroupDivider}" />
                             <Grid Margin="0,20,0,17">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="1.25*" /></Grid.ColumnDefinitions>
                                 <StackPanel Margin="0,3,18,0">
@@ -427,67 +422,59 @@
                         </StackPanel>
                     </Border>
                     <TextBlock Text="扫描性能" Style="{StaticResource SettingsGroupTitle}" Margin="{StaticResource SettingsSectionGap}" />
-                    <Border Style="{StaticResource SettingsGroup}" Margin="0,15,0,0">
-                        <Grid Margin="0,16">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,18,0">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="HashConcurrencyLabel" Text="扫描并发" Style="{StaticResource SettingsLabel}"
-                                               VerticalAlignment="Center" />
-                                    <Button x:Name="ScanConcurrencyInfo" Style="{StaticResource BareIconButtonStyle}"
-                                            Width="{StaticResource ScanConcurrencyInfoTargetSize}" Height="{StaticResource ScanConcurrencyInfoTargetSize}"
-                                            Margin="{StaticResource ScanConcurrencyInfoGap}" VerticalAlignment="Center"
-                                            Background="Transparent" Foreground="{StaticResource MutedBrush}"
-                                            AutomationProperties.Name="扫描并发说明" ToolTipService.ShowsToolTipOnKeyboardFocus="True"
-                                            ToolTip="适用于重复检测、整文件核对、package 读取和资源内容比较。脚本扫描固定为 2。">
-                                        <Grid Width="{StaticResource ScanConcurrencyInfoTargetSize}" Height="{StaticResource ScanConcurrencyInfoTargetSize}">
-                                            <Path Width="{StaticResource ScanConcurrencyInfoSize}" Height="{StaticResource ScanConcurrencyInfoSize}"
-                                                  HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,6,0,0"
-                                                  Fill="{StaticResource MutedBrush}" Stretch="Uniform" IsHitTestVisible="False"
-                                                  Data="F0 M7,0 A7,7 0 1 1 7,14 A7,7 0 1 1 7,0 Z M7,1 A6,6 0 1 0 7,13 A6,6 0 1 0 7,1 Z M6.4,6 H7.6 V11 H6.4 Z M7,3 A0.7,0.7 0 1 1 7,4.4 A0.7,0.7 0 1 1 7,3 Z" />
-                                        </Grid>
-                                    </Button>
+                    <Border x:Name="ScanPerformanceGroup" Style="{StaticResource SettingsGroup}" Margin="0,15,0,0">
+                        <StackPanel>
+                            <Grid Margin="0,16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,18,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="HashConcurrencyLabel" Text="扫描并发" Style="{StaticResource SettingsLabel}"
+                                                   VerticalAlignment="Center" />
+                                        <Button x:Name="ScanConcurrencyInfo" Style="{StaticResource BareIconButtonStyle}"
+                                                Width="{StaticResource ScanConcurrencyInfoTargetSize}" Height="{StaticResource ScanConcurrencyInfoTargetSize}"
+                                                Margin="{StaticResource ScanConcurrencyInfoGap}" VerticalAlignment="Center"
+                                                Background="Transparent" Foreground="{StaticResource MutedBrush}"
+                                                AutomationProperties.Name="扫描并发说明" ToolTipService.ShowsToolTipOnKeyboardFocus="True"
+                                                ToolTip="适用于重复检测、整文件核对、package 读取和资源内容比较。脚本扫描固定为 2。">
+                                            <Grid Width="{StaticResource ScanConcurrencyInfoTargetSize}" Height="{StaticResource ScanConcurrencyInfoTargetSize}">
+                                                <Path Width="{StaticResource ScanConcurrencyInfoSize}" Height="{StaticResource ScanConcurrencyInfoSize}"
+                                                      HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,6,0,0"
+                                                      Fill="{StaticResource MutedBrush}" Stretch="Uniform" IsHitTestVisible="False"
+                                                      Data="F0 M7,0 A7,7 0 1 1 7,14 A7,7 0 1 1 7,0 Z M7,1 A6,6 0 1 0 7,13 A6,6 0 1 0 7,1 Z M6.4,6 H7.6 V11 H6.4 Z M7,3 A0.7,0.7 0 1 1 7,4.4 A0.7,0.7 0 1 1 7,3 Z" />
+                                            </Grid>
+                                        </Button>
+                                    </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
-                            <ComboBox x:Name="HashConcurrencyPicker" Grid.Column="1" Width="104" VerticalAlignment="Center"
-                                      AutomationProperties.LabeledBy="{Binding ElementName=HashConcurrencyLabel}"
-                                      SelectedValuePath="Tag" SelectedValue="{Binding DuplicateHashConcurrency, Mode=TwoWay}">
-                                <ComboBox.Style>
-                                    <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsBusy}" Value="True">
-                                                <Setter Property="IsEnabled" Value="False" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </ComboBox.Style>
-                                <ComboBoxItem Content="自动" Tag="{x:Static duplicates:DuplicateHashConcurrency.Auto}" />
-                                <ComboBoxItem Content="1" Tag="{x:Static duplicates:DuplicateHashConcurrency.One}" />
-                                <ComboBoxItem Content="2" Tag="{x:Static duplicates:DuplicateHashConcurrency.Two}" />
-                                <ComboBoxItem Content="4" Tag="{x:Static duplicates:DuplicateHashConcurrency.Four}" />
-                                <ComboBoxItem Content="8" Tag="{x:Static duplicates:DuplicateHashConcurrency.Eight}" />
-                            </ComboBox>
-                        </Grid>
+                                <ComboBox x:Name="HashConcurrencyPicker" Grid.Column="1" Width="104" VerticalAlignment="Center"
+                                          AutomationProperties.LabeledBy="{Binding ElementName=HashConcurrencyLabel}"
+                                          SelectedValuePath="Tag" SelectedValue="{Binding DuplicateHashConcurrency, Mode=TwoWay}">
+                                    <ComboBox.Style>
+                                        <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ComboBox.Style>
+                                    <ComboBoxItem Content="自动" Tag="{x:Static duplicates:DuplicateHashConcurrency.Auto}" />
+                                    <ComboBoxItem Content="1" Tag="{x:Static duplicates:DuplicateHashConcurrency.One}" />
+                                    <ComboBoxItem Content="2" Tag="{x:Static duplicates:DuplicateHashConcurrency.Two}" />
+                                    <ComboBoxItem Content="4" Tag="{x:Static duplicates:DuplicateHashConcurrency.Four}" />
+                                    <ComboBoxItem Content="8" Tag="{x:Static duplicates:DuplicateHashConcurrency.Eight}" />
+                                </ComboBox>
+                            </Grid>
+                            <Border Style="{StaticResource SettingsGroupDivider}" />
+                            <DockPanel Margin="{StaticResource SettingsGroupRowInset}">
+                                <Button x:Name="ClearCacheButton" DockPanel.Dock="Right" Content="清除缓存"
+                                        AutomationProperties.Name="清除缓存" Style="{StaticResource SettingsButton}"
+                                        Command="{Binding ClearCacheCommand}" VerticalAlignment="Center" />
+                                <TextBlock x:Name="CacheSizeText" Text="{Binding CacheSize, StringFormat='缓存（{0}）'}"
+                                           Style="{StaticResource SettingsLabel}" VerticalAlignment="Center" />
+                            </DockPanel>
+                        </StackPanel>
                     </Border>
                     <TextBlock Text="{Binding SettingsFeedback}" Style="{StaticResource SettingsFeedback}" />
-                </StackPanel>
-                <StackPanel Visibility="{Binding IsCacheSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <TextBlock Text="缓存" Style="{StaticResource SettingsTitle}" />
-                    <Border Style="{StaticResource SettingsGroup}">
-                        <DockPanel Margin="{StaticResource SettingsGroupRowInset}">
-                            <Button x:Name="ClearCacheButton" DockPanel.Dock="Right" Content="清除缓存"
-                                    AutomationProperties.Name="清除缓存" Style="{StaticResource SettingsButton}"
-                                    Command="{Binding ClearCacheCommand}" VerticalAlignment="Center" />
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="缓存文件大小" Style="{StaticResource SettingsLabel}" />
-                                    <TextBlock x:Name="CacheSizeText" Text="{Binding CacheSize}" Style="{StaticResource SettingsLabel}"
-                                               Margin="{StaticResource SettingsInlineGap}" />
-                                </StackPanel>
-                                <TextBlock Text="清除后下次扫描会慢一些，不影响任何 Mod 文件。" Style="{StaticResource SettingsDescription}" />
-                            </StackPanel>
-                        </DockPanel>
-                    </Border>
                     <TextBlock Text="{Binding CacheFeedback}" Style="{StaticResource SettingsFeedback}" />
                 </StackPanel>
                 <StackPanel Visibility="{Binding IsDiagnosticsSettings, Converter={StaticResource BooleanToVisibilityConverter}}">

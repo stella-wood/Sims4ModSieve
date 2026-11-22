@@ -55,7 +55,6 @@ public sealed partial class MainWindowViewModel
     public bool IsSettingsVisible { get => isSettingsVisible; private set => SetProperty(ref isSettingsVisible, value); }
     public string SettingsSection => settingsSection;
     public bool IsFoldersSettings { get => settingsSection == "folders"; set { if (value && !IsBusy) SelectSettingsSection("folders"); } }
-    public bool IsCacheSettings { get => settingsSection == "cache"; set { if (value && !IsBusy) SelectSettingsSection("cache"); } }
     public bool IsDiagnosticsSettings { get => settingsSection == "diagnostics"; set { if (value && !IsBusy) SelectSettingsSection("diagnostics"); } }
     public bool IsAboutSettings { get => settingsSection == "about"; set { if (value && !IsBusy) SelectSettingsSection("about"); } }
     public bool IsCreditsSettings { get => settingsSection == "credits"; set { if (value && !IsBusy) SelectSettingsSection("credits"); } }
@@ -208,29 +207,28 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(HasTrayRootAvailabilityWarning));
         if (IsDiagnosticsSettings) RefreshDiagnosticsCommand.Execute(null);
         if (IsFileManagementSettings) StartFileManagementRefresh();
-        if (IsCacheSettings) RefreshCacheSize();
+        if (IsFoldersSettings) RefreshCacheSize();
     }
 
     private void SelectSettingsSection(string? section)
     {
-        if (section is not ("folders" or "files" or "cache" or "diagnostics" or "about" or "credits") || section == settingsSection) return;
+        if (section is not ("folders" or "files" or "diagnostics" or "about" or "credits") || section == settingsSection) return;
         settingsSection = section;
         OnPropertyChanged(nameof(SettingsSection));
         OnPropertyChanged(nameof(IsFoldersSettings));
-        OnPropertyChanged(nameof(IsCacheSettings));
         OnPropertyChanged(nameof(IsDiagnosticsSettings));
         OnPropertyChanged(nameof(IsAboutSettings));
         OnPropertyChanged(nameof(IsCreditsSettings));
         OnPropertyChanged(nameof(IsFileManagementSettings));
         if (IsDiagnosticsSettings) RefreshDiagnosticsCommand.Execute(null);
         if (IsFileManagementSettings) StartFileManagementRefresh();
-        if (IsCacheSettings) RefreshCacheSize();
+        if (IsFoldersSettings) RefreshCacheSize();
     }
 
     private void RefreshCacheSize()
     {
         var size = scanCacheDirectory is { } directory ? SqliteSha256Cache.GetSize(directory) : null;
-        CacheSize = size is { } bytes ? DuplicateGroupViewModel.FormatBytes(bytes) : "无法读取";
+        CacheSize = size is { } bytes ? DuplicateGroupViewModel.FormatBytes(bytes).Replace(" ", string.Empty) : "无法读取";
     }
 
     private async Task ClearCacheAsync()

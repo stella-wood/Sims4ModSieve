@@ -25,7 +25,6 @@ public sealed class SettingsPageTests
     {
         using var files = new Scenario();
         var mods = files.Folder("Mods");
-        files.Store.Save(new(mods, []));
         using (var seed = new SqliteSha256Cache(SqliteSha256Cache.DatabasePath(files.Root)).BeginScan())
         {
             for (var i = 0; i < 256; i++)
@@ -40,17 +39,21 @@ public sealed class SettingsPageTests
         {
             model.OpenSettingsCommand.Execute(null);
             var page = Descendants<SettingsPage>(window).Single();
-            var category = (RadioButton)page.FindName("CacheSectionButton");
-            ((ISelectionItemProvider)new RadioButtonAutomationPeer(category).GetPattern(PatternInterface.SelectionItem)!).Select();
             await WpfTestHost.LayoutAsync(window);
             var clear = (Button)page.FindName("ClearCacheButton");
             var size = (TextBlock)page.FindName("CacheSizeText");
+            var performance = (Border)page.FindName("ScanPerformanceGroup");
+            Assert.IsTrue(model.IsFoldersSettings);
+            Assert.IsFalse(Descendants<RadioButton>(page).Any(category => new RadioButtonAutomationPeer(category).GetName() == "缓存"));
+            CollectionAssert.Contains(Descendants<Button>(performance).ToArray(), clear);
+            Assert.IsFalse(Descendants<TextBlock>(performance).Any(text => text.Text.Contains("下次扫描会慢")));
             Assert.IsTrue(clear.IsVisible && clear.IsEnabled);
             AssertHitRectangle(clear);
             var before = size.Text;
-            Assert.AreEqual(DuplicateGroupViewModel.FormatBytes(SqliteSha256Cache.GetSize(files.Root)!.Value), before);
+            Assert.AreEqual(CurrentCacheLabel(), before);
             SaveReview(window, "cache-settings.png");
 
+            model.Sources.Add(new(mods));
             var scan = model.StartScanCommand.ExecuteAsync();
             await waiting.Started.Task;
             Assert.IsFalse(clear.IsEnabled);
@@ -62,8 +65,11 @@ public sealed class SettingsPageTests
             Assert.AreEqual(before, size.Text);
             await RespondToClearAsync("ConfirmButton");
             Assert.AreNotEqual(before, size.Text);
-            Assert.AreEqual(DuplicateGroupViewModel.FormatBytes(SqliteSha256Cache.GetSize(files.Root)!.Value), size.Text);
+            Assert.AreEqual(CurrentCacheLabel(), size.Text);
             Assert.AreEqual(string.Empty, model.CacheFeedback);
+
+            string CurrentCacheLabel() =>
+                $"缓存（{DuplicateGroupViewModel.FormatBytes(SqliteSha256Cache.GetSize(files.Root)!.Value).Replace(" ", string.Empty)}）";
 
             async Task RespondToClearAsync(string buttonName)
             {
@@ -469,7 +475,7 @@ public sealed class SettingsPageTests
         var targets = new List<string>();
         string? copied = null;
         var support = new SettingsSupportService(files.Root, files.Folder("Documents"), openTarget: targets.Add, copyText: value => copied = value);
-        var model = files.Model(picker, support: support);
+        var model = files.Model(picker, support: support, scanCacheDirectory: files.Root);
         var window = new MainWindow(model);
         WpfTestHost.ShowOffScreen(window);
         var page = Descendants<SettingsPage>(window).Single();
