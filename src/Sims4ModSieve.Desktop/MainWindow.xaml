@@ -418,7 +418,6 @@
                             </StackPanel>
 
                             <ListBox x:Name="DuplicateGroupsList" ItemsSource="{Binding VisibleDuplicateGroups}"
-                                     Tag="{Binding DuplicateSearchStatus}"
                                      Padding="20,6,8,12"
                                      Background="Transparent"
                                      BorderThickness="0"
@@ -429,6 +428,15 @@
                                      VirtualizingPanel.VirtualizationMode="Recycling"
                                      VirtualizingPanel.ScrollUnit="Pixel"
                                      Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ListBox.Style>
+                                    <Style TargetType="ListBox">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsExpanded, ElementName=DuplicatePathSearch}" Value="True">
+                                                <Setter Property="Tag" Value="{Binding DuplicateSearchStatus}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ListBox.Style>
                                 <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">

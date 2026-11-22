@@ -19,6 +19,41 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class ConflictInteractionTests
 {
     [TestMethod]
+    public Task QuickStatusTabsScrollToTopWhenResultsChange() => WpfTestHost.RunAsync(async () =>
+    {
+        var files = Enumerable.Range(0, 40).Select(index => ($@"C:\Mods\group{index:D2}a.package", $@"C:\Mods\group{index:D2}b.package")).ToArray();
+        var session = ConflictV2SessionTests.V2(files.Select((pair, index) => Resource((ulong)index + 1,
+            (pair.Item1, "a"), (pair.Item2, "b"))).ToArray(),
+            files.SelectMany(pair => new[] { (pair.Item1, 10), (pair.Item2, 10) }).ToArray());
+        var model = CreateModel();
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session, "all");
+        await WpfTestHost.LayoutAsync(window);
+        var list = Descendants<ListBox>(window).Single(element => element.Name == "ConflictRowsList");
+        var scroll = Descendants<ScrollViewer>(list).First();
+        var first = model.ConflictRows[0].Key;
+
+        foreach (var (name, filter) in new[] { ("ConflictNeedsReviewFilter", "different"), ("ConflictAllFilter", "all") })
+        {
+            scroll.ScrollToVerticalOffset(scroll.ViewportHeight * 2);
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsTrue(scroll.VerticalOffset > 0, "切换前应已滚离列表顶部");
+            var tab = Descendants<Button>(window).Single(button => button.Name == name);
+            Invoke(tab);
+            await WpfTestHost.LayoutAsync(window);
+            await model.ConflictRowsRefreshTask;
+            await WpfTestHost.LayoutAsync(window);
+            Assert.AreEqual(filter, model.ConflictFilter);
+            Assert.AreEqual(first, model.ConflictRows[0].Key);
+            Assert.AreEqual(0d, scroll.VerticalOffset, "切换状态标签后，从第一组开始阅读");
+            Assert.IsNotNull(list.ItemContainerGenerator.ContainerFromIndex(0));
+        }
+        Save(window, "conflict-status-tab-at-top.png");
+    });
+
+    [TestMethod]
     public Task StateAndTypeCheckboxesFilterTheirIntersectionAndUseResultNames() => WpfTestHost.RunAsync(async () =>
     {
         var model = CreateModel();

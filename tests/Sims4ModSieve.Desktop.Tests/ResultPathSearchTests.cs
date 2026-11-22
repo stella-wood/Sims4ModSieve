@@ -140,9 +140,12 @@ public sealed class ResultPathSearchTests
         var presenter = Descendants<ScrollContentPresenter>(list).First();
         TextBlock CountLine() => Descendants<TextBlock>(presenter).Single(text => text.Name == "ResultCount" && text.IsVisible);
         double FirstCardTop() => Descendants<ContentPresenter>(CountLine().Parent).First().TranslatePoint(new Point(), presenter).Y;
+        Assert.IsFalse(Descendants<TextBlock>(presenter).Any(text => text.Name == "ResultCount" && text.IsVisible),
+            "搜索关闭时不应保留计数行");
+        search.FocusInput();
+        await WpfTestHost.LayoutAsync(window);
         var before = FirstCardTop();
         Assert.AreEqual("", CountLine().Text);
-        search.FocusInput();
         input.Text = "Creator Mouth";
         await CheckTransition(() => SendKey(Key.Enter), () => conflict ? model.ConflictSearch.IsActive : model.DuplicateSearch.IsActive);
         Assert.AreEqual("Creator Mouth", conflict ? model.ConflictPathQuery : model.DuplicatePathQuery);

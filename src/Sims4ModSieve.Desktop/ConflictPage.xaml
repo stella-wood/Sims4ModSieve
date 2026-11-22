@@ -682,14 +682,14 @@
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsConflictNotScanning}">
-                            <Button x:Name="ConflictAllFilter" Content="全部" Tag="{Binding IsAllFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="all" Style="{StaticResource ConflictAllFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="全部" />
-                            <Button x:Name="ConflictNeedsReviewFilter" Tag="{Binding IsDifferentFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="different" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="异常">
+                            <Button x:Name="ConflictAllFilter" Content="全部" Tag="{Binding IsAllFilterSelected}" Click="QuickStatusTab_Click" CommandParameter="all" Style="{StaticResource ConflictAllFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="全部" />
+                            <Button x:Name="ConflictNeedsReviewFilter" Tag="{Binding IsDifferentFilterSelected}" Click="QuickStatusTab_Click" CommandParameter="different" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="异常">
                                 <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictNeedReviewBrush}" Margin="0,0,6,0" /><TextBlock Text="异常" /></StackPanel>
                             </Button>
-                            <Button x:Name="ConflictCanOrganizeFilter" Tag="{Binding IsSameFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="same" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="有隐患">
+                            <Button x:Name="ConflictCanOrganizeFilter" Tag="{Binding IsSameFilterSelected}" Click="QuickStatusTab_Click" CommandParameter="same" Style="{StaticResource ConflictQuickFilterStyle}" Margin="0,0,8,0" AutomationProperties.Name="有隐患">
                                 <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictCanOrganizeBrush}" Margin="0,0,6,0" /><TextBlock Text="有隐患" /></StackPanel>
                             </Button>
-                            <Button x:Name="ConflictIncompleteFilter" Tag="{Binding IsIncompleteFilterSelected}" Command="{Binding SelectConflictFilterCommand}" CommandParameter="incomplete" Style="{StaticResource ConflictQuickFilterStyle}" AutomationProperties.Name="未分析">
+                            <Button x:Name="ConflictIncompleteFilter" Tag="{Binding IsIncompleteFilterSelected}" Click="QuickStatusTab_Click" CommandParameter="incomplete" Style="{StaticResource ConflictQuickFilterStyle}" AutomationProperties.Name="未分析">
                                 <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="{StaticResource ConflictIncompleteBrush}" Margin="0,0,6,0" /><TextBlock Text="未分析" /></StackPanel>
                             </Button>
                         </StackPanel>
@@ -738,9 +738,18 @@
                     <Grid x:Name="TechnicalViewport" ClipToBounds="True" Background="Transparent" Focusable="True"
                           FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
                         <TextBlock Text="{Binding ConflictStatus}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ShowConflictPlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" Tag="{Binding ConflictSearchStatus}" ItemTemplate="{StaticResource ConflictRowTemplate}" Style="{StaticResource ConflictListStyle}" VirtualizingPanel.ScrollUnit="Pixel"
+                        <ListBox x:Name="ConflictRowsList" Padding="20,6,8,12" ItemsSource="{Binding ConflictRows}" ItemTemplate="{StaticResource ConflictRowTemplate}" VirtualizingPanel.ScrollUnit="Pixel"
                                  PreviewMouseWheel="TechnicalOverlay_PreviewMouseWheel" PreviewMouseDown="TechnicalResults_PreviewMouseDown" PreviewKeyDown="TechnicalResults_PreviewKeyDown"
                                  Loaded="TechnicalResults_Loaded" Unloaded="TechnicalResults_Unloaded" LayoutUpdated="TechnicalResults_LayoutUpdated">
+                            <ListBox.Style>
+                                <Style TargetType="ListBox" BasedOn="{StaticResource ConflictListStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsExpanded, ElementName=ConflictPathSearch}" Value="True">
+                                            <Setter Property="Tag" Value="{Binding ConflictSearchStatus}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.Style>
                             <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem">

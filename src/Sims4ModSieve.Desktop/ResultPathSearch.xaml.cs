@@ -13,15 +13,18 @@ public partial class ResultPathSearch : UserControl
     private static readonly TimeSpan ExpandDuration = TimeSpan.FromMilliseconds(220);
     private readonly DispatcherTimer searchDelay = new() { Interval = TimeSpan.FromMilliseconds(175) };
     private readonly DispatcherTimer collapseDelay = new() { Interval = TimeSpan.FromMilliseconds(120) };
-    private bool expanded;
     private double targetWidth = CollapsedWidth;
 
+    private static readonly DependencyPropertyKey IsExpandedPropertyKey = DependencyProperty.RegisterReadOnly(nameof(IsExpanded), typeof(bool),
+        typeof(ResultPathSearch), new PropertyMetadata(false));
+    public static readonly DependencyProperty IsExpandedProperty = IsExpandedPropertyKey.DependencyProperty;
     public static readonly DependencyProperty QueryProperty = DependencyProperty.Register(nameof(Query), typeof(string),
         typeof(ResultPathSearch), new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, QueryChanged));
     public static readonly DependencyProperty ResultSurfaceProperty = DependencyProperty.Register(nameof(ResultSurface),
         typeof(FrameworkElement), typeof(ResultPathSearch), new PropertyMetadata(null, ResultSurfaceChanged));
 
     public string Query { get => (string)GetValue(QueryProperty); set => SetValue(QueryProperty, value); }
+    public bool IsExpanded => (bool)GetValue(IsExpandedProperty);
     public FrameworkElement? ResultSurface { get => (FrameworkElement?)GetValue(ResultSurfaceProperty); set => SetValue(ResultSurfaceProperty, value); }
     public bool Compact { get; set; }
     internal Action<string>? SubmitQuery { get; set; }
@@ -146,9 +149,9 @@ public partial class ResultPathSearch : UserControl
     private void SetExpanded(bool value)
     {
         var width = value ? MeasureExpandedWidth() : CollapsedWidth;
-        var stateChanged = expanded != value;
+        var stateChanged = IsExpanded != value;
         if (!stateChanged && width == targetWidth) return;
-        expanded = value;
+        SetValue(IsExpandedPropertyKey, value);
         targetWidth = width;
         if (value) QueryInput.Visibility = Visibility.Visible;
         var animation = new DoubleAnimation(SearchBox.Width, width,
@@ -158,7 +161,7 @@ public partial class ResultPathSearch : UserControl
                 : new CubicEase { EasingMode = EasingMode.EaseOut },
             FillBehavior = FillBehavior.Stop,
         };
-        animation.Completed += (_, _) => { if (!expanded) QueryInput.Visibility = Visibility.Collapsed; };
+        animation.Completed += (_, _) => { if (!IsExpanded) QueryInput.Visibility = Visibility.Collapsed; };
         SearchBox.Width = width;
         SearchBox.BeginAnimation(WidthProperty, animation);
         if (!stateChanged) return;

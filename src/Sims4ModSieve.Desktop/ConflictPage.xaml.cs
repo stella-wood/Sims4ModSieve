@@ -117,6 +117,24 @@ public partial class ConflictPage : UserControl
         model.ToggleConflictGroupSelection(row);
     }
 
+    private async void QuickStatusTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { CommandParameter: string filter } || DataContext is not MainWindowViewModel model
+            || model.ConflictFilter == filter) return;
+        FinishGroupAnimation();
+        StopTechnicalScroll();
+        var previousRows = model.ConflictRows;
+        model.SelectConflictFilterCommand.Execute(filter);
+        var refresh = model.ConflictRowsRefreshTask;
+        await refresh;
+        if (ReferenceEquals(DataContext, model) && ConflictRowsList.IsVisible && ReferenceEquals(model.ConflictRowsRefreshTask, refresh)
+            && !ReferenceEquals(model.ConflictRows, previousRows))
+        {
+            StopTechnicalScroll();
+            technicalResultsScroll?.ScrollToTop();
+        }
+    }
+
     private void ConflictFilterPopup_Opened(object? sender, EventArgs e)
     {
         filterPopupWindow = Window.GetWindow(this);
