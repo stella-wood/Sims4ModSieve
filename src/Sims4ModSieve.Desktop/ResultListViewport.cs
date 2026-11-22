@@ -65,7 +65,7 @@ internal sealed class ResultListViewport(ListBox list, ScrollViewer scroll, Scro
     public static void AnimateHeight(FrameworkElement body, double from, double to, bool expanding, Action completed)
     {
         body.Height = from;
-        var animation = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(expanding ? 200 : 150))
+        var animation = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(expanding ? 175 : 130))
         {
             EasingFunction = new CubicEase { EasingMode = expanding ? EasingMode.EaseOut : EasingMode.EaseIn },
         };
