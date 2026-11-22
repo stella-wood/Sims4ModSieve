@@ -1,6 +1,7 @@
 using Sims4ModSieve.Core.Settings;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Controls.Primitives;
 using Sims4ModSieve.Core.Duplicates;
@@ -12,6 +13,7 @@ namespace Sims4ModSieve.Desktop;
 public partial class MainWindow : Window
 {
     private MainWindowViewModel? closingAfterWork;
+    private Border? animatedDuplicateBody;
 
     private void ShowUpdatePopup(object sender, RoutedEventArgs eventArgs) => UpdatePopup.IsOpen = !UpdatePopup.IsOpen;
 
@@ -62,11 +64,13 @@ public partial class MainWindow : Window
             viewModel.CancelActiveScan();
         };
         viewModel.DuplicateGroupLocationRequested += LocateDuplicateGroup;
+        viewModel.DuplicateViewportCaptureRequested += CaptureDuplicateViewport;
         Closed += (_, _) =>
         {
             viewModel.UpdateRestartRequested -= RestartForUpdate;
             viewModel.StopUpdates();
             viewModel.DuplicateGroupLocationRequested -= LocateDuplicateGroup;
+            viewModel.DuplicateViewportCaptureRequested -= CaptureDuplicateViewport;
             viewModel.PropertyChanged -= CloseAfterWork;
             closingAfterWork = null;
         };
@@ -101,4 +105,61 @@ public partial class MainWindow : Window
         DuplicateGroupsList.ScrollIntoView(group);
         DuplicateGroupsList.UpdateLayout();
     }, System.Windows.Threading.DispatcherPriority.Loaded);
+
+    private static bool IsDuplicateGroupToggle(object source) => source is ToggleButton
+        { Name: "DuplicateHeaderToggle" or "ExpanderArrowToggle" };
+
+    private void DuplicateGroup_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+    {
+        if (IsDuplicateGroupToggle(e.TargetObject)) ResultListViewport.SuppressMouseFocusScroll(e.TargetObject, e);
+    }
+
+    private void DuplicateGroup_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is Expander group && ReferenceEquals(group.Template?.FindName("ExpandedContent", group), animatedDuplicateBody))
+            FinishDuplicateAnimation();
+    }
+
+    private void DuplicateGroupToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (!IsDuplicateGroupToggle(e.OriginalSource) || sender is not Expander group
+            || group.Template.FindName("ExpandedContent", group) is not Border { Child: StackPanel content } body) return;
+
+        var viewport = ResultListViewport.Capture(DuplicateGroupsList);
+        var item = group.DataContext;
+        var top = viewport?.Container(item) is { } container ? viewport.Top(container) : (double?)null;
+        var animatedHeight = ReferenceEquals(body, animatedDuplicateBody) ? body.Height : (double?)null;
+        FinishDuplicateAnimation();
+        if (SystemParameters.ClientAreaAnimation && group.ActualWidth > 0)
+        {
+            body.Visibility = Visibility.Visible;
+            content.Measure(new Size(group.ActualWidth, double.PositiveInfinity));
+            var fullHeight = content.DesiredSize.Height;
+            var from = animatedHeight ?? (group.IsExpanded ? 0 : fullHeight);
+            animatedDuplicateBody = body;
+            ResultListViewport.AnimateHeight(body, from, group.IsExpanded ? fullHeight : 0, group.IsExpanded, FinishDuplicateAnimation);
+        }
+        if (top is { } position)
+            viewport!.RestoreAfterLayout(item, position, () => DuplicateGroupsList.IsVisible && ReferenceEquals(group.DataContext, item));
+    }
+
+    private void FinishDuplicateAnimation()
+    {
+        if (animatedDuplicateBody is not { } body) return;
+        animatedDuplicateBody = null;
+        body.ClearValue(VisibilityProperty);
+        body.BeginAnimation(HeightProperty, null);
+        body.ClearValue(HeightProperty);
+    }
+
+    private Action? CaptureDuplicateViewport()
+    {
+        var viewport = ResultListViewport.Capture(DuplicateGroupsList);
+        var center = viewport?.CenterItem();
+        var top = center is null ? 0 : viewport!.Top(center);
+        FinishDuplicateAnimation();
+        if (center?.DataContext is not DuplicateGroupViewModel group) return null;
+        return () => viewport!.RestoreAfterLayout(group, top,
+            () => DuplicateGroupsList.IsVisible && DuplicateGroupsList.Items.Contains(group));
+    }
 }

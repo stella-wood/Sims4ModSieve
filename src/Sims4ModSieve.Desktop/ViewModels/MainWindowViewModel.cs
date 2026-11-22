@@ -639,7 +639,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void ClearSelection() => resultSession.ClearSelection();
 
-    private void ToggleAllGroups() => resultSession.ToggleAllGroups();
+    internal event Func<Action?>? DuplicateViewportCaptureRequested;
+
+    private void ToggleAllGroups()
+    {
+        var restoreViewport = DuplicateViewportCaptureRequested?.Invoke();
+        resultSession.ToggleAllGroups();
+        restoreViewport?.Invoke();
+    }
 
     private Task DeleteSelectedAsync() => DeleteSelectedCoreAsync();
 

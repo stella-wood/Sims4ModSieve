@@ -172,9 +172,7 @@ public sealed partial class MainWindowViewModel
         SelectConflictFilterCommand = new RelayCommand(filter => SelectConflictFilter(filter as string));
         ToggleConflictExpandedCommand = new RelayCommand(value =>
         {
-            if (value is not ConflictResultRow { IsExpandable: true } row || !IsConflictComplete) return;
-            conflictSession.ToggleExpanded(row.Key);
-            QueueConflictRowsRefresh();
+            if (value is ConflictResultRow row) ToggleConflictExpanded(row);
         });
         ToggleAllConflictGroupsCommand = new RelayCommand(_ =>
         {
@@ -261,6 +259,13 @@ public sealed partial class MainWindowViewModel
             nameof(IncludeConflictOverrides), nameof(IncludeConflictCollections), nameof(IncludeConflictSuspected),
             nameof(IncludeConflictDuplicates), nameof(IncludeConflictScriptConflicts), nameof(IncludeConflictScriptDuplicates), nameof(ShowIgnoredConflicts), nameof(ShowSelectedConflicts), nameof(HasActiveConflictFilter) }) OnPropertyChanged(name);
         OnPropertyChanged(nameof(EmptyConflictText));
+    }
+
+    internal void ToggleConflictExpanded(ConflictResultRow row, Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
+    {
+        if (!row.IsExpandable || !IsConflictComplete) return;
+        conflictSession.ToggleExpanded(row.Key);
+        ConflictRowsRefreshTask = RefreshConflictRowsAsync(restoreViewport);
     }
 
     private void QueueConflictRowsRefresh() => ConflictRowsRefreshTask = RefreshConflictRowsAsync();

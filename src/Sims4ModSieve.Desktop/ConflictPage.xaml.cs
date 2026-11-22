@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +22,7 @@ public partial class ConflictPage : UserControl
     private TimeSpan? technicalScrollFrame;
     private double technicalScrollRemaining;
     private double technicalScrollVelocity;
+    private Action? finishGroupAnimation;
     private readonly HashSet<ListBoxItem> technicalFadedRows = [];
     private readonly LinearGradientBrush technicalEdge = new(Colors.Transparent, Colors.Black, new Point(0, 0), new Point(24, 0))
         { MappingMode = BrushMappingMode.Absolute };
@@ -29,8 +31,8 @@ public partial class ConflictPage : UserControl
     {
         InitializeComponent();
         technicalEdge.Freeze();
-        IsVisibleChanged += (_, _) => { if (!IsVisible) { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); } };
-        Unloaded += (_, _) => { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); };
+        IsVisibleChanged += (_, _) => { if (!IsVisible) { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); FinishGroupAnimation(); } };
+        Unloaded += (_, _) => { ConflictFilterPopup.IsOpen = false; CloseFileMenu(); FinishGroupAnimation(); };
         ((INotifyCollectionChanged)ConflictRowsList.Items).CollectionChanged += (_, _) => { StopTechnicalScroll(); CloseFileMenu(); };
         ConflictRowsList.RequestBringIntoView += (_, _) => StopTechnicalScroll();
         ConflictRowsList.IsVisibleChanged += (_, _) => { if (!ConflictRowsList.IsVisible) StopTechnicalScroll(); };
@@ -38,6 +40,7 @@ public partial class ConflictPage : UserControl
             [new CustomPopupPlacement(new Point(targetSize.Width - popupSize.Width, targetSize.Height), PopupPrimaryAxis.Horizontal)];
         DataContextChanged += (_, e) =>
         {
+            FinishGroupAnimation();
             StopTechnicalScroll();
             HideTechnicalOverlays();
             if (e.OldValue is MainWindowViewModel oldModel)
@@ -178,6 +181,7 @@ public partial class ConflictPage : UserControl
 
     private Action<IReadOnlyList<ConflictResultRow>>? CaptureConflictViewport(bool anchorToGroup)
     {
+        if (anchorToGroup) return CaptureBulkGroupViewport();
         if (DataContext is not MainWindowViewModel model || !ConflictRowsList.IsVisible || technicalResultsScroll is not { } scroll) return null;
         var presenter = TechnicalVisuals<ScrollContentPresenter>(scroll).FirstOrDefault();
         var panel = TechnicalVisuals<VirtualizingStackPanel>(ConflictRowsList).FirstOrDefault();
@@ -199,20 +203,6 @@ public partial class ConflictPage : UserControl
             var anchor = visible.Length > 0 ? visible[0] : surviving.OrderBy(item => Math.Abs(item.Top)).FirstOrDefault();
             var row = anchor.Row is null ? null : replacement.First(item => item.Key == anchor.Row.Key);
             var anchorTop = anchor.Top;
-            if (anchorToGroup)
-            {
-                var source = candidates.FirstOrDefault(item => item.Top + item.Height > 0 && item.Top < presenter.ActualHeight);
-                if (source.Row is not null)
-                {
-                    var ownerKey = source.Row.IsCardStart ? source.Row.Key : source.Row.OwnerKey;
-                    var owner = replacement.FirstOrDefault(item => item.IsCardStart && item.Key == ownerKey);
-                    if (owner is not null)
-                    {
-                        row = owner;
-                        anchorTop = source.Row.IsCardStart ? source.Top : 0;
-                    }
-                }
-            }
             if (row is null) return;
             bool IsCurrent() => ReferenceEquals(DataContext, model) && ConflictRowsList.IsVisible
                 && ReferenceEquals(model.ConflictRows, replacement);
@@ -235,6 +225,124 @@ public partial class ConflictPage : UserControl
                 Dispatcher.BeginInvoke(RestoreAnchor, DispatcherPriority.ApplicationIdle);
             }, DispatcherPriority.Loaded);
         };
+    }
+
+    private Action<IReadOnlyList<ConflictResultRow>>? CaptureBulkGroupViewport()
+    {
+        StopTechnicalScroll();
+        var viewport = ResultListViewport.Capture(ConflictRowsList);
+        var center = viewport?.CenterItem();
+        var middle = center?.DataContext as ConflictResultRow ?? center?.Tag as ConflictResultRow;
+        var key = middle?.IsCardStart == true ? middle.Key : middle?.OwnerKey;
+        var item = key is null ? null : viewport!.RealizedItems.FirstOrDefault(item => item.DataContext is ConflictResultRow row && row.Key == key);
+        var top = item is null ? 0 : viewport!.Top(item);
+        FinishGroupAnimation();
+        if (DataContext is not MainWindowViewModel model || viewport is null || key is null) return null;
+        return replacement =>
+        {
+            var updated = replacement.FirstOrDefault(row => row.Key == key);
+            if (updated is not null)
+                viewport.RestoreAfterLayout(updated, top, () => ConflictRowsList.IsVisible
+                    && ReferenceEquals(DataContext, model) && ReferenceEquals(model.ConflictRows, replacement));
+        };
+    }
+
+    private void GroupToggle_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e) =>
+        ResultListViewport.SuppressMouseFocusScroll(sender, e);
+
+    private void GroupToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ConflictResultRow { IsExpandable: true } row }
+            || DataContext is not MainWindowViewModel model) return;
+        StopTechnicalScroll();
+        if (ResultListViewport.Capture(ConflictRowsList) is not { } viewport || viewport.Container(row) is not { } item)
+        {
+            FinishGroupAnimation();
+            model.ToggleConflictExpanded(row);
+            return;
+        }
+
+        var top = viewport.Top(item);
+        FinishGroupAnimation();
+        var original = model.ConflictRows;
+        model.ToggleConflictExpanded(row, replacement => Dispatcher.BeginInvoke(() =>
+        {
+            bool IsCurrent() => ConflictRowsList.IsVisible && ReferenceEquals(DataContext, model)
+                && ReferenceEquals(model.ConflictRows, replacement);
+            if (!IsCurrent() || replacement.FirstOrDefault(candidate => candidate.Key == row.Key) is not { } updated) return;
+            if (SystemParameters.ClientAreaAnimation && updated.IsExpanded != row.IsExpanded)
+                AnimateGroup(viewport, updated, row.IsExpanded ? original : replacement, replacement, top, IsCurrent);
+            else
+                viewport.Restore(updated, top);
+        }, DispatcherPriority.DataBind));
+    }
+
+    private void AnimateGroup(ResultListViewport viewport, ConflictResultRow header, IReadOnlyList<ConflictResultRow> expandedRows,
+        IReadOnlyList<ConflictResultRow> replacement, double top, Func<bool> isCurrent)
+    {
+        var group = expandedRows.SkipWhile(row => row.Key != header.Key);
+        var expandedHeader = group.First();
+        var children = group.Skip(1).TakeWhile(row => !row.IsCardStart).ToArray();
+        var content = new StackPanel();
+        var body = new Border { Child = content, ClipToBounds = true, Height = 0, IsHitTestVisible = false };
+        var animationItem = new ListBoxItem { Content = body, Tag = header, Focusable = false, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        var previewHeader = header with { IsCardEnd = expandedHeader.IsCardEnd };
+        var preview = new ObservableCollection<object>();
+        var headerIndex = 0;
+        foreach (var row in replacement)
+        {
+            if (row.Key == header.Key)
+            {
+                headerIndex = preview.Count;
+                preview.Add(previewHeader);
+                preview.Add(animationItem);
+            }
+            else if (row.IsCardStart || row.OwnerKey != header.Key) preview.Add(row);
+        }
+
+        ConflictRowsList.SetCurrentValue(ItemsControl.ItemsSourceProperty, preview);
+        viewport.Restore(previewHeader, top);
+        // 只布置动画期间会进入视口的行，大组的其余行继续由列表虚拟化。
+        var width = viewport.Container(previewHeader)?.ActualWidth ?? ConflictRowsList.ActualWidth;
+        var height = 0d;
+        foreach (var row in children)
+        {
+            var contentRow = new ContentPresenter { Content = row, ContentTemplate = ConflictRowsList.ItemTemplate };
+            content.Children.Add(contentRow);
+            contentRow.Measure(new Size(width, double.PositiveInfinity));
+            height += contentRow.DesiredSize.Height;
+            if (height >= viewport.Height) break;
+        }
+
+        finishGroupAnimation = () =>
+        {
+            body.BeginAnimation(HeightProperty, null);
+            body.ClearValue(HeightProperty);
+            if (!ReferenceEquals(ConflictRowsList.ItemsSource, preview)) return;
+            var currentItem = viewport.Container(previewHeader);
+            var position = currentItem is null ? top : viewport.Top(currentItem);
+            if (header.IsExpanded && content.Children.Count < children.Length)
+            {
+                // 大组一次发布剩下的虚拟行，避免逐条更新列表。
+                ConflictRowsList.GetBindingExpression(ItemsControl.ItemsSourceProperty)?.UpdateTarget();
+                if (isCurrent()) viewport.Restore(header, position);
+                return;
+            }
+            // 保留标题控件，动画结束时仍可接住紧接的一次点击。
+            preview.RemoveAt(headerIndex + 1);
+            if (previewHeader.IsCardEnd != header.IsCardEnd) preview[headerIndex] = header;
+            if (header.IsExpanded)
+                for (var index = 0; index < children.Length; index++) preview.Insert(headerIndex + 1 + index, children[index]);
+        };
+        ResultListViewport.AnimateHeight(body, header.IsExpanded ? 0 : height, header.IsExpanded ? height : 0,
+            header.IsExpanded, FinishGroupAnimation);
+    }
+
+    private void FinishGroupAnimation()
+    {
+        var finish = finishGroupAnimation;
+        finishGroupAnimation = null;
+        finish?.Invoke();
     }
 
     private void TechnicalColumns_Loaded(object sender, RoutedEventArgs e) => SubscribeTechnicalColumns((ScrollViewer)sender);

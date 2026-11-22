@@ -450,11 +450,11 @@
                                                   VerticalAlignment="Center" />
                             </Grid>
 
-                            <ContentPresenter x:Name="ExpandedContent"
-                                              Grid.Row="1"
-                                              Content="{TemplateBinding Content}"
-                                              ContentTemplate="{TemplateBinding ContentTemplate}"
-                                              Visibility="Collapsed" />
+                            <Border x:Name="ExpandedContent" Grid.Row="1" ClipToBounds="True" Visibility="Collapsed">
+                                <StackPanel>
+                                    <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                </StackPanel>
+                            </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsExpanded" Value="True">

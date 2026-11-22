@@ -426,6 +426,7 @@
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      VirtualizingPanel.IsVirtualizing="True"
                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                     VirtualizingPanel.ScrollUnit="Pixel"
                                      Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <ListBox.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" /></ListBox.Resources>
                                 <ListBox.ItemContainerStyle>
@@ -442,7 +443,9 @@
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel>
-                                            <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,8" Style="{StaticResource PlainExpanderStyle}">
+                                            <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,8" Style="{StaticResource PlainExpanderStyle}"
+                                                      ButtonBase.Click="DuplicateGroupToggle_Click" RequestBringIntoView="DuplicateGroup_RequestBringIntoView"
+                                                      DataContextChanged="DuplicateGroup_DataContextChanged">
                                                 <Expander.Header>
                                                     <Grid HorizontalAlignment="Stretch">
                                                         <Grid.ColumnDefinitions>

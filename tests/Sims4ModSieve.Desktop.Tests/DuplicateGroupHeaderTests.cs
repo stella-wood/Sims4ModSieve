@@ -1,6 +1,8 @@
 using Sims4ModSieve.Core.Settings;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -16,6 +18,55 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class DuplicateGroupHeaderTests
 {
+    [TestMethod]
+    public Task DuplicateBulkExpansionAndCollapseKeepTheViewportCenterGroup() => WpfTestHost.RunAsync(async () =>
+    {
+        var session = new DuplicateResultSession();
+        var groups = Enumerable.Range(1, 80).Select(index =>
+        {
+            DuplicateFile[] files =
+            [
+                new($@"D:\Mods\{index}.package", 100, DateTime.UnixEpoch, ["test"], ["test"], true, 2),
+                new($@"D:\Downloads\{index}.package", 100, DateTime.UnixEpoch, ["test"], ["test"], false, 2),
+            ];
+            var suggestion = new DuplicateSelectionService().Select(files);
+            return new DuplicateGroupViewModel(new DuplicateGroup($"hash-{index}", 100, DuplicateSection.FocusCrossScope,
+                files, suggestion.KeepPath, suggestion.DeletePaths), index) { IsExpanded = false };
+        }).ToArray();
+        var model = new MainWindowViewModel(new DuplicateRunService(DuplicateScanner.CreateDefault()),
+            new NoFolderPicker(), new EmptySettingsStore(), resultSession: session);
+        model.OpenDuplicateScannerCommand.Execute(null);
+        session.Replace(groups);
+        var window = new MainWindow(model);
+        WpfTestHost.ShowOffScreen(window);
+        await WpfTestHost.LayoutAsync(window);
+
+        var list = Descendants<ListBox>(window).Single(box => box.Name == "DuplicateGroupsList");
+        var scroll = Descendants<ScrollViewer>(list).First();
+        var presenter = Descendants<ScrollContentPresenter>(scroll).First();
+        var button = Descendants<Button>(window).Single(element => element.Name == "ToggleAllGroupsButton");
+        var group = groups[40];
+        foreach (var expand in new[] { true, false })
+        {
+            list.ScrollIntoView(group);
+            await WpfTestHost.LayoutAsync(window);
+            var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(group);
+            var top = item.TranslatePoint(new Point(), presenter).Y;
+            scroll.ScrollToVerticalOffset(scroll.VerticalOffset + top + item.ActualHeight / 3 - presenter.ActualHeight / 2);
+            await WpfTestHost.LayoutAsync(window);
+            var before = item.TranslatePoint(new Point(), presenter).Y;
+            Assert.IsTrue(before > 0 && before < presenter.ActualHeight / 2 && before + item.ActualHeight > presenter.ActualHeight / 2);
+
+            ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();
+            await WpfTestHost.LayoutAsync(window);
+
+            Assert.IsTrue(groups.All(value => value.IsExpanded == expand));
+            var updated = list.ItemContainerGenerator.ContainerFromItem(group) as ListBoxItem;
+            Assert.IsNotNull(updated, "批量操作后原视口中心组仍可见");
+            Assert.AreEqual(before, updated.TranslatePoint(new Point(), presenter).Y, 1d);
+        }
+    });
+
     [TestMethod]
     public Task HeadersShowKeepFileNameAndCountAndSupportSelectionAndExpansion() => WpfTestHost.RunAsync(async () =>
     {

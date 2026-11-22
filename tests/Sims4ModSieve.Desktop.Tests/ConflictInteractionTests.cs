@@ -325,7 +325,7 @@ public sealed class ConflictInteractionTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task ConflictBulkExpansionKeepsMiddleGroupAndCollapseReturnsToChildOwner(bool fromTechnicalRows) => WpfTestHost.RunAsync(async () =>
+    public Task ConflictBulkExpansionAndCollapseKeepTheViewportCenterGroup(bool fromTechnicalRows) => WpfTestHost.RunAsync(async () =>
     {
         var paths = Enumerable.Range(0, 80).Select(index => ($@"C:\Mods\bulk{index:D2}a.package", $@"C:\Mods\bulk{index:D2}b.package")).ToArray();
         var session = ConflictV2SessionTests.V2(paths.SelectMany((pair, index) => Enumerable.Range(0, 24)
@@ -346,10 +346,10 @@ public sealed class ConflictInteractionTests
         list.ScrollIntoView(header);
         await SettleAsync();
         var headerItem = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(header);
-        viewer.ScrollToVerticalOffset(viewer.VerticalOffset + headerItem.TranslatePoint(new Point(), presenter).Y + headerItem.ActualHeight / 3);
+        viewer.ScrollToVerticalOffset(viewer.VerticalOffset + Position(header.Key) + headerItem.ActualHeight / 3 - presenter.ActualHeight / 2);
         await SettleAsync();
         var before = Position(card.Key);
-        Assert.IsTrue(before < 0 && before + headerItem.ActualHeight > 0, "以第53组部分可见标题构造视口锚点");
+        Assert.AreEqual(card.Key, CenterRow().Key, "视口中心应落在第53组标题");
         Save(window, $"conflict-bulk-expand-before-{fromTechnicalRows}.png");
         Invoke(button);
         await WpfTestHost.LayoutAsync(window);
@@ -368,20 +368,23 @@ public sealed class ConflictInteractionTests
             var toggle = model.ConflictRows.Single(row => row.OwnerKey == card.Key && row.IsTechnicalToggle);
             model.ToggleConflictExpandedCommand.Execute(toggle);
             await model.ConflictRowsRefreshTask;
-            child = model.ConflictRows.Where(row => row.OwnerKey == card.Key && row.Kind == ConflictRowKind.Technical && !row.IsExpandable).Skip(12).First();
+            child = model.ConflictRows.First(row => row.OwnerKey == card.Key && row.Kind == ConflictRowKind.Technical && !row.IsExpandable);
         }
         else child = model.ConflictRows.Where(row => row.OwnerKey == card.Key && row.File is not null).Last();
         list.ScrollIntoView(child);
         await SettleAsync();
-        viewer.ScrollToVerticalOffset(viewer.VerticalOffset + Position(child.Key));
+        var childItem = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(child);
+        viewer.ScrollToVerticalOffset(viewer.VerticalOffset + Position(child.Key) + childItem.ActualHeight / 3 - presenter.ActualHeight / 2);
         await SettleAsync();
-        Assert.IsTrue(Math.Abs(Position(child.Key)) < 1, "把组内子行置于视口顶部");
+        Assert.AreEqual(child.Key, CenterRow().Key, "视口中心应落在第53组的子行");
+        var beforeCollapse = Position(card.Key);
+        Assert.IsTrue(Math.Abs(beforeCollapse) > 1, "标题与视口顶部应有偏移");
         Save(window, $"conflict-bulk-collapse-before-{fromTechnicalRows}.png");
         Invoke(button);
         await WpfTestHost.LayoutAsync(window);
         await model.ConflictRowsRefreshTask;
         await SettleAsync();
-        Assert.AreEqual(0, Position(card.Key), 1d, "全部收起后应显示原子行所属第53组标题");
+        Assert.AreEqual(beforeCollapse, Position(card.Key), 1d, "全部收起后第53组标题应留在原相对位置");
         Assert.IsTrue(model.ShowExpandAllConflictIcon);
         Assert.IsTrue(model.ConflictRows.All(row => row.IsCardStart));
         Assert.AreEqual(fromTechnicalRows, session.GetExpandedKeysSnapshot().Contains(card.Key + "/technical"));
@@ -398,6 +401,11 @@ public sealed class ConflictInteractionTests
             Assert.IsNotNull(item, "当前锚点应保持实现");
             return item.TranslatePoint(new Point(), presenter).Y;
         }
+        ConflictResultRow CenterRow() => (ConflictResultRow)Descendants<ListBoxItem>(list).Single(item =>
+        {
+            var top = item.TranslatePoint(new Point(), presenter).Y;
+            return top <= presenter.ActualHeight / 2 && top + item.ActualHeight > presenter.ActualHeight / 2;
+        }).DataContext;
         async Task SettleAsync()
         {
             await WpfTestHost.LayoutAsync(window);
