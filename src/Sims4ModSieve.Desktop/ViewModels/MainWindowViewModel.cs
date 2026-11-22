@@ -137,7 +137,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public IReadOnlyList<DuplicateGroupViewModel> Groups => resultSession.Groups;
     public IReadOnlyList<DuplicateGroupViewModel> VisibleDuplicateGroups => resultSession.VisibleDuplicateGroups;
-    public string DuplicatePathQuery { get => resultSession.DuplicatePathQuery; set => resultSession.DuplicatePathQuery = value; }
+    public string DuplicatePathQuery
+    {
+        get => resultSession.DuplicatePathQuery;
+        set => DuplicateSearchRefreshTask = resultSession.SetPathQuery(value, DuplicateSearchTransitionRequested);
+    }
+    internal Task DuplicateSearchRefreshTask { get; private set; } = Task.CompletedTask;
+    internal event Func<Action, Task>? DuplicateSearchTransitionRequested;
+    internal event Func<IReadOnlySet<string>, Action, Task>? DuplicateRemovalTransitionRequested;
     public PathSearch DuplicateSearch => resultSession.DuplicateSearch;
     public string DuplicateSearchStatus => resultSession.DuplicateSearchStatus;
     public bool ShowDuplicatePlaceholder => VisibleDuplicateGroups.Count == 0;
@@ -697,7 +704,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 }
                 if (deletionGeneration == resultGeneration)
                 {
-                    resultSession.RemoveCompletedPaths(snapshot, result.CompletedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase));
+                    await DuplicateSearchRefreshTask;
+                    var removed = result.CompletedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    await ShowDuplicateRemovalAsync(removed, () =>
+                    {
+                        if (deletionGeneration == resultGeneration) resultSession.RemoveCompletedPaths(snapshot, removed);
+                    });
                     FileActionStatusText = $"已移入回收站 {result.CompletedPaths.Count} 个文件";
                 }
             }
@@ -712,6 +724,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
             IsBusy = false;
             RefreshResultProperties();
         }
+    }
+
+    private Task ShowDuplicateRemovalAsync(IReadOnlySet<string> paths, Action apply)
+    {
+        if (DuplicateRemovalTransitionRequested is { } transition) return transition(paths, apply);
+        apply();
+        return Task.CompletedTask;
     }
 
     private Task UndoLastDeleteAsync() => UndoLastDeleteCoreAsync();

@@ -13,7 +13,6 @@ public partial class ResultPathSearch : UserControl
     private static readonly TimeSpan ExpandDuration = TimeSpan.FromMilliseconds(220);
     private readonly DispatcherTimer searchDelay = new() { Interval = TimeSpan.FromMilliseconds(175) };
     private readonly DispatcherTimer collapseDelay = new() { Interval = TimeSpan.FromMilliseconds(120) };
-    private readonly DispatcherTimer flashDelay = new() { Interval = TimeSpan.FromMilliseconds(70) };
     private bool expanded;
     private double targetWidth = CollapsedWidth;
 
@@ -52,7 +51,6 @@ public partial class ResultPathSearch : UserControl
             DismissFocus();
             RefreshExpansion();
         };
-        flashDelay.Tick += (_, _) => EndFlash();
         MouseEnter += (_, _) => { collapseDelay.Stop(); RefreshExpansion(); };
         MouseLeave += (_, _) => { if (QueryInput.Text.Length == 0) collapseDelay.Start(); };
         IsKeyboardFocusWithinChanged += (_, _) => RefreshExpansion();
@@ -61,11 +59,10 @@ public partial class ResultPathSearch : UserControl
             if (IsEnabled) return;
             searchDelay.Stop();
             collapseDelay.Stop();
-            EndFlash();
             QueryInput.Text = Query;
             RefreshExpansion();
         };
-        Unloaded += (_, _) => { searchDelay.Stop(); collapseDelay.Stop(); EndFlash(); };
+        Unloaded += (_, _) => { searchDelay.Stop(); collapseDelay.Stop(); };
     }
 
     internal void FocusInput()
@@ -120,20 +117,7 @@ public partial class ResultPathSearch : UserControl
         if (e.Key != Key.Enter) return;
         ApplyQuery();
         DismissFocus();
-        if (ResultSurface is { } surface)
-        {
-            flashDelay.Stop();
-            surface.IsHitTestVisible = false;
-            flashDelay.Start();
-        }
         e.Handled = true;
-    }
-
-    private void EndFlash()
-    {
-        flashDelay.Stop();
-        if (ResultSurface is not { } surface) return;
-        surface.IsHitTestVisible = true;
     }
 
     private void ResultSurface_PreviewMouseDown(object sender, MouseButtonEventArgs e)

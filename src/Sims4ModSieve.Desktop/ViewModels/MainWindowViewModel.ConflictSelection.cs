@@ -251,9 +251,10 @@ public sealed partial class MainWindowViewModel
             if (!ChangeManagementData(data => data with
                 {
                     Ignored = data.Ignored.Concat(added).DistinctBy(record => record.Path, StringComparer.OrdinalIgnoreCase).ToArray(),
-                })) return;
+                }, animateRemoval: true)) return;
         }
         ConflictFileActionStatusText = $"已{action} {paths.Length} 个文件";
         ClearConflictSelection();
+        if (!allIgnored && showSelectedConflicts) QueueConflictRowsRefresh(animateRemoval: true);
     }
 }

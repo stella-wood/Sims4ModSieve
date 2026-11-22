@@ -21,8 +21,17 @@ internal sealed class ResultListViewport(ListBox list, ScrollViewer scroll, Scro
     }
 
     public IEnumerable<ListBoxItem> RealizedItems => panel.Children.OfType<ListBoxItem>();
+    public IEnumerable<ListBoxItem> VisibleItems => RealizedItems.Where(IsVisible).OrderBy(Top);
     public ListBoxItem? Container(object item) => list.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem;
-    public double Top(ListBoxItem item) => item.TranslatePoint(new Point(), presenter).Y;
+    public double Top(FrameworkElement item) => item.TranslatePoint(new Point(), presenter).Y;
+    public bool IsVisible(FrameworkElement element)
+    {
+        if (!element.IsVisible || !element.IsDescendantOf(presenter) || element.ActualHeight <= 0) return false;
+        var top = Top(element);
+        return top < Height && top + element.ActualHeight > 0;
+    }
+    public ScrollViewer Scroll => scroll;
+    public ListBoxItem? LastItem => list.Items.Count == 0 ? null : Container(list.Items[^1]);
 
     public ListBoxItem? CenterItem() => RealizedItems.FirstOrDefault(item =>
     {
@@ -73,7 +82,7 @@ internal sealed class ResultListViewport(ListBox list, ScrollViewer scroll, Scro
         body.BeginAnimation(FrameworkElement.HeightProperty, animation);
     }
 
-    private static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
+    internal static T? FindChild<T>(DependencyObject parent) where T : DependencyObject
     {
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
         {

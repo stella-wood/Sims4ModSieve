@@ -4,6 +4,8 @@ using System.ComponentModel;
 using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
 using System.Windows.Threading;
@@ -256,6 +258,148 @@ public sealed partial class ConflictFileActionTests
         Assert.AreEqual("initial", model.ConflictRunState);
         Assert.AreEqual(0, model.ConflictRows.Count);
         Assert.IsFalse(model.IsBusy);
+    }
+
+    [TestMethod]
+    [DataRow(true, false)]
+    [DataRow(false, false)]
+    [DataRow(true, true)]
+    public Task DuplicateDeletionAnimatesOnlyTheVisibleCardOrFile(bool wholeCard, bool scrolled = false) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var groups = Enumerable.Range(0, 24).Select(index =>
+        {
+            var data = Enumerable.Repeat((byte)index, 10).ToArray();
+            var paths = Enumerable.Range(0, index == 0 && !wholeCard ? 3 : 2).Select(copy =>
+            {
+                var path = Path.Combine(files.Root, $"group-{index:D2}-{copy}.package");
+                File.WriteAllBytes(path, data);
+                File.SetLastWriteTimeUtc(path, Stamp.LastWriteTimeUtc);
+                return path;
+            }).ToArray();
+            return Duplicates(paths).Groups.Single() with { Sha256 = Convert.ToHexString(SHA256.HashData(data)) };
+        }).ToArray();
+        var report = Duplicates(files.A, files.B) with { Groups = groups };
+        var duplicates = new DuplicateResultSession();
+        duplicates.Replace(duplicates.PrepareGroups(groups));
+        var model = Model(files.Root, new RecordingDuplicateRun(report), duplicates);
+        model.OpenDuplicateScannerCommand.Execute(null);
+        var window = OpenWindow(model);
+        await WpfTestHost.LayoutAsync(window);
+        var list = Descendants<ListBox>(window).Single(element => element.Name == "DuplicateGroupsList");
+        var presenter = Descendants<ScrollContentPresenter>(list).First();
+        var firstIndex = scrolled ? 10 : 0;
+        var first = model.Groups[firstIndex];
+        var last = model.Groups[^1];
+        var anchor = model.Groups[wholeCard ? firstIndex + 1 : firstIndex];
+        if (scrolled) await PositionDepartureAsync(window, list, presenter, first);
+        var selected = first.Files[^1];
+        selected.IsSelected = true;
+        last.Files[^1].IsSelected = true;
+        FrameworkElement? Departing()
+        {
+            if (list.ItemContainerGenerator.ContainerFromItem(first) is not ListBoxItem item) return null;
+            if (wholeCard) return item;
+            var nested = Descendants<ItemsControl>(item).Single(control => control.Name == "DuplicateFileList");
+            return nested.ItemContainerGenerator.ContainerFromItem(selected) as FrameworkElement;
+        }
+        var startHeight = Departing()!.ActualHeight;
+        var top = ItemTop(anchor);
+        var frames = new List<double>();
+        void Render(object? sender, EventArgs e)
+        {
+            if (Departing() is not { Opacity: < 1, ActualHeight: > 0 } item || item.ActualHeight >= startHeight) return;
+            Assert.IsFalse(list.Items.Contains(last), "视口外的组应已从列表移除");
+            frames.Add(ItemTop(anchor));
+        }
+        CompositionTarget.Rendering += Render;
+        try { await model.DeleteSelectedCommand.ExecuteAsync(); }
+        finally { CompositionTarget.Rendering -= Render; }
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(model.Groups.SelectMany(group => group.Files).Any(file => file.Path == selected.Path));
+        Assert.IsFalse(model.Groups.Any(group => group.Model.Sha256 == last.Model.Sha256));
+        if (SystemParameters.ClientAreaAnimation)
+        {
+            Assert.IsTrue(frames.Count > 0, "应该观察到淡出和高度收缩重叠的帧");
+            Assert.IsTrue(frames.All(y => Math.Abs(y - top) <= 1), $"锚点原位 {top:F1}，帧 [{string.Join(", ", frames)}]");
+            Assert.AreEqual(top, ItemTop(model.Groups.Single(group => group.Model.Sha256 == anchor.Model.Sha256)), 1d);
+        }
+        else Assert.AreEqual(0, frames.Count);
+
+        double ItemTop(DuplicateGroupViewModel group) => ((ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(group))
+            .TranslatePoint(new Point(), presenter).Y;
+    });
+
+    [TestMethod]
+    [DataRow(true, false)]
+    [DataRow(false, false)]
+    [DataRow(true, true)]
+    public Task ConflictIgnoreAnimatesOnlyTheVisibleCardOrFile(bool wholeCard, bool scrolled = false) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var resources = Enumerable.Range(0, 24).Select(index => Resource((ulong)index + 1,
+            (Path.Combine(files.Root, $"group-{index:D2}-a.package"), "a"),
+            (Path.Combine(files.Root, $"group-{index:D2}-b.package"), "b"),
+            (Path.Combine(files.Root, $"group-{index:D2}-c.package"), "c"))).ToArray();
+        var session = Session(resources);
+        if (!wholeCard) session.ToggleExpanded(session.Cards[0].Key);
+        var model = new MainWindowViewModel(new RecordingDuplicateRun(Duplicates(files.A, files.B)), new NoPicker(), new Settings(files.Root),
+            fileManagementStore: new(files.Root));
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, session);
+        await WpfTestHost.LayoutAsync(window);
+        var list = Descendants<ListBox>(window).Single(element => element.Name == "ConflictRowsList");
+        var presenter = Descendants<ScrollContentPresenter>(list).First();
+        var headers = model.ConflictRows.Where(row => row.IsCardStart).ToArray();
+        var firstIndex = scrolled ? 10 : 0;
+        var departure = wholeCard ? headers[firstIndex] : model.ConflictRows.First(row => row.OwnerKey == headers[firstIndex].Key && row.File is not null);
+        var anchor = headers[wholeCard ? firstIndex + 1 : firstIndex];
+        var offscreen = headers[^1];
+        if (scrolled) await PositionDepartureAsync(window, list, presenter, departure);
+        var startHeight = ((ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(departure)).ActualHeight;
+        var top = ItemTop(anchor);
+        var frames = new List<double>();
+        void Render(object? sender, EventArgs e)
+        {
+            if (list.ItemContainerGenerator.ContainerFromItem(departure) is not ListBoxItem { Opacity: < 1, ActualHeight: > 0 } item
+                || item.ActualHeight >= startHeight) return;
+            Assert.IsFalse(list.Items.Contains(offscreen), "视口外的卡片应已从列表移除");
+            frames.Add(ItemTop(anchor));
+        }
+        CompositionTarget.Rendering += Render;
+        try
+        {
+            model.IgnoreConflictCommand.Execute(offscreen);
+            model.IgnoreConflictCommand.Execute(departure);
+            await model.ConflictRowsRefreshTask;
+        }
+        finally { CompositionTarget.Rendering -= Render; }
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(model.ConflictRows.Any(row => row.Key == departure.Key || row.Key == offscreen.Key));
+        if (SystemParameters.ClientAreaAnimation)
+        {
+            Assert.IsTrue(frames.Count > 0, "应该观察到淡出和高度收缩重叠的帧");
+            Assert.IsTrue(frames.All(y => Math.Abs(y - top) <= 1), $"锚点原位 {top:F1}，帧 [{string.Join(", ", frames)}]");
+            Assert.AreEqual(top, ItemTop(model.ConflictRows.Single(row => row.Key == anchor.Key)), 1d);
+        }
+        else Assert.AreEqual(0, frames.Count);
+
+        double ItemTop(ConflictResultRow row) => ((ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(row))
+            .TranslatePoint(new Point(), presenter).Y;
+    });
+
+    private static async Task PositionDepartureAsync(Window window, ListBox list, ScrollContentPresenter presenter, object departure)
+    {
+        var scroll = Descendants<ScrollViewer>(list).First();
+        list.ScrollIntoView(departure);
+        await WpfTestHost.LayoutAsync(window);
+        var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(departure);
+        scroll.ScrollToVerticalOffset(scroll.VerticalOffset + item.TranslatePoint(new Point(), presenter).Y + item.ActualHeight / 3);
+        await WpfTestHost.LayoutAsync(window);
+        var top = item.TranslatePoint(new Point(), presenter).Y;
+        Assert.IsTrue(top < 0 && top + item.ActualHeight > 0, "滚到列表中间，让离场卡片在视口上沿部分可见");
     }
 
     [TestMethod]

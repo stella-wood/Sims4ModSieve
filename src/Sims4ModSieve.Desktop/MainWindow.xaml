@@ -408,7 +408,8 @@
                             </Grid>
                         </Border>
 
-                        <Grid x:Name="DuplicateResultsBody" Grid.Row="1" Background="Transparent" Focusable="True"
+                        <Grid Grid.Row="1" ClipToBounds="True">
+                        <Grid x:Name="DuplicateResultsBody" Background="Transparent" Focusable="True"
                               FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
                             <TextBlock Text="{Binding DuplicateSearchStatus}" Style="{StaticResource SearchResultCountStyle}" VerticalAlignment="Top" Visibility="{Binding ShowDuplicatePlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -497,7 +498,7 @@
                                                     </Grid>
                                                 </Expander.Header>
                                                 <Border Margin="20,3,0,7" Background="#F3F1ED" Padding="8,4">
-                                                    <ItemsControl ItemsSource="{Binding Files}">
+                                                    <ItemsControl x:Name="DuplicateFileList" ItemsSource="{Binding Files}">
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
                                                                 <Grid Margin="8,9">
@@ -543,6 +544,7 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                        </Grid>
                         </Grid>
 
                         <Border Grid.Row="2"

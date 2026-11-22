@@ -232,7 +232,7 @@ public sealed partial class MainWindowViewModel
     }
 
     private async Task UpdateConflictFilePathsAsync(ConflictResultSession session, IReadOnlyList<string> paths, bool restore,
-        Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null, bool refreshMissingMembers = false)
+        ConflictViewportCapture? restoreViewport = null, bool refreshMissingMembers = false)
     {
         var prepared = session.ProjectionSnapshot();
         await Task.Run(() =>
@@ -249,7 +249,7 @@ public sealed partial class MainWindowViewModel
             RefreshConflictSelection();
         }
         if (ConflictRelationships is { } relationships) ConflictRelationships = session.Relationships(relationships.File.Path);
-        await RefreshConflictRowsAsync(restoreViewport);
+        await RefreshConflictRowsAsync(restoreViewport?.Restore, animateRemoval: !restore && !refreshMissingMembers, removalViewport: restoreViewport);
         RefreshConflictResults();
     }
 }

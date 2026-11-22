@@ -117,7 +117,7 @@
 
 - `ResultPathSearch` 收起宽 30 DIP。展开时重复检测高 30、宽 164–260 DIP，冲突检测高 24、宽 144–236 DIP。两端圆角为高度的一半，右侧间距分别为 8 和 4 DIP。
 - `SearchIconSize` 为 16 DIP，`SearchIconOffset` 向右、向下各 1 DIP，`SearchClearTarget` 为 24 DIP。放大镜列宽 30 DIP（冲突页 28）。`SearchInputFontSize` 为 12 DIP。输入及清空按钮间距见控件的 `SearchInputMargin`、`SearchClearMargin`，紧凑时右侧输入留白从 4 改为 2 DIP，清空按钮不留上下边距。
-- `SearchShadow` 模糊半径 6 DIP、向下偏移 1 DIP、不透明度 0.13。结果计数使用 `SearchResultCountStyle`，字体 11 DIP。在列表中沿用列表缩进，与首组相隔 6 DIP。零组时外边距为左 20、上 5、右 8、下 0 DIP。
+- `SearchShadow` 模糊半径 6 DIP、向下偏移 1 DIP、不透明度 0.13。结果计数使用 `SearchResultCountStyle`，字体 11 DIP，`SearchResultCountHeight` 固定为 16 DIP。在列表中沿用列表缩进，与首组相隔 6 DIP。零组时外边距为左 20、上 5、右 8、下 0 DIP。
 - `SearchFileNameHighlightBrush` 为 `#FFE550`，`SearchPathHighlightBrush` 为 `#FFEA85`，路径高亮仅填原行高的 23%–92% 区间。
 
 ## 组件

@@ -27,10 +27,16 @@ public sealed class DuplicateResultSession : ObservableObject
     public string DuplicatePathQuery
     {
         get => duplicatePathQuery;
-        set
-        {
-            if (SetProperty(ref duplicatePathQuery, value)) RefreshVisibleDuplicateGroups();
-        }
+        set => SetPathQuery(value, null);
+    }
+
+    internal Task SetPathQuery(string value, Func<Action, Task>? transition)
+    {
+        if (!SetProperty(ref duplicatePathQuery, value, nameof(DuplicatePathQuery))) return Task.CompletedTask;
+        void Apply() { if (duplicatePathQuery == value) RefreshVisibleDuplicateGroups(); }
+        if (transition is not null) return transition(Apply);
+        Apply();
+        return Task.CompletedTask;
     }
 
     public IReadOnlyList<DuplicateGroupViewModel> VisibleDuplicateGroups { get; private set; } = [];
