@@ -53,6 +53,14 @@ public sealed class LlamaLogicPackageIndexReader(
     public static string GetResourceTypeDisplayName(uint type) =>
         ResourceTypeNames.DisplayName(type, Enum.GetName((ResourceType)type), XmlTuningTypes.Contains(type));
 
+    public static (string Label, string? Tooltip) GetResourceTypeLabel(uint type)
+    {
+        var englishName = Enum.GetName((ResourceType)type);
+        var number = $"0x{type:X8}";
+        return (ResourceTypeNames.GetChineseName(type, XmlTuningTypes.Contains(type)) ?? englishName ?? number,
+            englishName is null ? null : $"({englishName}) {number}");
+    }
+
     public static LlamaLogicPackageIndexReader CreateDefault()
     {
         var fileSystem = new PhysicalFileSystemAccess();

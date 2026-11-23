@@ -6,13 +6,19 @@ public static class ResourceTypeNames
     {
         if (englishName is null) return $"0x{type:X8}";
 
-        var chineseName = type switch
+        var chineseName = GetChineseName(type, isXmlTuning);
+        return chineseName is null ? $"{englishName}（0x{type:X8}）" : $"{chineseName}（{englishName}）";
+    }
+
+    public static string? GetChineseName(uint type, bool isXmlTuning)
+    {
+        return type switch
         {
             0x8B18FF6E => "捏人滑杆热点",
             0x00B2D882 or 0x2BC04EDF or 0x3453CF95 or 0xBA856C78 or 0x2F7D0004 or 0x2F7D0006 => "贴图",
             0x034AEECB => "捏人部件",
             0x220557DA => "文本表",
-            0x545AC67A => "模拟数据",
+            0x545AC67A => "数据表",
             0x0000000F or 0x00000010 or 0x00000012 or 0x00000014 or 0x00000015 or 0x0D338A3A
                 or 0x16CA6BC4 or 0x3BD45407 or 0x3C1AF1F2 or 0x3C2A8647 or 0x5B282D45 or 0x8E71065D
                 or 0x9C925813 or 0xA1FF2FC4 or 0xAB19BCBA or 0xB0118C15 or 0xB67673A2 or 0xBD491726
@@ -32,7 +38,5 @@ public static class ResourceTypeNames
             _ when isXmlTuning => "调参 XML",
             _ => null,
         };
-
-        return chineseName is null ? $"{englishName}（0x{type:X8}）" : $"{chineseName}（{englishName}）";
     }
 }

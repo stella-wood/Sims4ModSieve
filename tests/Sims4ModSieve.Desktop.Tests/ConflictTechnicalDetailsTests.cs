@@ -49,24 +49,29 @@ public sealed class ConflictTechnicalDetailsTests
     }
 
     [TestMethod]
-    public Task TechnicalDetailsRenderAndCopyBilingualResourceType() => WpfTestHost.RunAsync(async () =>
+    [DataRow(2)]
+    [DataRow(15)]
+    public Task TechnicalDetailsShowShortTypeLabelAndEnglishTooltip(int files) => WpfTestHost.RunAsync(async () =>
     {
-        const string expected = "捏人部件（CASPart）";
+        const string tooltip = "(CASPart) 0x034AEECB";
+        var listMode = files >= 15;
         var copied = "";
         var model = CreateModel(text => copied = text);
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");
         var window = OpenWindow(model);
-        await SetSessionAsync(model, TechnicalSession(1, 2));
+        await SetSessionAsync(model, TechnicalSession(1, files));
         var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
-        var details = model.ConflictRows.Single(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable);
+        var kind = listMode ? ConflictRowKind.TechnicalListHeader : ConflictRowKind.Technical;
+        var details = model.ConflictRows.Single(row => row.Kind == kind && !row.IsExpandable);
         list.ScrollIntoView(details);
         await WpfTestHost.LayoutAsync(window);
 
-        Assert.IsTrue(Descendants<TextBlock>(list).Any(text => text.IsVisible && text.Text == expected));
+        var label = Descendants<TextBlock>(list).Single(text => text.IsVisible && Equals(text.ToolTip, tooltip));
+        Assert.AreEqual(listMode ? "种类  捏人部件" : "捏人部件", label.Text);
         model.CopyConflictDetailsCommand.Execute(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.CopyDetails));
-        StringAssert.Contains(copied, expected);
-        Save(window, "technical-resource-type-names.png", list);
+        StringAssert.Contains(copied, "捏人部件（CASPart）");
+        if (!listMode) Save(window, "technical-resource-type-names.png", list);
     });
 
     [TestMethod]

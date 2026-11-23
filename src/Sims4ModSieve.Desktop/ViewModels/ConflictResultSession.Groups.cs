@@ -535,7 +535,7 @@ public sealed partial class ConflictResultSession
                     {
                         token.ThrowIfCancellationRequested();
                         add(new(technicalKey + "/value" + index++, ConflictRowKind.Technical, 1, entry.Identifier,
-                            OwnerKey: card.Key, TechnicalEntry: entry with { Cells = [new("", entry.TypeLabel, "", table) { IsType = true },
+                            OwnerKey: card.Key, TechnicalEntry: entry with { Cells = [new("", entry.VisibleTypeLabel, entry.TypeTooltip ?? "", table) { IsType = true },
                                 .. entry.Cells.Select(cell => cell with { FileName = "", Table = table }),
                                 .. table.HasRelatedGroups ? new ConflictTechnicalCell[] { new("", "", "", table) { IsRelated = true, RelatedGroups = entry.RelatedGroups } } : []] },
                             IsIgnored: ignored, TechnicalTable: table));
@@ -582,9 +582,13 @@ public sealed partial class ConflictResultSession
                     return new ConflictTechnicalCell(file.Name, version, evidence);
                 }).ToArray();
                 var identical = versions.Count == 1 && comparedFiles >= 2 && !incomplete;
+                var (typeLabel, typeTooltip) = LlamaLogicPackageIndexReader.GetResourceTypeLabel(key.Type);
                 return new ConflictTechnicalEntry(key.Tgi, LlamaLogicPackageIndexReader.GetResourceTypeDisplayName(key.Type),
                     cells.Select(cell => cell with { IsIdenticalVersion = identical }).ToArray())
-                    { HasDifferentVersions = versions.Count > 1, HasIdenticalVersions = identical };
+                    {
+                        ShortTypeName = typeLabel, TypeTooltip = typeTooltip,
+                        HasDifferentVersions = versions.Count > 1, HasIdenticalVersions = identical,
+                    };
             }).ToArray();
         }
         if (card.Modules is { } modules)

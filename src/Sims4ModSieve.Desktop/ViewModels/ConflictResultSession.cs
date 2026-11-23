@@ -460,7 +460,7 @@ public sealed partial class ConflictResultSession
     {
         // 未分析摘要按资源类别合并原因，使用简短的类别名称。
         0x034AEECB => "捏人部件",
-        0x545AC67A => "模拟数据",
+        0x545AC67A => "数据表",
         0xC0DB5AE7 => "物件定义",
         0x319E4F1D => "物件目录",
         0x00B2D882 or 0x2BC04EDF or 0x3453CF95 or 0xBA856C78 or 0x2F7D0004 or 0x2F7D0006 => "图像",
