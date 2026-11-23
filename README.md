@@ -133,7 +133,7 @@ pwsh -NoProfile -File .\eng\package-installer.ps1
 
 ### 命令行（CLI）
 
-CLI 提供只读扫描、报告和默认 Mods 目录设置，也支持查看已禁用文件、禁用、恢复、移入 Windows 回收站及撤回最近一批删除。文件操作默认预览，确认后加 `--apply`。命令用法和操作日志位置见 [AI 指南](AI-GUIDE.md#禁用恢复或把文件移入回收站)。运行 `Sims4ModSieve.Cli.exe --help` 查看命令，运行 `guide` 查看随程序嵌入的 AI 指南。
+CLI 提供只读扫描、报告和默认 Mods 目录设置，也支持查看已禁用文件、禁用、恢复、移入 Windows 回收站及撤回最近一批删除。文件操作默认预览，确认后加 `--apply`。命令用法和操作日志位置见 [AI 指南](AI-GUIDE.md#文件操作细节)。运行 `Sims4ModSieve.Cli.exe --help` 查看命令，运行 `guide` 查看随程序嵌入的 AI 指南。
 
 整文件哈希、package 索引和资源内容共用已保存的扫描并发设置；没有可读并发设置时用自动档。标准错误输出各读取阶段的并发决定。存储探测和有限预算规则见[自动并发](docs/architecture/性能优化与缓存架构.md#41-自动并发)。
 
@@ -152,7 +152,7 @@ CLI 提供只读扫描、报告和默认 Mods 目录设置，也支持查看已�
 
 显式指定 `--source` 时，查重命令省略 `--extension` 会扫描全部文件。省略 `--source` 时，三个命令沿用桌面端重启后的范围，扫描默认 Mods 下支持的 Mod 文件。推荐使用 `--json "<报告文件路径>"`，先查看标准错误的完整摘要，再按需分段读报告；另存时请指定尚不存在的文件。`--json -` 留给较短报告或用户明确要求直接查看的场合。不写 `--json` 时沿用当前目录写文件并显示摘要的行为。有发现或未分析项时仍会输出报告，退出码为 `1`。
 
-三个扫描命令支持按 `--severity`、`--kind` 筛选、用 `--limit` 限制组数、用 `--summary-only` 只输出汇总；`scan-conflicts` 还支持 `--omit-resource-keys`。汇总和退出码始终按完整结果计算，报告带完整性与省略数量字段。参数取值、JSON 字段含义及 HTML 组合规则见 [AI 指南 · 按需缩小报告明细](AI-GUIDE.md#按需缩小报告明细)。
+三个扫描命令支持按 `--severity`、`--kind` 筛选、用 `--limit` 限制组数、用 `--summary-only` 只输出汇总；`scan-conflicts` 还支持 `--omit-resource-keys`。汇总和退出码始终按完整结果计算，报告带完整性与省略数量字段。参数取值、JSON 字段含义及 HTML 组合规则见 [AI 指南 · 附录](AI-GUIDE.md#附录需要时再查)。
 
 ### 项目结构
 

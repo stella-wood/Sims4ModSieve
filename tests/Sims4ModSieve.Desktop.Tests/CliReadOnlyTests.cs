@@ -312,7 +312,7 @@ public sealed class CliReadOnlyTests
 
         var guide = await Run(settings, "guide");
         Assert.AreEqual(0, guide.ExitCode);
-        StringAssert.Contains(guide.Output, "同一次对话里同一批目录确认一次就够");
+        StringAssert.Contains(guide.Output, "所有文件操作都通过 Sieve 的命令执行");
     }
 
     [TestMethod]
