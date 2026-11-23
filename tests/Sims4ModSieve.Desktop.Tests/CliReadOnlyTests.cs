@@ -219,7 +219,7 @@ public sealed class CliReadOnlyTests
         Assert.AreEqual(0, scan.ExitCode);
         using var document = JsonDocument.Parse(scan.Output);
         Assert.AreEqual("settings", Read(document.RootElement, "sourceOrigin"));
-        StringAssert.Contains(Read(document.RootElement, "notice")!, "请先确认");
+        StringAssert.Contains(Read(document.RootElement, "notice")!, "来自已保存的设置");
         Assert.AreEqual(next, Read(document.RootElement.GetProperty("sources").EnumerateArray().Single(), "path"));
         var saved = File.ReadAllText(settingsPath);
         Assert.AreEqual(0, (await Run(temp.Store, "scan-scripts", "--source", tray, "--json", "-")).ExitCode);
