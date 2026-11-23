@@ -305,6 +305,11 @@ public sealed class CliReadOnlyTests
             StringAssert.StartsWith(help.Output, "AI 助手请先运行 `guide`");
             StringAssert.Contains(help.Output, "退出码");
         }
+        var duplicateHelp = await Run(settings, "scan-duplicates", "--help");
+        Assert.AreEqual(0, duplicateHelp.ExitCode);
+        StringAssert.Contains(duplicateHelp.Output, "省略 --json");
+        StringAssert.Contains(duplicateHelp.Output, "自动在当前目录生成 HTML");
+
         var guide = await Run(settings, "guide");
         Assert.AreEqual(0, guide.ExitCode);
         StringAssert.Contains(guide.Output, "同一次对话里同一批目录确认一次就够");
@@ -650,21 +655,52 @@ public sealed class CliReadOnlyTests
         Assert.IsFalse(File.Exists(html));
     }
 
-    [TestMethod]
-    public async Task FilteredJsonFileUsesStderrSummaryAndDoesNotGenerateHtml()
+    [TestMethod, DoNotParallelize]
+    [DataRow(false, false, true)]
+    [DataRow(false, true, false)]
+    [DataRow(true, false, false)]
+    [DataRow(true, true, false)]
+    public async Task DuplicateCommandOnlyGeneratesDefaultHtmlWithoutJsonOptionOrOutputFilters(
+        bool explicitJson, bool filtered, bool expectHtml)
     {
         using var temp = new TempDirectory();
-        var source = CreateFilterFixture(temp);
-        var path = Path.Combine(temp.Path, "report.json");
-        var scan = await Run(new DuplicateSettingsStore(temp.Path), "scan-duplicates", "--source", source,
-            "--json", path, "--limit", "1");
+        var source = temp.CreateDirectory("Mods");
+        temp.WriteFile("Mods/a.package", "first");
+        temp.WriteFile("Mods/a-copy.package", "first");
+        temp.WriteFile("Mods/b.package", "second");
+        temp.WriteFile("Mods/b-copy.package", "second");
+        var reports = temp.CreateDirectory("Reports");
+        var path = Path.Combine(reports, "report.json");
+        var args = new List<string> { "scan-duplicates", "--source", source };
+        if (explicitJson) args.AddRange(["--json", path]);
+        if (filtered) args.AddRange(["--limit", "1"]);
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        (int ExitCode, string Output, string Error) scan;
+        try
+        {
+            Directory.SetCurrentDirectory(reports);
+            scan = await Run(new DuplicateSettingsStore(temp.Path), [.. args]);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+        }
+
         Assert.AreEqual(1, scan.ExitCode);
-        Assert.AreEqual(string.Empty, scan.Output);
-        StringAssert.Contains(scan.Error, $"JSON：{path}");
-        Assert.IsFalse(scan.Error.Contains("HTML：", StringComparison.Ordinal));
-        using var document = JsonDocument.Parse(File.ReadAllText(path));
-        Assert.IsFalse(document.RootElement.GetProperty("complete").GetBoolean());
-        Assert.AreEqual(1, document.RootElement.GetProperty("groups").GetArrayLength());
+        var json = Directory.GetFiles(reports, "*.json").Single();
+        if (explicitJson)
+        {
+            Assert.AreEqual(path, json);
+            Assert.AreEqual(string.Empty, scan.Output);
+        }
+        var summary = explicitJson ? scan.Error : scan.Output;
+        StringAssert.Contains(summary, $"JSON：{json}");
+        Assert.AreEqual(expectHtml, summary.Contains("HTML：", StringComparison.Ordinal));
+        Assert.HasCount(expectHtml ? 1 : 0, Directory.GetFiles(reports, "*.html"));
+        using var document = JsonDocument.Parse(File.ReadAllText(json));
+        Assert.AreEqual(!filtered, document.RootElement.GetProperty("complete").GetBoolean());
+        Assert.AreEqual(filtered ? 1 : 2, document.RootElement.GetProperty("groups").GetArrayLength());
     }
 
     private static string CreateFilterFixture(TempDirectory temp)

@@ -122,7 +122,7 @@ internal static class CliCommands
         var reportName = command == "scan-duplicates" ? "duplicate" : command[5..];
         var jsonPath = stdoutJson ? null : GetReportPath(options.JsonPath ?? $"{reportName}-report-{timestamp}.json");
         var htmlPath = options.HtmlPath;
-        if (htmlPath is null && command == "scan-duplicates" && !stdoutJson && !options.HasOutputFilters)
+        if (htmlPath is null && command == "scan-duplicates" && options.JsonPath is null && !options.HasOutputFilters)
             htmlPath = $"duplicate-report-{timestamp}.html";
         if (htmlPath is not null) htmlPath = GetReportPath(htmlPath);
         if (jsonPath is not null && string.Equals(jsonPath, htmlPath, StringComparison.OrdinalIgnoreCase))
@@ -307,6 +307,7 @@ internal static class CliCommands
                 output.WriteLine("  --mods-root <目录>  指定建议保留时优先考虑的 Mods 目录");
                 output.WriteLine("  --extension <扩展名>  限定扫描类型，可重复指定");
                 output.WriteLine("  --html <文件>  指定 HTML 报告路径");
+                output.WriteLine("    省略 --json 且未使用 --severity、--kind、--path-contains、--limit 或 --summary-only 时，自动在当前目录生成 HTML。");
             }
             output.WriteLine($"  例：Sims4ModSieve.Cli {scan.Command} --source \"D:\\Mods\" --json \"report.json\"");
         }
