@@ -9,6 +9,7 @@
 根目录还有：
 
 - [CONTEXT.md](../CONTEXT.md)：词汇表，Sieve 的自造词各指什么、代码里叫什么。
+- [AI-GUIDE.md](../AI-GUIDE.md)：给玩家的 AI 助手看的 CLI 使用说明，随程序编进 `guide` 命令。
 - [CHANGELOG.md](../CHANGELOG.md)：每个版本改了什么。
 - [DESIGN.md](../DESIGN.md)：设计令牌（颜色、字号、间距、圆角）和组件样式，写 XAML 只用这里的名字。
 - [决策记录](decisions/README.md)：选了什么、比过什么、为什么。
@@ -35,7 +36,8 @@
 | [扫描性能计时](architecture/扫描性能计时.md) | 现行 | 桌面端分阶段计时怎么记、记到哪 |
 | [扫描性能基准](architecture/扫描性能基准.md) | 现行 | `eng/Sims4ModSieve.Benchmarks` 基准工具怎么用 |
 | [性能优化与重构实施计划](architecture/性能优化与重构实施计划.md) | 计划 | 性能阶段 0～10 的顺序、验收和分工 |
-| [CLI 开发任务书](architecture/CLI开发任务书.md) | 计划 | CLI-1（只读，已合入）和 CLI-2（动文件）的范围 |
+| [冲突分组内存预算](architecture/冲突分组内存预算.md) | 现行 | 冲突分组前怎么估算规模，超限时停止并提示 |
+| [CLI 开发任务书](architecture/CLI开发任务书.md) | 记录 | CLI-1 只读（#49、#52）和 CLI-2 动文件（#66）的范围，均已合入；现状以架构概览第 7 节为准 |
 | [架构方案 v3](architecture/架构方案-v3.md) | 记录 | 2026-11-09 的整体方案，含尚未开放功能的设想；现状以 v4 为准 |
 
 ## 界面设计
