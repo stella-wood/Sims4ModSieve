@@ -483,6 +483,35 @@ public sealed class CliReadOnlyTests
     }
 
     [TestMethod]
+    public async Task ConflictJsonAddsTypeNamesAlongsideOriginalResourceKeys()
+    {
+        using var temp = new TempDirectory();
+        var source = temp.CreateDirectory("Mods");
+        DbpfFixtureBuilder Package(byte value) => new DbpfFixtureBuilder()
+            .AddContent([value], type: 0x545AC67A, instanceLo: 1)
+            .AddContent([value], type: 0x545AC67A, instanceLo: 2)
+            .AddContent([value], type: 0x1CC04273, instanceLo: 3);
+        temp.WriteBytes("Mods/a.package", Package(1).Build());
+        temp.WriteBytes("Mods/b.package", Package(2).Build());
+
+        var scan = await Run(new DuplicateSettingsStore(temp.Path), "scan-conflicts", "--source", source, "--json", "-");
+        Assert.AreEqual(1, scan.ExitCode);
+        using var document = JsonDocument.Parse(scan.Output);
+        var group = document.RootElement.GetProperty("groups").EnumerateArray().Single();
+        var keys = group.GetProperty("resourceKeys").EnumerateArray().Select(key => key.GetString()).ToArray();
+        CollectionAssert.AreEquivalent(new[] { "545AC67A:00000000:0000000000000001",
+            "545AC67A:00000000:0000000000000002", "1CC04273:00000000:0000000000000003" }, keys);
+        Assert.AreEqual(3, group.GetProperty("resourceKeyCount").GetInt32());
+        Assert.AreEqual(2, group.GetProperty("files").GetArrayLength());
+        Assert.AreEqual(3, group.GetProperty("relations")[0].GetProperty("differentResourceCount").GetInt32());
+        var types = group.GetProperty("resourceTypes").EnumerateArray()
+            .ToDictionary(type => type.GetProperty("type").GetString()!, type => type.GetProperty("typeName").GetString());
+        Assert.AreEqual(2, types.Count);
+        Assert.AreEqual("WorldMap（0x1CC04273）", types["0x1CC04273"]);
+        Assert.AreEqual("数据表（SimData）", types["0x545AC67A"]);
+    }
+
+    [TestMethod]
     public async Task ResourceKeyOmissionKeepsCountsAndOtherGroupDetails()
     {
         using var temp = new TempDirectory();

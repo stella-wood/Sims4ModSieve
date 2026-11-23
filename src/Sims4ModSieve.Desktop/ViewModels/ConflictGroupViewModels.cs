@@ -41,6 +41,9 @@ public sealed record ConflictTechnicalEntry(string Identifier, string TypeName, 
 {
     public string Conclusion { get; init; } = "";
     public string TypeLabel => Conclusion.Length > 0 ? TypeName + " · " + Conclusion : TypeName;
+    public string? ShortTypeName { get; init; }
+    public string VisibleTypeLabel => ShortTypeName ?? TypeLabel;
+    public string? TypeTooltip { get; init; }
     public bool HasDifferentVersions { get; init; }
     public bool HasIdenticalVersions { get; init; }
     public IReadOnlyList<ConflictGroupLink> RelatedGroups { get; init; } = [];
