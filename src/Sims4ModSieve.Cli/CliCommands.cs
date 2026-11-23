@@ -10,7 +10,7 @@ namespace Sims4ModSieve.Cli;
 internal static class CliCommands
 {
     private const string SettingsNotice =
-        "本次目录来自已保存的设置。如果这次对话还没跟玩家确认过，请先确认这是不是要查的文件夹。";
+        "本次目录来自已保存的设置。告诉玩家查的是哪里，玩家说不对再换。";
 
     internal static async Task<int> RunAsync(string[] args, DuplicateSettingsStore settings,
         TextWriter output, TextWriter error, string? documentsDirectory = null,
