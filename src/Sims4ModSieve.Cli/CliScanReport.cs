@@ -235,6 +235,11 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
                 kind, severity, certainty, files = members,
                 resourceKeys = group.ResourceKeys.Select(key => key.Tgi),
                 resourceKeyCount = group.ResourceKeys.Count,
+                resourceTypes = group.ResourceKeys.Select(key => key.Type).Distinct().Order().Select(type => new
+                {
+                    type = $"0x{type:X8}",
+                    typeName = LlamaLogicPackageIndexReader.GetResourceTypeDisplayName(type),
+                }),
                 bundlePath = group.BundlePath is { } bundle && Visible(bundle) ? bundle : null,
                 group.BundleUniqueResourceCount,
                 relations = group.Relations.Where(relation => Visible(relation.Pair.FirstPath) && Visible(relation.Pair.SecondPath))

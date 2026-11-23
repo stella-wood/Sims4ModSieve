@@ -39,9 +39,19 @@ public sealed class LlamaLogicPackageIndexReader(
         .Select(field => (uint)(ResourceType)field.GetValue(null)!)
         .ToFrozenSet();
 
+    private static readonly FrozenSet<uint> XmlTuningTypes = typeof(ResourceType)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(field => field.Name.EndsWith("Tuning", StringComparison.Ordinal)
+            && field.GetCustomAttribute<ResourceFileTypeAttribute>()?.ResourceFileType == ResourceFileType.TuningMarkup)
+        .Select(field => (uint)(ResourceType)field.GetValue(null)!)
+        .ToFrozenSet();
+
     private readonly PackageSafetyLimits _limits = limits ?? PackageSafetyLimits.Default;
 
     public static bool IsTuningType(uint type) => TuningTypes.Contains(type);
+
+    public static string GetResourceTypeDisplayName(uint type) =>
+        ResourceTypeNames.DisplayName(type, Enum.GetName((ResourceType)type), XmlTuningTypes.Contains(type));
 
     public static LlamaLogicPackageIndexReader CreateDefault()
     {

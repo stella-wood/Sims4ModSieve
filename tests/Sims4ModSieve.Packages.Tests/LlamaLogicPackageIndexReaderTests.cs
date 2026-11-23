@@ -42,6 +42,18 @@ public sealed class LlamaLogicPackageIndexReaderTests
     }
 
     [TestMethod]
+    [DataRow(0x8B18FF6Eu, "捏人滑杆热点（SimHotspotControl）")]
+    [DataRow(0x2BC04EDFu, "贴图（LRLEImage）")]
+    [DataRow(0x3C1AF1F2u, "缩略图（CASPartThumbnail）")]
+    [DataRow(0x6017E896u, "调参 XML（BuffTuning）")]
+    [DataRow(0xE882D22Fu, "调参 XML（InteractionTuning）")]
+    [DataRow(0x62E94D38u, "合并调参（CombinedTuning）")]
+    [DataRow(0x0166038Cu, "NameMap（0x0166038C）")]
+    [DataRow(0xF00DBA5Eu, "0xF00DBA5E")]
+    public void ResourceTypeDisplayNameUsesTranslationAndLibraryFallback(uint type, string expected) =>
+        Assert.AreEqual(expected, LlamaLogicPackageIndexReader.GetResourceTypeDisplayName(type));
+
+    [TestMethod]
     public async Task ReportsEveryResourceKeyInIndexOrder()
     {
         using var temp = new TempDirectory();

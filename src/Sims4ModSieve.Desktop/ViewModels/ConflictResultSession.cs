@@ -406,7 +406,8 @@ public sealed partial class ConflictResultSession
 
     private static string ProblemReasonText(string? code, string? detail, ConflictProblemCategory category,
         uint? resourceType, string? entryName) =>
-        (entryName is null ? "" : (resourceType is { } type ? GetResourceTypeDisplayName(type) + " · " + entryName : entryName) + " · ")
+        (entryName is null ? "" : (resourceType is { } type
+            ? LlamaLogicPackageIndexReader.GetResourceTypeDisplayName(type) + " · " + entryName : entryName) + " · ")
         + ProblemTechnical(code, detail, category);
 
     // 链接是故意不跟进去的，不是权限问题，单独说明，免得玩家以为文件夹坏了。
@@ -457,8 +458,7 @@ public sealed partial class ConflictResultSession
 
     public static string GetResourceTypeDisplayName(uint type) => type switch
     {
-        // 离线核对 LlamaLogic.Packages 3.8.2 ResourceType 常量及随包 XML。
-        // 当前依赖已升到 4.9.0，这张表没有按 4.9.0 重新核对。
+        // 未分析摘要按资源类别合并原因，使用简短的类别名称。
         0x034AEECB => "捏人部件",
         0x545AC67A => "模拟数据",
         0xC0DB5AE7 => "物件定义",

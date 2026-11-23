@@ -4,6 +4,7 @@ using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
 using Sims4ModSieve.Core.Reporting;
 using Sims4ModSieve.Core.Scripts;
+using Sims4ModSieve.Packages;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
 
@@ -581,7 +582,7 @@ public sealed partial class ConflictResultSession
                     return new ConflictTechnicalCell(file.Name, version, evidence);
                 }).ToArray();
                 var identical = versions.Count == 1 && comparedFiles >= 2 && !incomplete;
-                return new ConflictTechnicalEntry(key.Tgi, ResourceTypeName(key.Type),
+                return new ConflictTechnicalEntry(key.Tgi, LlamaLogicPackageIndexReader.GetResourceTypeDisplayName(key.Type),
                     cells.Select(cell => cell with { IsIdenticalVersion = identical }).ToArray())
                     { HasDifferentVersions = versions.Count > 1, HasIdenticalVersions = identical };
             }).ToArray();

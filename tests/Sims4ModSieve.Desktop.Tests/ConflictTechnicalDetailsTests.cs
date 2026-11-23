@@ -49,6 +49,27 @@ public sealed class ConflictTechnicalDetailsTests
     }
 
     [TestMethod]
+    public Task TechnicalDetailsRenderAndCopyBilingualResourceType() => WpfTestHost.RunAsync(async () =>
+    {
+        const string expected = "捏人部件（CASPart）";
+        var copied = "";
+        var model = CreateModel(text => copied = text);
+        model.OpenConflictCommand.Execute(null);
+        model.OpenConflictSectionCommand.Execute("basic");
+        var window = OpenWindow(model);
+        await SetSessionAsync(model, TechnicalSession(1, 2));
+        var list = Descendants<ListBox>(window).Single(control => control.Name == "ConflictRowsList");
+        var details = model.ConflictRows.Single(row => row.Kind == ConflictRowKind.Technical && !row.IsExpandable);
+        list.ScrollIntoView(details);
+        await WpfTestHost.LayoutAsync(window);
+
+        Assert.IsTrue(Descendants<TextBlock>(list).Any(text => text.IsVisible && text.Text == expected));
+        model.CopyConflictDetailsCommand.Execute(model.ConflictRows.Single(row => row.Kind == ConflictRowKind.CopyDetails));
+        StringAssert.Contains(copied, expected);
+        Save(window, "technical-resource-type-names.png", list);
+    });
+
+    [TestMethod]
     public void TechnicalVersionClassificationUsesCardFilesAndKeepsIncompleteRowsUndimmed()
     {
         const string other = @"C:\DemoMods\other.package";
