@@ -38,7 +38,7 @@ Sims 4 Mod Sieve 是一个给《模拟人生 4》玩家用的 Windows 小工具�
 
 ## 下载与使用
 
-后续版本使用安装包，当前 `0.1.0-alpha.1` 便携包保留为历史版本。
+从 0.2.0 起使用安装包，`0.1.0-alpha.1` 便携包保留为历史版本。
 
 1. 打开 [Releases](https://github.com/stella-wood/Sims4ModSieve/releases)，下载 `Sims4ModSieve-版本号-setup.exe`
 2. 运行中文安装向导，选择安装位置与快捷方式

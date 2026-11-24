@@ -170,7 +170,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Data.Sqlite": "[10.0.15, )",
-          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )"
+          "Sims4ModSieve.Core": "[0.2.0, )"
         }
       },
       "sims4modsieve.core": {
@@ -182,7 +182,7 @@
       "sims4modsieve.fileoperations": {
         "type": "Project",
         "dependencies": {
-          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )"
+          "Sims4ModSieve.Core": "[0.2.0, )"
         }
       },
       "sims4modsieve.packages": {
@@ -190,7 +190,7 @@
         "dependencies": {
           "LlamaLogic.Packages": "[4.9.0, )",
           "SharpZipLib": "[1.4.2, )",
-          "Sims4ModSieve.Core": "[0.1.0-alpha.1, )"
+          "Sims4ModSieve.Core": "[0.2.0, )"
         }
       }
     }
