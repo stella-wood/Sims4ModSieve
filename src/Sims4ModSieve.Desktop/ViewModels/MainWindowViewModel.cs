@@ -717,10 +717,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 }
             }
 
-            if (result.Failures.Count > 0)
-            {
-                fileActionDialogs.ShowProblems("部分文件未能删除", result.Failures);
-            }
+            ShowFileActionFailures(result, "删除");
         }
         finally
         {
@@ -799,10 +796,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 else if (owner != "conflict" && generation == resultGeneration) FileActionStatusText = restoredText;
             }
 
-            if (result.Failures.Count > 0)
-            {
-                fileActionDialogs.ShowProblems("部分文件未能恢复", result.Failures);
-            }
+            ShowFileActionFailures(result, "恢复");
 
             if (!fileActionService.CanUndoLastDelete)
             {
@@ -814,6 +808,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
             IsBusy = false;
             RefreshResultProperties();
         }
+    }
+
+    private void ShowFileActionFailures(FileActionBatchResult result, string action)
+    {
+        if (result.Failures.Count == 0) return;
+        if (result.CompletedPaths.Count == 0)
+        {
+            fileActionDialogs.ShowFileActionResultProblems($"未能{action}", result.Failures);
+            return;
+        }
+
+        var completed = result.CompletedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hasFailedFiles = result.Failures.Any(failure => failure.Path.Length > 0 && !completed.Contains(failure.Path));
+        fileActionDialogs.ShowFileActionResultProblems(hasFailedFiles ? $"部分文件未能{action}" : $"{action}中有项目需要处理", result.Failures);
     }
 
     private void OnSourcesChanged(object? sender, NotifyCollectionChangedEventArgs eventArgs)

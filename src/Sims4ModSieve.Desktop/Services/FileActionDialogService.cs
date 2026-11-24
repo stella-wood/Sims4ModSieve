@@ -12,6 +12,9 @@ public interface IFileActionDialogService
 
     void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures);
 
+    void ShowFileActionResultProblems(string title, IReadOnlyList<FileActionFailure> failures) =>
+        ShowProblems(title, failures);
+
     void ShowResultRefreshNotice(int changedGroupCount) { }
 
     bool ShowConflictGroupingWarning(ConflictGroupingSize size) => false;
@@ -57,6 +60,12 @@ public sealed class FileActionDialogService : IFileActionDialogService
             Owner = Application.Current?.MainWindow,
         };
         return dialog.ShowDialog() == true;
+    }
+
+    public void ShowFileActionResultProblems(string title, IReadOnlyList<FileActionFailure> failures)
+    {
+        if (failures.Count == 0) return;
+        new WarningDialog(title, failures) { Owner = Application.Current?.MainWindow }.ShowDialog();
     }
 
     public void ShowProblems(string title, IReadOnlyList<FileActionFailure> failures)

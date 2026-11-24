@@ -188,7 +188,7 @@ public sealed partial class MainWindowViewModel
                 if (duplicateGeneration == resultGeneration) resultSession.SynchronizeDeletedPaths(completedPaths);
                 if (ReferenceEquals(session, conflictSession)) ConflictFileActionStatusText = $"本次删除 {result.CompletedPaths.Count} 个文件，已移入回收站";
             }
-            if (result.Failures.Count > 0) fileActionDialogs.ShowProblems("部分文件未能删除", result.Failures);
+            ShowFileActionFailures(result, "删除");
         }
         catch (Exception exception) { unexpectedErrorHandler.Report("删除没有完成", exception); }
         finally

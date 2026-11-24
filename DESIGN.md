@@ -96,9 +96,13 @@
 
 现在代码里的 Margin / Padding 用了二十多种数字（用得最多的是 8、4、10、12、20、6、18、28、26）。**现有页面的间距大多是 用户逐个看过、调过的，不能为了凑尺子自动改。** 这把尺子只约束新写的界面；老页面的间距要改，先列出位置和建议值给 用户过一遍，她点头的才改，改的 PR 附前后截图。
 
-警告弹窗局部资源 `WarningDialogBodyMinWidth` = 300 DIP，用于正文区的最小宽度。
+警告弹窗局部资源 `WarningDialogBodyMinWidth` 为 300 DIP，`WarningDialogIconSize` 为 32 DIP，`WarningDialogIconGap` 为 8 DIP。正文和次级文字分别使用 `WarningDialogBodyFontSize`（14 DIP）和 `WarningDialogSecondaryFontSize`（12 DIP）。
+
+文件操作结果弹窗用 `FileActionWarningWidth`（526 DIP）、`FileActionWarningSingleHeight`（172 DIP）和 `FileActionWarningBatchHeight`（276 DIP）。`FileActionWarningFirstRowInset` 和 `FileActionWarningRowInset` 为右侧留 8 DIP，后续条目额外在上方留 12 DIP。`FileActionWarningReasonGap` 为路径与原因之间的 2 DIP。
 
 常规设置的「扫描性能」卡片沿用 `SettingsGroup`，缓存行使用 `SettingsButton` 和上下留白对应 `SpaceL` 的 `SettingsGroupRowInset`。`SettingsGroupDivider` 共用于游戏文件夹和扫描性能卡片，颜色为 `#ECE9E5`，高 1 DIP。
+
+`ClearCacheButtonStyle` 沿用设置按钮的底色、文字色、`RadiusM` 和悬停色 `SettingsButtonHoverBrush`（`#ECEAE7`）。进度和成功图标使用 `CacheClearIconSize`（12 DIP），与文字的间距使用 `CacheClearIconGap`（4 DIP）。成功勾号使用 `CacheClearCheckBrush`（`#39734F`）。
 
 ## 圆角
 
@@ -113,7 +117,7 @@
 
 ## 扫描并发说明图标
 
-设置页局部资源：`ScanConcurrencyInfoSize` = 14（矢量图标），`ScanConcurrencyInfoTargetSize` = 24（键盘和鼠标宿主），`ScanConcurrencyInfoGap` = 左侧 2。颜色使用 `MutedBrush`；图标与标题垂直居中，说明放入可通过键盘焦点显示的 Tooltip。
+设置页局部资源：`ScanConcurrencyInfoSize` = 11（矢量图标），`ScanConcurrencyInfoTargetSize` = 24（键盘和鼠标宿主），`ScanConcurrencyInfoGap` = 左侧 2。颜色使用 `MutedBrush`，图标上沿与标题文字对齐。
 
 ## 结果搜索
 

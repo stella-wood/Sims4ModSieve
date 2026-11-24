@@ -22,9 +22,10 @@ public sealed partial class SqliteSha256Cache
 
     public static bool Clear(string dataDirectory)
     {
-        if (GetSize(dataDirectory) == 0) return true;
-        var cache = new SqliteSha256Cache(DatabasePath(dataDirectory));
-        if (!cache.IsAvailable) return false;
+        var database = DatabasePath(dataDirectory);
+        if (!File.Exists(database) || GetSize(dataDirectory) == 0) return DeleteCacheFiles(database);
+        var cache = new SqliteSha256Cache(database);
+        if (!cache.IsAvailable) return DeleteCacheFiles(database);
         try
         {
             using var connection = cache.OpenConnection();
@@ -42,6 +43,20 @@ public sealed partial class SqliteSha256Cache
             transaction.Commit();
             return TryCompact(connection, generation, 0);
         }
+        catch (Exception ex) when (IsStorageFailure(ex)) { return false; }
+    }
+
+    private static bool DeleteCacheFiles(string database)
+    {
+        try
+        {
+            // Leave the sidecars alone if the database is still in use and cannot be deleted.
+            File.Delete(database);
+            File.Delete(database + "-wal");
+            File.Delete(database + "-shm");
+            return true;
+        }
+        catch (DirectoryNotFoundException) { return true; }
         catch (Exception ex) when (IsStorageFailure(ex)) { return false; }
     }
 

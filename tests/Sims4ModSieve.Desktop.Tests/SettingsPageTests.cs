@@ -63,10 +63,41 @@ public sealed class SettingsPageTests
 
             await RespondToClearAsync("CancelButton");
             Assert.AreEqual(before, size.Text);
-            await RespondToClearAsync("ConfirmButton");
+            Assert.AreEqual(string.Empty, model.CacheFeedback);
+            Assert.AreEqual("清除缓存", new ButtonAutomationPeer(clear).GetName());
+            var succeeded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            model.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(model.CacheClearStatus) && model.CacheClearStatus == CacheClearState.Cleared)
+                    succeeded.TrySetResult();
+            };
+            var clearing = RespondToClearAsync("ConfirmButton");
+            Assert.AreEqual(CacheClearState.Clearing, model.CacheClearStatus, model.CacheFeedback);
+            await WpfTestHost.LayoutAsync(window);
+            Assert.AreEqual("正在清除缓存", new ButtonAutomationPeer(clear).GetName());
+            Assert.IsFalse(clear.IsEnabled);
+            var spinner = (UIElement)clear.Template.FindName("ClearSpinner", clear);
+            Assert.IsTrue(spinner.IsVisible);
+            Assert.AreEqual(SystemParameters.ClientAreaAnimation, ((RotateTransform)spinner.RenderTransform).HasAnimatedProperties);
+            SaveReview(window, "cache-settings-clearing.png");
+
+            await succeeded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await WpfTestHost.LayoutAsync(window);
             Assert.AreNotEqual(before, size.Text);
             Assert.AreEqual(CurrentCacheLabel(), size.Text);
             Assert.AreEqual(string.Empty, model.CacheFeedback);
+            Assert.AreEqual("缓存已清除", new ButtonAutomationPeer(clear).GetName());
+            Assert.IsTrue(Descendants<TextBlock>(clear).Any(text => text.IsVisible && text.Text == "缓存已清除"));
+            Assert.IsFalse(clear.IsEnabled);
+            Assert.IsFalse(model.IsBusy);
+            Assert.IsFalse(spinner.IsVisible);
+            await Task.Delay(TimeSpan.FromMilliseconds(170));
+            Assert.AreEqual(CacheClearState.Cleared, model.CacheClearStatus);
+            SaveReview(window, "cache-settings-cleared.png");
+
+            await clearing;
+            Assert.AreEqual("清除缓存", new ButtonAutomationPeer(clear).GetName());
+            Assert.IsTrue(clear.IsEnabled);
 
             string CurrentCacheLabel() =>
                 $"缓存（{DuplicateGroupViewModel.FormatBytes(SqliteSha256Cache.GetSize(files.Root)!.Value).Replace(" ", string.Empty)}）";
@@ -106,9 +137,9 @@ public sealed class SettingsPageTests
             var info = (Button)page.FindName("ScanConcurrencyInfo");
             var picker = (ComboBox)page.FindName("HashConcurrencyPicker");
             Assert.AreEqual("扫描并发", label.Text);
-            Assert.IsFalse(Descendants<TextBlock>(page).Any(text => text.Text == "适用于重复检测及冲突检测中的整文件核对"));
+            Assert.IsFalse(Descendants<TextBlock>(page).Any(text => Equals(text.Text, info.ToolTip)));
             Assert.AreEqual("扫描并发说明", new ButtonAutomationPeer(info).GetName());
-            Assert.AreEqual("适用于重复检测、整文件核对、package 读取和资源内容比较。脚本扫描固定为 2。", info.ToolTip);
+            Assert.AreEqual("固态硬盘默认4（package 索引和资源比较最高 8），机械硬盘默认1，未知默认2", info.ToolTip);
             Assert.AreEqual(true, ToolTipService.GetShowsToolTipOnKeyboardFocus(info));
             Assert.IsTrue(info.Focusable && KeyboardNavigation.GetIsTabStop(info));
             info.BringIntoView();

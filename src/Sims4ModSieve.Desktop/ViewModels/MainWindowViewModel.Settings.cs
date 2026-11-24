@@ -9,6 +9,8 @@ using Sims4ModSieve.Desktop.Services;
 
 namespace Sims4ModSieve.Desktop.ViewModels;
 
+public enum CacheClearState { Idle, Clearing, Cleared }
+
 public sealed partial class MainWindowViewModel
 {
     private readonly SettingsSupportService settingsSupport;
@@ -24,6 +26,7 @@ public sealed partial class MainWindowViewModel
     private string creditsFeedback = string.Empty;
     private string cacheSize = string.Empty;
     private string cacheFeedback = string.Empty;
+    private CacheClearState cacheClearStatus;
     private string licenseText = string.Empty;
     private string? licenseDocument;
     private IReadOnlyList<DiagnosticLog> diagnosticLogs = [];
@@ -106,6 +109,7 @@ public sealed partial class MainWindowViewModel
     public string CreditsFeedback { get => creditsFeedback; private set => SetProperty(ref creditsFeedback, value); }
     public string CacheSize { get => cacheSize; private set => SetProperty(ref cacheSize, value); }
     public string CacheFeedback { get => cacheFeedback; private set => SetProperty(ref cacheFeedback, value); }
+    public CacheClearState CacheClearStatus { get => cacheClearStatus; private set => SetProperty(ref cacheClearStatus, value); }
     public string LicenseText { get => licenseText; private set => SetProperty(ref licenseText, value); }
     public bool HasLicenseText => !string.IsNullOrEmpty(LicenseText);
     public string ProductVersion => settingsSupport.ProductVersion;
@@ -153,8 +157,11 @@ public sealed partial class MainWindowViewModel
         CancelDefaultFolderCandidateCommand = SettingsCommand(CancelDefaultFolderCandidate);
         OpenModsFolderCommand = SettingsCommand(() => RunFolderOperation("Mods", () => settingsSupport.OpenFolder(ModsRoot ?? string.Empty)));
         OpenTrayFolderCommand = SettingsCommand(() => RunFolderOperation("Tray", () => settingsSupport.OpenFolder(TrayRoot ?? string.Empty)));
-        ClearCacheCommand = new(ClearCacheAsync, _ => CacheFeedback = "未能完成清除缓存，请重试",
-            () => !IsBusy && scanCacheDirectory is not null);
+        ClearCacheCommand = new(ClearCacheAsync, _ =>
+        {
+            CacheClearStatus = CacheClearState.Idle;
+            CacheFeedback = "未能完成清除缓存，请重试";
+        }, () => !IsBusy && scanCacheDirectory is not null);
         RefreshDiagnosticsCommand = new(RefreshDiagnosticsAsync, _ => DiagnosticsFeedback = "无法读取诊断信息", () => !IsBusy);
         CopyDiagnosticsCommand = new(async () =>
         {
@@ -233,20 +240,30 @@ public sealed partial class MainWindowViewModel
 
     private async Task ClearCacheAsync()
     {
+        var cleared = false;
         IsBusy = true;
         try
         {
             if (!fileActionDialogs.ConfirmFiles("清除缓存", "清除后下次扫描会慢一些，不影响任何 Mod 文件。"))
                 return;
             CacheFeedback = string.Empty;
-            if (!await Task.Run(() => SqliteSha256Cache.Clear(scanCacheDirectory!)))
-                CacheFeedback = "未能完成清除缓存，请重试";
+            CacheClearStatus = CacheClearState.Clearing;
+            var directory = scanCacheDirectory!;
+            var clear = Task.Run(() => SqliteSha256Cache.Clear(directory));
+            await Task.WhenAll(clear, Task.Delay(240));
+            cleared = await clear;
+            if (!cleared)
+                CacheFeedback = $"未能清除缓存。缓存文件：{SqliteSha256Cache.DatabasePath(directory)}";
         }
         finally
         {
             IsBusy = false;
             RefreshCacheSize();
+            CacheClearStatus = cleared ? CacheClearState.Cleared : CacheClearState.Idle;
         }
+        if (!cleared) return;
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        CacheClearStatus = CacheClearState.Idle;
     }
 
     private void ChangeDefaultModsRoot() => RunFolderOperation("Mods", () =>

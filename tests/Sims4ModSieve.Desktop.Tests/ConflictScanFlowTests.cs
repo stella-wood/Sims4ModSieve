@@ -383,16 +383,21 @@ public sealed class ConflictScanFlowTests
     }
 
     [TestMethod]
-    public async Task ScannerFailureAllowsRetryWithoutPublishingCompleteResults()
+    [DataRow(true, "无法读取：fixture read failure")]
+    [DataRow(false, "请重试扫描")]
+    public async Task ScannerFailureAllowsRetryWithoutPublishingCompleteResults(bool readFailure, string expectedPhase)
     {
         using var files = new TemporaryFiles();
         var mods = files.Directory("Mods");
+        var scanner = new FailingPackageScanner(readFailure ? null : new InvalidOperationException("fixture scan failure"));
         var viewModel = CreateViewModel(new FakeSettingsStore(new DuplicateSettings(mods,
-            [new SavedScanSource(mods, true)])), new FailingPackageScanner());
+            [new SavedScanSource(mods, true)])), scanner);
 
         await viewModel.StartConflictScanCommand.ExecuteAsync();
 
         Assert.AreEqual("failed", viewModel.ConflictRunState);
+        Assert.AreEqual("扫描没有完成", viewModel.ConflictStatus);
+        Assert.AreEqual(expectedPhase, viewModel.ConflictPhase);
         Assert.IsFalse(viewModel.IsConflictComplete);
         Assert.IsFalse(viewModel.ShowConflictWarning);
         Assert.IsFalse(viewModel.IsBusy);
@@ -794,11 +799,11 @@ public sealed class ConflictScanFlowTests
         }
     }
 
-    private sealed class FailingPackageScanner : IPackageConflictScanner
+    private sealed class FailingPackageScanner(Exception? failure = null) : IPackageConflictScanner
     {
         public Task<PackageConflictScanReport> ScanAsync(PackageConflictScanRequest request,
             IProgress<PackageConflictScanProgress>? progress = null, CancellationToken cancellationToken = default) =>
-            Task.FromException<PackageConflictScanReport>(new IOException("fixture read failure"));
+            Task.FromException<PackageConflictScanReport>(failure ?? new IOException("fixture read failure"));
     }
 
     private sealed class FakeSettingsStore(DuplicateSettings? value) : IDuplicateSettingsStore

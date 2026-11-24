@@ -1,5 +1,6 @@
 using Sims4ModSieve.Core.Settings;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Caching;
 using Sims4ModSieve.Core.Conflicts;
 using Sims4ModSieve.Core.Duplicates;
 using Sims4ModSieve.Core.Packages;
@@ -321,6 +322,41 @@ public sealed class SettingsViewModelTests
         StringAssert.Contains(model.AboutFeedback, "无法打开");
         Assert.IsFalse(model.IsBusy);
         Assert.AreEqual(string.Empty, model.StatusText);
+    });
+
+    [TestMethod]
+    public Task ClearingMissingCacheReportsSuccessWithoutCreatingDatabase() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model(scanCacheDirectory: files.Root);
+        var states = new List<CacheClearState>();
+        model.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(model.CacheClearStatus)) states.Add(model.CacheClearStatus);
+        };
+        await model.ClearCacheCommand.ExecuteAsync();
+
+        CollectionAssert.AreEqual(new[] { CacheClearState.Clearing, CacheClearState.Cleared, CacheClearState.Idle }, states);
+        Assert.AreEqual(string.Empty, model.CacheFeedback);
+        Assert.AreEqual("0B", model.CacheSize);
+        Assert.IsFalse(File.Exists(SqliteSha256Cache.DatabasePath(files.Root)));
+    });
+
+    [TestMethod]
+    public Task ClearingLockedCacheReportsItsPath() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        files.Folder("cache");
+        var database = SqliteSha256Cache.DatabasePath(files.Root);
+        File.WriteAllText(database, "not a SQLite database");
+        using var locked = File.Open(database, FileMode.Open, FileAccess.Read, FileShare.None);
+        var model = files.Model(scanCacheDirectory: files.Root);
+        await model.ClearCacheCommand.ExecuteAsync();
+
+        Assert.AreEqual($"未能清除缓存。缓存文件：{database}", model.CacheFeedback);
+        Assert.AreEqual(CacheClearState.Idle, model.CacheClearStatus);
+        Assert.IsTrue(model.ClearCacheCommand.CanExecute(null));
+        Assert.IsTrue(File.Exists(database));
     });
 
     private static async Task PopulateConflictAsync(MainWindowViewModel model)
