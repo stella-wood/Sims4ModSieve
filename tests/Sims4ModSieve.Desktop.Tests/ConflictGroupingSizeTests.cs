@@ -49,7 +49,8 @@ public sealed class ConflictGroupingSizeTests
         await model.StartConflictScanCommand.ExecuteAsync();
 
         Assert.AreEqual("failed", model.ConflictRunState);
-        Assert.AreEqual("扫描没有完成", model.ConflictStatus);
+        Assert.AreEqual("扫描规模超限，已停止", model.ConflictStatus);
+        Assert.AreEqual(string.Empty, model.ConflictPhase);
         Assert.IsFalse(model.IsBusy);
         Assert.AreEqual(0, model.ConflictRows.Count);
         Assert.AreEqual(0, model.ConflictResources.Count);

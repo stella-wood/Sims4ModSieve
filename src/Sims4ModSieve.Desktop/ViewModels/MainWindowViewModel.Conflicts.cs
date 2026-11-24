@@ -668,9 +668,13 @@ public sealed partial class MainWindowViewModel
     private void ReportConflictFailure(Exception exception)
     {
         conflictRunState = "failed";
-        conflictStatus = "扫描没有完成";
-        conflictPhase = exception is UnauthorizedAccessException or System.IO.IOException
-            ? "无法读取：" + exception.Message : "请重试扫描";
+        conflictStatus = exception is ConflictGroupingTooLargeException ? "扫描规模超限，已停止" : "扫描没有完成";
+        conflictPhase = exception switch
+        {
+            ConflictGroupingTooLargeException => string.Empty,
+            UnauthorizedAccessException or System.IO.IOException => "无法读取：" + exception.Message,
+            _ => "请重试扫描"
+        };
         conflictCompleted = 0;
         conflictProgressMaximum = 1;
         conflictProgressTotal = null;
