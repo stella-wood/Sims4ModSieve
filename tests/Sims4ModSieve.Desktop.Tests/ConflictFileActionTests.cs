@@ -438,11 +438,18 @@ public sealed partial class ConflictFileActionTests
         var duplicates = new DuplicateResultSession();
         duplicates.Replace(duplicates.PrepareGroups(report.Groups));
         var adapter = new TestRecycleBin { DeleteFailure = files.C };
-        var model = Model(files.Root, new RecordingDuplicateRun(report), duplicates, adapter);
+        var dialogs = new Dialogs();
+        var model = Model(files.Root, new RecordingDuplicateRun(report), duplicates, adapter, dialogs);
         var session = V2([], [], report);
         await SetSessionAsync(model, session, "all");
+        model.Groups.Single().Files.Single(file => file.Path == files.C).IsSelected = true;
+        await model.DeleteSelectedCommand.ExecuteAsync();
+        Assert.AreEqual("未能删除", dialogs.ProblemTitles.Single());
+        Assert.AreEqual(3, model.Groups.Single().Files.Count);
+
         foreach (var file in model.Groups.Single().Files) file.IsSelected = file.Path != files.A;
         await model.DeleteSelectedCommand.ExecuteAsync();
+        Assert.AreEqual("部分文件未能删除", dialogs.ProblemTitles.Last());
         Assert.IsTrue(model.Groups.Single().Files.Any(file => file.Path == files.C));
         Assert.IsFalse(session.Cards.Single().Files.Any(file => file.Path == files.B));
         await model.UndoLastDeleteCommand.ExecuteAsync();
@@ -453,9 +460,12 @@ public sealed partial class ConflictFileActionTests
         await model.DeleteSelectedCommand.ExecuteAsync();
         Assert.AreEqual(0, model.Groups.Count);
         await model.UndoLastDeleteCommand.ExecuteAsync();
+        Assert.AreEqual("部分文件未能恢复", dialogs.ProblemTitles.Last());
         CollectionAssert.AreEquivalent(new[] { files.A, files.B }, model.Groups.Single().Files.Select(file => file.Path).ToArray());
         CollectionAssert.AreEquivalent(new[] { files.A, files.B }, session.Cards.Single().Files.Select(file => file.Path).ToArray());
         Assert.IsTrue(model.CanUndoLastDelete);
+        await model.UndoLastDeleteCommand.ExecuteAsync();
+        Assert.AreEqual("未能恢复", dialogs.ProblemTitles.Last());
         adapter.RestoreFailure = null;
         await model.UndoLastDeleteCommand.ExecuteAsync();
         Assert.AreEqual(3, model.Groups.Single().Files.Count);
@@ -708,8 +718,8 @@ public sealed partial class ConflictFileActionTests
     });
 
     private static MainWindowViewModel Model(string root, IDuplicateRunService run, DuplicateResultSession? session = null,
-        TestRecycleBin? adapter = null) => new(run, new NoPicker(), new Settings(root),
-            new FileActionService(adapter ?? new TestRecycleBin(), new PhysicalFileMetadataAccess()), new Dialogs(),
+        TestRecycleBin? adapter = null, Dialogs? dialogs = null) => new(run, new NoPicker(), new Settings(root),
+            new FileActionService(adapter ?? new TestRecycleBin(), new PhysicalFileMetadataAccess()), dialogs ?? new Dialogs(),
             resultSession: session, packageConflictScanner: new EmptyPackages(), resourceContentComparer: new EmptyContents(), scriptModuleScanner: new EmptyScripts());
 
     private sealed class RecordingDuplicateRun(DuplicateReport report) : IDuplicateRunService
@@ -751,9 +761,10 @@ public sealed partial class ConflictFileActionTests
     private sealed class Dialogs : IFileActionDialogService
     {
         public List<(string Title, string Message)> Confirmations { get; } = [];
+        public List<string> ProblemTitles { get; } = [];
         public bool ConfirmDeletion(FileDeletionPreflight preflight) => true;
         public bool ConfirmFiles(string title, string message) { Confirmations.Add((title, message)); return true; }
-        public void ShowProblems(string title, IReadOnlyList<FileActionFailure> problems) { }
+        public void ShowProblems(string title, IReadOnlyList<FileActionFailure> problems) => ProblemTitles.Add(title);
     }
     private sealed class TestRecycleBin : IRecycleBinAdapter
     {

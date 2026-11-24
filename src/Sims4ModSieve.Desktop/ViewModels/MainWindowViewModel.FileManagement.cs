@@ -204,7 +204,7 @@ public sealed partial class MainWindowViewModel
                 FileManagementFeedback = string.Join("\n", new[] { $"已移入回收站 {result.CompletedPaths.Count} 个文件", FileManagementFeedback }
                     .Where(text => text.Length > 0));
             }
-            if (result.Failures.Count > 0) fileActionDialogs.ShowProblems("部分文件未能删除", result.Failures);
+            ShowFileActionFailures(result, "删除");
         }
         catch (Exception exception) when (IsManagementException(exception)) { FileManagementFeedback = "删除未完成：" + exception.Message; }
         finally { IsBusy = false; RefreshResultProperties(); RefreshManagementCommands(); }
@@ -311,7 +311,7 @@ public sealed partial class MainWindowViewModel
                 await RefreshFileManagementAsync();
                 FileManagementFeedback = string.Join("\n", new[] { "已移入回收站", FileManagementFeedback }.Where(text => text.Length > 0));
             }
-            if (result.Failures.Count > 0) fileActionDialogs.ShowProblems("部分文件未能删除", result.Failures);
+            ShowFileActionFailures(result, "删除");
         }
         catch (Exception exception) when (IsManagementException(exception)) { FileManagementFeedback = "删除未完成：" + exception.Message; }
         finally { IsBusy = false; RefreshResultProperties(); RefreshManagementCommands(); }
@@ -418,7 +418,7 @@ public sealed partial class MainWindowViewModel
                 record.LastWriteTimeUtc)).Select(record => record.Item.OriginalPath).ToArray();
             if (IsConflictComplete && conflictPaths.Length > 0) await UpdateConflictFilePathsAsync(conflictSession, conflictPaths, restore: true);
         }
-        if (result.Failures.Count > 0) fileActionDialogs.ShowProblems("部分文件未能恢复", result.Failures);
+        ShowFileActionFailures(result, "恢复");
         await RefreshFileManagementAsync();
     }
 
