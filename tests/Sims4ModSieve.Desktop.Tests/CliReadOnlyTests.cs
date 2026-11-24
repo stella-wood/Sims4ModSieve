@@ -21,6 +21,64 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class CliReadOnlyTests
 {
     [TestMethod]
+    [DataRow("scan-duplicates")]
+    [DataRow("scan-conflicts")]
+    public async Task HardLinkedPathsDoNotProduceWholeFileDuplicateCards(string command)
+    {
+        using var temp = new TempDirectory();
+        var original = temp.WriteBytes("Mods/a.package", new DbpfFixtureBuilder().AddContent([1, 2], instanceLo: 1).Build());
+        var alias = Path.Combine(temp.Path, "Mods", "b.package");
+        Assert.IsTrue(CreateHardLink(alias, original, IntPtr.Zero),
+            $"CreateHardLink failed: {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+        Assert.AreEqual(PhysicalFileIdentity.Read(original), PhysicalFileIdentity.Read(alias));
+        var source = Path.GetDirectoryName(original)!;
+        var desktop = await new DuplicateRunService(DuplicateScanner.CreateDefault()).RunAsync(new([new(source, "Mods")]));
+        Assert.IsEmpty(desktop.Groups);
+
+        var scan = await Run(new DuplicateSettingsStore(Path.Combine(temp.Path, "data")), command,
+            "--source", source, "--json", "-", "--no-cache");
+
+        Assert.AreNotEqual(2, scan.ExitCode, scan.Error);
+        using var document = JsonDocument.Parse(scan.Output);
+        Assert.IsFalse(document.RootElement.GetProperty("groups").EnumerateArray().Any(group => Read(group, "kind") == "duplicate"));
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW",
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateHardLink(string path, string existing, IntPtr securityAttributes);
+
+    [TestMethod]
+    [DataRow("scan-duplicates", "saved")]
+    [DataRow("scan-conflicts", "saved")]
+    [DataRow("scan-duplicates", "explicit")]
+    [DataRow("scan-conflicts", "explicit")]
+    [DataRow("scan-duplicates", "missing")]
+    [DataRow("scan-conflicts", "missing")]
+    public async Task MultipleSourcesUseSavedModsPriorityUnlessOverriddenOrMissing(string command, string rootCase)
+    {
+        using var temp = new TempDirectory();
+        var content = new DbpfFixtureBuilder().AddContent([1, 2], instanceLo: 1).Build();
+        var modsFile = temp.WriteBytes("Mods/a.package", content);
+        var backupFile = temp.WriteBytes("Backup/deeper/copy/a.package", content);
+        var mods = Path.GetDirectoryName(modsFile)!;
+        var backup = Path.Combine(temp.Path, "Backup");
+        var settings = new DuplicateSettingsStore(Path.Combine(temp.Path, "data"));
+        settings.Update(current => current with { ModsRoot = rootCase == "missing" ? Path.Combine(temp.Path, "missing") : mods });
+        var args = new[] { command, "--source", mods, "--source", backup, "--json", "-", "--no-cache" };
+
+        var scan = await Run(settings, rootCase == "explicit" ? [.. args, "--mods-root", backup] : args);
+
+        Assert.AreEqual(1, scan.ExitCode, scan.Error);
+        using var document = JsonDocument.Parse(scan.Output);
+        var group = document.RootElement.GetProperty("groups").EnumerateArray().Single(group => Read(group, "kind") == "duplicate");
+        var kept = rootCase == "saved" ? modsFile : backupFile;
+        Assert.AreEqual(kept, Read(group, "suggestedKeepPath"));
+        CollectionAssert.AreEqual(new[] { rootCase == "saved" ? backupFile : modsFile },
+            group.GetProperty("suggestedDeletePaths").EnumerateArray().Select(path => path.GetString()).ToArray());
+        Assert.AreEqual(rootCase == "missing" ? Path.Combine(temp.Path, "missing") : mods, settings.Load()!.ModsRoot);
+    }
+
+    [TestMethod]
     public async Task DuplicateCommandBypassesCacheOnRequestAndFallsBackForBadDatabase()
     {
         using var temp = new TempDirectory();
@@ -309,6 +367,12 @@ public sealed class CliReadOnlyTests
         Assert.AreEqual(0, duplicateHelp.ExitCode);
         StringAssert.Contains(duplicateHelp.Output, "省略 --json");
         StringAssert.Contains(duplicateHelp.Output, "自动在当前目录生成 HTML");
+        foreach (var command in new[] { "scan-duplicates", "scan-conflicts" })
+        {
+            var help = await Run(settings, command, "--help");
+            StringAssert.Contains(help.Output, "--mods-root <目录>");
+            StringAssert.Contains(help.Output, "已保存且存在的默认 Mods");
+        }
 
         var guide = await Run(settings, "guide");
         Assert.AreEqual(0, guide.ExitCode);

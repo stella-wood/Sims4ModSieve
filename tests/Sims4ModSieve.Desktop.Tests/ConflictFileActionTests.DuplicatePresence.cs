@@ -17,6 +17,94 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed partial class ConflictFileActionTests
 {
     [TestMethod]
+    [DataRow("delete", "different")]
+    [DataRow("bulk-delete", "different")]
+    [DataRow("toggle", "different")]
+    [DataRow("bulk-disable", "different")]
+    [DataRow("delete", "record-null")]
+    [DataRow("bulk-delete", "record-null")]
+    [DataRow("toggle", "record-null")]
+    [DataRow("bulk-disable", "record-null")]
+    [DataRow("delete", "file-null")]
+    [DataRow("bulk-delete", "file-null")]
+    [DataRow("toggle", "file-null")]
+    [DataRow("bulk-disable", "file-null")]
+    [DataRow("delete", "both-null")]
+    [DataRow("bulk-delete", "both-null")]
+    [DataRow("toggle", "both-null")]
+    [DataRow("bulk-disable", "both-null")]
+    public Task NewConflictFileDoesNotMatchAnOldDisabledRecord(string action, string identityCase) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var data = Path.Combine(files.Root, "data");
+        var disable = new ModDisableService(data);
+        Assert.AreEqual(1, disable.Disable([files.A]).CompletedPaths.Count);
+        var oldRecord = disable.Load().Records.Single();
+        File.Copy(oldRecord.DisabledPath, files.A);
+        File.SetLastWriteTimeUtc(files.A, oldRecord.LastWriteTimeUtc);
+        var report = Duplicates(files.A, files.B);
+        Assert.AreNotEqual(oldRecord.Identity, report.Groups.Single().Files[0].Identity);
+        if (identityCase is "record-null" or "both-null")
+            File.WriteAllText(Path.Combine(data, "disabled-mods.json"),
+                System.Text.Json.JsonSerializer.Serialize(new[] { oldRecord with { Identity = null } }));
+        if (identityCase is "file-null" or "both-null")
+            report = report with { Groups = report.Groups.Select(group => group with
+            {
+                Files = group.Files.Select(file => file.Path == files.A ? file with { Identity = null } : file).ToArray(),
+            }).ToArray() };
+        var dialogs = new PresenceDialogs { AllowProblems = true };
+        var model = PresenceModel(files, report, dialogs, out var adapter, disable);
+        await PresenceSessionAsync(model, report);
+        Assert.IsFalse(model.ConflictRows.Single(row => row.File?.Path == files.A).IsDisabled);
+        SelectPresenceFiles(model, files.A);
+
+        await RunPresenceActionAsync(model, action, files.A);
+
+        var deletes = action is "delete" or "bulk-delete";
+        var missingIdentity = identityCase is "file-null" or "both-null";
+        CollectionAssert.AreEqual(deletes && !missingIdentity ? new[] { files.A } : Array.Empty<string>(), adapter.Deleted);
+        Assert.IsTrue(File.Exists(oldRecord.DisabledPath));
+        Assert.AreEqual(oldRecord.Identity, PhysicalFileIdentity.Read(oldRecord.DisabledPath));
+        Assert.AreEqual(oldRecord.Id, disable.Load().Records.Single().Id);
+        if (!deletes)
+        {
+            Assert.IsTrue(File.Exists(files.A));
+            StringAssert.Contains(model.ConflictFileActionStatusText, "请先处理原记录");
+            Assert.IsFalse(model.ShowConflictFileManagementLink);
+        }
+        else if (missingIdentity)
+        {
+            Assert.IsTrue(dialogs.Failures.Any(failure => failure.Path == files.A));
+            Assert.IsFalse(dialogs.Failures.Any(failure => failure.Path == oldRecord.DisabledPath));
+        }
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task MissingNewConflictFileIsNotHiddenByOldDisabledFile(bool bulk) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new TemporaryFiles();
+        var disable = new ModDisableService(Path.Combine(files.Root, "data"));
+        Assert.AreEqual(1, disable.Disable([files.A]).CompletedPaths.Count);
+        File.Copy(files.A + ".off", files.A);
+        File.SetLastWriteTimeUtc(files.A, File.GetLastWriteTimeUtc(files.A + ".off"));
+        var report = Duplicates(files.A, files.B);
+        var dialogs = new PresenceDialogs();
+        var model = PresenceModel(files, report, dialogs, out var adapter, disable);
+        var session = await PresenceSessionAsync(model, report);
+        SelectPresenceFiles(model, files.A);
+        File.Delete(files.A);
+
+        await RunPresenceActionAsync(model, bulk ? "bulk-delete" : "delete", files.A);
+
+        CollectionAssert.AreEqual(new[] { "refresh:1" }, dialogs.Events);
+        Assert.IsEmpty(adapter.Deleted);
+        Assert.IsEmpty(session.Cards);
+        Assert.IsTrue(File.Exists(files.A + ".off"));
+    });
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public Task CrossCardBatchDeleteChecksHashAndDisableChecksStamp(bool disable) => WpfTestHost.RunAsync(async () =>

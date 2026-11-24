@@ -9,6 +9,57 @@ namespace Sims4ModSieve.Core.Tests;
 public sealed class DuplicateScannerTests
 {
     [TestMethod]
+    [DataRow("same", 0)]
+    [DataRow("different-volume", 1)]
+    [DataRow("different-file", 1)]
+    [DataRow("missing", 1)]
+    [DataRow("one-missing", 1)]
+    public async Task HashGroupingRequiresDistinctPhysicalFiles(string identityCase, int expectedGroups)
+    {
+        using var temp = new TempDirectory();
+        var first = temp.WriteFile("a.package", "same");
+        temp.WriteFile("b.package", "same");
+        var physical = new PhysicalFileSystemAccess();
+        var hasher = new DelegateHasher((path, _) =>
+        {
+            FileIdentity? identity = identityCase switch
+            {
+                "missing" => null,
+                "one-missing" when path != first => null,
+                "different-volume" when path != first => new(2, 10, 20),
+                "different-file" when path != first => new(1, 11, 20),
+                _ => new(1, 10, 20),
+            };
+            return Task.FromResult(new StableFileHash("same-hash", physical.GetFileStamp(path) with { Identity = identity }));
+        });
+
+        var report = await new DuplicateScanner(physical, hasher, new()).ScanAsync(new([new("root", temp.Path)]));
+
+        Assert.AreEqual(2, report.HashedFileCount);
+        Assert.AreEqual(expectedGroups, report.Groups.Count);
+        Assert.IsEmpty(report.Issues);
+    }
+
+    [TestMethod]
+    public async Task PhysicalAliasesCountOnceAlongsideAnIndependentCopy()
+    {
+        using var temp = new TempDirectory();
+        var first = temp.WriteFile("a.package", "same");
+        temp.WriteFile("b.package", "same");
+        var copy = temp.WriteFile("c.package", "same");
+        var physical = new PhysicalFileSystemAccess();
+        var hasher = new DelegateHasher((path, _) => Task.FromResult(new StableFileHash("same-hash",
+            physical.GetFileStamp(path) with { Identity = new FileIdentity(1, path == copy ? 2UL : 1UL, 0) })));
+
+        var report = await new DuplicateScanner(physical, hasher, new()).ScanAsync(new([new("root", temp.Path)]));
+
+        var group = report.Groups.Single();
+        CollectionAssert.AreEqual(new[] { first, copy }, group.Files.Select(file => file.Path).ToArray());
+        Assert.AreEqual(group.FileSize, group.ReclaimableBytes);
+        Assert.HasCount(1, group.SuggestedDeletePaths);
+    }
+
+    [TestMethod]
     [DataRow(false, false)]
     [DataRow(false, true)]
     [DataRow(true, false)]

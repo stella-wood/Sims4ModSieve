@@ -116,7 +116,8 @@ public sealed partial class MainWindowViewModel
 
     private DisabledModRecord? DisabledRecordFor(ConflictResultRow row) => row.File is { Stamp: { } stamp } file
         ? disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, file.Path)
-            && record.Size == stamp.Length && record.LastWriteTimeUtc == stamp.LastWriteTimeUtc) : null;
+            && record.Size == stamp.Length && record.LastWriteTimeUtc == stamp.LastWriteTimeUtc
+            && record.Identity is not null && record.Identity == stamp.Identity) : null;
 
     private string CurrentConflictPath(ConflictResultRow row) => DisabledRecordFor(row)?.DisabledPath ?? row.File?.Path ?? "";
 
@@ -136,7 +137,8 @@ public sealed partial class MainWindowViewModel
         if (record is null)
         {
             var disabledCount = disabledRecords.Count(item => PathRulesEqual(item.OriginalPath, row.File.Path)
-                && item.Size == stamp.Length && item.LastWriteTimeUtc == stamp.LastWriteTimeUtc);
+                && item.Size == stamp.Length && item.LastWriteTimeUtc == stamp.LastWriteTimeUtc
+                && item.Identity is not null && item.Identity == stamp.Identity);
             if (disabledCount > 0)
             {
                 ConflictFileActionStatusText = $"已禁用 {disabledCount} 个文件，";

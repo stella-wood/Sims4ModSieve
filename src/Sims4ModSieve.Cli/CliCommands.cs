@@ -94,12 +94,24 @@ internal static class CliCommands
         }
     }
 
+    // 用 --source 时只是借已保存的 Mods 来判断保留哪份；设置读不出来就当没有，不让扫描失败。
+    private static string? TryLoadSavedModsRoot(DuplicateSettingsStore settings)
+    {
+        try { return settings.Load()?.ModsRoot; }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException
+            or System.Security.SecurityException)
+        { return null; }
+    }
+
     private static async Task<int> ScanAsync(string command, string[] args, DuplicateSettingsStore settings,
         TextWriter output, TextWriter error, string? documentsDirectory, long? conflictGroupingMemoryBudgetBytes, IStorageProfile? storageProfile)
     {
         var options = ParseScanOptions(command, args);
         var explicitSources = options.Sources.Count > 0;
         string? modsRoot = options.ModsRoot;
+        if (explicitSources && modsRoot is null && command != "scan-scripts"
+            && TryLoadSavedModsRoot(settings) is { } savedRoot && Directory.Exists(savedRoot))
+            modsRoot = NormalizePath(savedRoot);
         if (!explicitSources)
         {
             var savedMods = settings.Load()?.ModsRoot;
@@ -272,7 +284,7 @@ internal static class CliCommands
                         throw new ArgumentException("--limit 必须是大于或等于 0 的整数。");
                     limit = count;
                     break;
-                case "--mods-root" when command == "scan-duplicates": modsRoot = NormalizePath(value); break;
+                case "--mods-root" when command is "scan-duplicates" or "scan-conflicts": modsRoot = NormalizePath(value); break;
                 case "--extension" when command == "scan-duplicates":
                     ArgumentException.ThrowIfNullOrWhiteSpace(value);
                     extensions.Add(value);
@@ -304,7 +316,6 @@ internal static class CliCommands
             output.WriteLine($"  {scan.Meaning}");
             if (scan.Command == "scan-duplicates" && command is not null)
             {
-                output.WriteLine("  --mods-root <目录>  指定建议保留时优先考虑的 Mods 目录");
                 output.WriteLine("  --extension <扩展名>  限定扫描类型，可重复指定");
                 output.WriteLine("  --html <文件>  指定 HTML 报告路径");
                 output.WriteLine("    省略 --json 且未使用 --severity、--kind、--path-contains、--limit 或 --summary-only 时，自动在当前目录生成 HTML。");
@@ -313,6 +324,8 @@ internal static class CliCommands
         }
         if (command is null || scans.Any(scan => scan.Command == command))
         {
+            if (command is null or "scan-duplicates" or "scan-conflicts")
+                output.WriteLine("  --mods-root <目录>  scan-duplicates、scan-conflicts 建议保留时优先考虑的 Mods 目录；省略时使用已保存且存在的默认 Mods");
             output.WriteLine("  --source <目录>  临时指定扫描目录，可重复指定。省略时使用默认 Mods");
             output.WriteLine("  --json <文件|->  写入 JSON 文件，或用 - 输出到标准输出。省略时写入当前目录并显示摘要");
             output.WriteLine("  --hide-ignored  隐藏已经忽略的文件");

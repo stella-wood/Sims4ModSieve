@@ -214,11 +214,14 @@ public sealed class DuplicateScanner(
                      .GroupBy(candidate => (candidate.Hash.Stamp.Length, candidate.Hash.Sha256))
                      .Where(group => group.Count() > 1))
         {
+            var identities = new HashSet<FileIdentity>();
             var files = hashGroup
                 .Select(candidate => CreateDuplicateFile(candidate, sources, modsRoot))
                 .OrderBy(file => file.Path, PathRules.Comparer)
                 .ThenBy(file => file.Path, StringComparer.Ordinal)
+                .Where(file => file.Identity is not { } identity || identities.Add(identity))
                 .ToArray();
+            if (files.Length < 2) continue;
             var selection = selectionService.Select(files);
             var section = Classify(files, focusIds, referenceIds);
 

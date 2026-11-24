@@ -917,9 +917,11 @@ public sealed class ModDisableViewModelTests
             File.WriteAllBytes(allPaths[^1], new byte[10]);
             File.SetLastWriteTimeUtc(allPaths[^1], ConflictResultSessionTests.Stamp.LastWriteTimeUtc);
         }
+        var duplicates = WithPhysicalIdentity(Duplicates(paths));
         var session = folded ? V2([ConflictResultSessionTests.Resource(1, allPaths.Select(path =>
-            (path, (string?)(path == allPaths[^1] ? "different" : "same"))).ToArray())], allPaths.Select(path => (path, 1)).ToArray(), Duplicates(paths))
-            : V2([], [], Duplicates(paths));
+            (path, (string?)(path == allPaths[^1] ? "different" : "same"))).ToArray())], allPaths.Select(path => (path, 1)).ToArray(), duplicates,
+            stampFor: PhysicalStamp)
+            : V2([], [], duplicates);
         foreach (var card in session.Cards) session.ToggleExpanded(card.Key);
         model.OpenConflictCommand.Execute(null);
         model.OpenConflictSectionCommand.Execute("basic");

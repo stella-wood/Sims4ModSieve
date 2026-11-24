@@ -61,16 +61,34 @@ public sealed class ConflictV2SessionTests
     });
 
     internal static ConflictResultSession V2(ResourceContentComparison[] comparisons,
-        (string Path, int Count)[] inventories, DuplicateReport? duplicates = null, ScriptModuleScanReport? scripts = null)
+        (string Path, int Count)[] inventories, DuplicateReport? duplicates = null, ScriptModuleScanReport? scripts = null,
+        Func<string, FileStamp>? stampFor = null)
     {
         var session = new ConflictResultSession();
         var report = new PackageConflictScanReport(DateTime.UnixEpoch, DateTime.UnixEpoch, [], inventories.Length,
             inventories.Length, [], [], [])
         {
-            ResourceInventories = inventories.Select(item => new PackageResourceInventory(item.Path, Stamp, item.Count)
+            ResourceInventories = inventories.Select(item => new PackageResourceInventory(item.Path, stampFor?.Invoke(item.Path) ?? Stamp, item.Count)
             { ResourceTypeCounts = new Dictionary<uint, int> { [0x034AEECB] = item.Count } }).ToArray(),
         };
-        session.Replace(report, Contents(comparisons), scripts ?? Scripts(), duplicates: duplicates);
+        var contents = Contents(comparisons);
+        if (stampFor is not null)
+            contents = contents with
+            {
+                Comparisons = contents.Comparisons.Select(comparison => comparison with
+                {
+                    ContentGroups = comparison.ContentGroups.Select(group => group with
+                    {
+                        Occurrences = group.Occurrences.Select(item => item with { PackageStamp = stampFor(item.PackagePath) }).ToArray(),
+                    }).ToArray(),
+                    Uncompared = comparison.Uncompared.Select(item => item with { PackageStamp = stampFor(item.PackagePath) }).ToArray(),
+                }).ToArray(),
+                Packages = contents.Packages.Select(version => version with
+                {
+                    ScannedStamp = stampFor(version.Path), StampAfterRead = stampFor(version.Path),
+                }).ToArray(),
+            };
+        session.Replace(report, contents, scripts ?? Scripts(), duplicates: duplicates);
         return session;
     }
 
@@ -82,6 +100,17 @@ public sealed class ConflictV2SessionTests
         return new(DateTime.UnixEpoch, DateTime.UnixEpoch, [], paths.Length, paths.Length,
             [new("WHOLE-FILE-HASH", Stamp.Length, DuplicateSection.Ordinary, files, selection.KeepPath, selection.DeletePaths)], []);
     }
+
+    // 给假扫描结果补上磁盘上真实文件的身份，供需要按身份匹配禁用记录的测试使用。
+    internal static DuplicateReport WithPhysicalIdentity(DuplicateReport report) => report with
+    {
+        Groups = report.Groups.Select(group => group with
+        {
+            Files = group.Files.Select(file => file with { Identity = PhysicalFileIdentity.Read(file.Path) }).ToArray(),
+        }).ToArray(),
+    };
+
+    internal static FileStamp PhysicalStamp(string path) => Stamp with { Identity = PhysicalFileIdentity.Read(path) };
 
     internal static ConflictResultSession ContainmentSession() => V2([
         Resource(1, (A, "a"), (B, "a")), Resource(2, (A, "b"), (B, "b")), Resource(3, (A, "c"), (B, "c")),
