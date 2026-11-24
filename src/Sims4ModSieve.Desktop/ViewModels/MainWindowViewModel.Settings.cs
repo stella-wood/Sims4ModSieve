@@ -239,8 +239,10 @@ public sealed partial class MainWindowViewModel
             if (!fileActionDialogs.ConfirmFiles("清除缓存", "清除后下次扫描会慢一些，不影响任何 Mod 文件。"))
                 return;
             CacheFeedback = string.Empty;
-            if (!await Task.Run(() => SqliteSha256Cache.Clear(scanCacheDirectory!)))
-                CacheFeedback = "未能完成清除缓存，请重试";
+            var directory = scanCacheDirectory!;
+            CacheFeedback = await Task.Run(() => SqliteSha256Cache.Clear(directory))
+                ? "缓存已清除"
+                : $"未能清除缓存。缓存文件：{SqliteSha256Cache.DatabasePath(directory)}";
         }
         finally
         {

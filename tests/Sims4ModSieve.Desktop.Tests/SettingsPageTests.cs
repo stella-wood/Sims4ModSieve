@@ -63,10 +63,12 @@ public sealed class SettingsPageTests
 
             await RespondToClearAsync("CancelButton");
             Assert.AreEqual(before, size.Text);
+            Assert.AreEqual(string.Empty, model.CacheFeedback);
             await RespondToClearAsync("ConfirmButton");
             Assert.AreNotEqual(before, size.Text);
             Assert.AreEqual(CurrentCacheLabel(), size.Text);
-            Assert.AreEqual(string.Empty, model.CacheFeedback);
+            Assert.IsTrue(Descendants<TextBlock>(page).Any(text => text.IsVisible && text.Text == "缓存已清除"));
+            SaveReview(window, "cache-settings-cleared.png");
 
             string CurrentCacheLabel() =>
                 $"缓存（{DuplicateGroupViewModel.FormatBytes(SqliteSha256Cache.GetSize(files.Root)!.Value).Replace(" ", string.Empty)}）";

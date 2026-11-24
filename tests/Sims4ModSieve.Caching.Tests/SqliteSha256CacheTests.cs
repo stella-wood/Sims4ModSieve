@@ -334,6 +334,30 @@ public sealed class SqliteSha256CacheTests
     }
 
     [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void ClearRemovesCorruptDatabaseAndSidecarsAndAllowsRebuild(bool hasDatabase)
+    {
+        using var temp = new TempDirectory();
+        var database = SqliteSha256Cache.DatabasePath(temp.Path);
+        Directory.CreateDirectory(Path.GetDirectoryName(database)!);
+        if (hasDatabase) File.WriteAllText(database, "not a SQLite database");
+        File.WriteAllText(database + "-wal", "leftover WAL");
+        File.WriteAllText(database + "-shm", "leftover shared memory");
+
+        Assert.IsTrue(SqliteSha256Cache.Clear(temp.Path));
+        Assert.IsFalse(File.Exists(database));
+        Assert.IsFalse(File.Exists(database + "-wal"));
+        Assert.IsFalse(File.Exists(database + "-shm"));
+        Assert.AreEqual(0L, SqliteSha256Cache.GetSize(temp.Path));
+
+        var rebuilt = new SqliteSha256Cache(database);
+        Assert.IsTrue(rebuilt.IsAvailable);
+        Save(rebuilt, temp.Path, Stamp, Hash);
+        Assert.AreEqual(Hash, rebuilt.GetSha256(temp.Path, Stamp));
+    }
+
+    [TestMethod]
     public void CorruptionAfterOpenDisablesFurtherReadsAndWrites()
     {
         using var temp = new TempDirectory();
