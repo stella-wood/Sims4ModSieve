@@ -355,7 +355,8 @@ public sealed partial class MainWindowViewModel
         var disabledByPath = disabledRecords.ToDictionary(record => record.OriginalPath, StringComparer.OrdinalIgnoreCase);
         bool IsDisabled(ConflictFile? file) => file?.Stamp is { } stamp
             && disabledByPath.TryGetValue(file.Path, out var record)
-            && record.Size == stamp.Length && record.LastWriteTimeUtc == stamp.LastWriteTimeUtc;
+            && record.Size == stamp.Length && record.LastWriteTimeUtc == stamp.LastWriteTimeUtc
+            && record.Identity is not null && record.Identity == stamp.Identity;
         var countsByKey = conflictSession.Cards.Select(card => (Card: card, Disabled: card.Files.Count(IsDisabled)))
             .Where(item => item.Disabled > 0).ToDictionary(item => item.Card.Key, item =>
             {

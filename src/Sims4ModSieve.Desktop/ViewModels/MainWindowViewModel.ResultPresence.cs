@@ -13,10 +13,10 @@ public sealed partial class MainWindowViewModel
         var groups = (fromConflicts
                 ? session.Cards.Where(card => card.Files.Any(file => selected.Contains(file.Path)))
                     .Select(card => card.Files.Select(file =>
-                    (file.Path, Size: file.Stamp?.Length, LastWriteTimeUtc: file.Stamp?.LastWriteTimeUtc)).ToArray())
+                    (file.Path, Size: file.Stamp?.Length, LastWriteTimeUtc: file.Stamp?.LastWriteTimeUtc, Identity: file.Stamp?.Identity)).ToArray())
                 : Groups.Where(group => group.Files.Count > 1 && group.Files.Any(file => selected.Contains(file.Path)))
                     .Select(group => group.Model.Files.Select(file =>
-                    (file.Path, Size: (long?)file.Size, LastWriteTimeUtc: (DateTime?)file.LastWriteTimeUtc)).ToArray())).ToArray();
+                    (file.Path, Size: (long?)file.Size, LastWriteTimeUtc: (DateTime?)file.LastWriteTimeUtc, file.Identity)).ToArray())).ToArray();
         if (groups.Length == 0) return selected;
         var records = disabledRecords;
         IsBusy = true;
@@ -25,7 +25,8 @@ public sealed partial class MainWindowViewModel
             var missing = await Task.Run(() => groups.SelectMany(group => group).DistinctBy(file => file.Path, StringComparer.OrdinalIgnoreCase).Where(file =>
             {
                 var disabled = records.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, file.Path)
-                    && record.Size == file.Size && record.LastWriteTimeUtc == file.LastWriteTimeUtc);
+                    && record.Size == file.Size && record.LastWriteTimeUtc == file.LastWriteTimeUtc
+                    && record.Identity is not null && record.Identity == file.Identity);
                 return !File.Exists(disabled?.DisabledPath ?? file.Path);
             }).Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase));
             bool IsCurrent() => fromConflicts ? ReferenceEquals(session, conflictSession) && IsConflictComplete
