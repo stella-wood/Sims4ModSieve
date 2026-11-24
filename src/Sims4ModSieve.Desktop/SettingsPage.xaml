@@ -505,7 +505,7 @@
                                                 Margin="{StaticResource ScanConcurrencyInfoGap}" VerticalAlignment="Center"
                                                 Background="Transparent" Foreground="{StaticResource MutedBrush}"
                                                 AutomationProperties.Name="扫描并发说明" ToolTipService.ShowsToolTipOnKeyboardFocus="True"
-                                                ToolTip="适用于重复检测、整文件核对、package 读取和资源内容比较。脚本扫描固定为 2。">
+                                                ToolTip="固态硬盘默认4（package 索引和资源比较最高 8），机械硬盘默认1，未知默认2">
                                             <Grid Width="{StaticResource ScanConcurrencyInfoTargetSize}" Height="{StaticResource ScanConcurrencyInfoTargetSize}">
                                                 <Path Width="{StaticResource ScanConcurrencyInfoSize}" Height="{StaticResource ScanConcurrencyInfoSize}"
                                                       HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,6,0,0"

@@ -115,7 +115,7 @@
 
 ## 扫描并发说明图标
 
-设置页局部资源：`ScanConcurrencyInfoSize` = 14（矢量图标），`ScanConcurrencyInfoTargetSize` = 24（键盘和鼠标宿主），`ScanConcurrencyInfoGap` = 左侧 2。颜色使用 `MutedBrush`；图标与标题垂直居中，说明放入可通过键盘焦点显示的 Tooltip。
+设置页局部资源：`ScanConcurrencyInfoSize` = 11（矢量图标），`ScanConcurrencyInfoTargetSize` = 24（键盘和鼠标宿主），`ScanConcurrencyInfoGap` = 左侧 2。颜色使用 `MutedBrush`，图标上沿与标题文字对齐。
 
 ## 结果搜索
 

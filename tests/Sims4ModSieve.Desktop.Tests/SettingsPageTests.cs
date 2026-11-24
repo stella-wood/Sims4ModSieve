@@ -137,9 +137,9 @@ public sealed class SettingsPageTests
             var info = (Button)page.FindName("ScanConcurrencyInfo");
             var picker = (ComboBox)page.FindName("HashConcurrencyPicker");
             Assert.AreEqual("扫描并发", label.Text);
-            Assert.IsFalse(Descendants<TextBlock>(page).Any(text => text.Text == "适用于重复检测及冲突检测中的整文件核对"));
+            Assert.IsFalse(Descendants<TextBlock>(page).Any(text => Equals(text.Text, info.ToolTip)));
             Assert.AreEqual("扫描并发说明", new ButtonAutomationPeer(info).GetName());
-            Assert.AreEqual("适用于重复检测、整文件核对、package 读取和资源内容比较。脚本扫描固定为 2。", info.ToolTip);
+            Assert.AreEqual("固态硬盘默认4（package 索引和资源比较最高 8），机械硬盘默认1，未知默认2", info.ToolTip);
             Assert.AreEqual(true, ToolTipService.GetShowsToolTipOnKeyboardFocus(info));
             Assert.IsTrue(info.Focusable && KeyboardNavigation.GetIsTabStop(info));
             info.BringIntoView();
