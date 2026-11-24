@@ -815,13 +815,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (result.Failures.Count == 0) return;
         if (result.CompletedPaths.Count == 0)
         {
-            fileActionDialogs.ShowProblems($"未能{action}", result.Failures);
+            fileActionDialogs.ShowFileActionResultProblems($"未能{action}", result.Failures);
             return;
         }
 
         var completed = result.CompletedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var hasFailedFiles = result.Failures.Any(failure => failure.Path.Length > 0 && !completed.Contains(failure.Path));
-        fileActionDialogs.ShowProblems(hasFailedFiles ? $"部分文件未能{action}" : $"{action}中有项目需要处理", result.Failures);
+        fileActionDialogs.ShowFileActionResultProblems(hasFailedFiles ? $"部分文件未能{action}" : $"{action}中有项目需要处理", result.Failures);
     }
 
     private void OnSourcesChanged(object? sender, NotifyCollectionChangedEventArgs eventArgs)

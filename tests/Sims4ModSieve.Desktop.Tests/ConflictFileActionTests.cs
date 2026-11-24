@@ -444,12 +444,12 @@ public sealed partial class ConflictFileActionTests
         await SetSessionAsync(model, session, "all");
         model.Groups.Single().Files.Single(file => file.Path == files.C).IsSelected = true;
         await model.DeleteSelectedCommand.ExecuteAsync();
-        Assert.AreEqual("未能删除", dialogs.ProblemTitles.Single());
+        Assert.AreEqual("未能删除", dialogs.ResultProblemTitles.Single());
         Assert.AreEqual(3, model.Groups.Single().Files.Count);
 
         foreach (var file in model.Groups.Single().Files) file.IsSelected = file.Path != files.A;
         await model.DeleteSelectedCommand.ExecuteAsync();
-        Assert.AreEqual("部分文件未能删除", dialogs.ProblemTitles.Last());
+        Assert.AreEqual("部分文件未能删除", dialogs.ResultProblemTitles.Last());
         Assert.IsTrue(model.Groups.Single().Files.Any(file => file.Path == files.C));
         Assert.IsFalse(session.Cards.Single().Files.Any(file => file.Path == files.B));
         await model.UndoLastDeleteCommand.ExecuteAsync();
@@ -460,12 +460,12 @@ public sealed partial class ConflictFileActionTests
         await model.DeleteSelectedCommand.ExecuteAsync();
         Assert.AreEqual(0, model.Groups.Count);
         await model.UndoLastDeleteCommand.ExecuteAsync();
-        Assert.AreEqual("部分文件未能恢复", dialogs.ProblemTitles.Last());
+        Assert.AreEqual("部分文件未能恢复", dialogs.ResultProblemTitles.Last());
         CollectionAssert.AreEquivalent(new[] { files.A, files.B }, model.Groups.Single().Files.Select(file => file.Path).ToArray());
         CollectionAssert.AreEquivalent(new[] { files.A, files.B }, session.Cards.Single().Files.Select(file => file.Path).ToArray());
         Assert.IsTrue(model.CanUndoLastDelete);
         await model.UndoLastDeleteCommand.ExecuteAsync();
-        Assert.AreEqual("未能恢复", dialogs.ProblemTitles.Last());
+        Assert.AreEqual("未能恢复", dialogs.ResultProblemTitles.Last());
         adapter.RestoreFailure = null;
         await model.UndoLastDeleteCommand.ExecuteAsync();
         Assert.AreEqual(3, model.Groups.Single().Files.Count);
@@ -761,10 +761,11 @@ public sealed partial class ConflictFileActionTests
     private sealed class Dialogs : IFileActionDialogService
     {
         public List<(string Title, string Message)> Confirmations { get; } = [];
-        public List<string> ProblemTitles { get; } = [];
+        public List<string> ResultProblemTitles { get; } = [];
         public bool ConfirmDeletion(FileDeletionPreflight preflight) => true;
         public bool ConfirmFiles(string title, string message) { Confirmations.Add((title, message)); return true; }
-        public void ShowProblems(string title, IReadOnlyList<FileActionFailure> problems) => ProblemTitles.Add(title);
+        public void ShowProblems(string title, IReadOnlyList<FileActionFailure> problems) { }
+        public void ShowFileActionResultProblems(string title, IReadOnlyList<FileActionFailure> problems) => ResultProblemTitles.Add(title);
     }
     private sealed class TestRecycleBin : IRecycleBinAdapter
     {

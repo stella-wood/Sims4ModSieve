@@ -22,6 +22,18 @@ public partial class WarningDialog : Window
         }
     }
 
+    internal WarningDialog(string title, IReadOnlyList<FileActionFailure> failures)
+        : this(title, string.Empty, closeLabel: "确定")
+    {
+        Width = (double)FindResource("FileActionWarningWidth");
+        Height = (double)FindResource(failures.Count == 1 ? "FileActionWarningSingleHeight" : "FileActionWarningBatchHeight");
+        MessageBody.Visibility = Visibility.Collapsed;
+        FailureList.Visibility = Visibility.Visible;
+        FailureList.VerticalAlignment = failures.Count == 1 ? VerticalAlignment.Center : VerticalAlignment.Stretch;
+        FailureList.AlternationCount = failures.Count;
+        FailureList.ItemsSource = failures;
+    }
+
     private void Close_Click(object sender, RoutedEventArgs e) => DialogResult = false;
     private void Action_Click(object sender, RoutedEventArgs e) => DialogResult = true;
 }

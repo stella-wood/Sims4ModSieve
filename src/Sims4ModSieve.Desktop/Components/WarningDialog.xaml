@@ -10,6 +10,16 @@
         Background="{StaticResource SurfaceBrush}">
     <Window.Resources>
         <sys:Double x:Key="WarningDialogBodyMinWidth">300</sys:Double>
+        <sys:Double x:Key="WarningDialogIconSize">32</sys:Double>
+        <sys:Double x:Key="WarningDialogBodyFontSize">14</sys:Double>
+        <sys:Double x:Key="WarningDialogSecondaryFontSize">12</sys:Double>
+        <Thickness x:Key="WarningDialogIconGap">8,0,0,0</Thickness>
+        <sys:Double x:Key="FileActionWarningWidth">526</sys:Double>
+        <sys:Double x:Key="FileActionWarningSingleHeight">172</sys:Double>
+        <sys:Double x:Key="FileActionWarningBatchHeight">276</sys:Double>
+        <Thickness x:Key="FileActionWarningFirstRowInset">0,0,8,0</Thickness>
+        <Thickness x:Key="FileActionWarningRowInset">0,12,8,0</Thickness>
+        <Thickness x:Key="FileActionWarningReasonGap">0,2,0,0</Thickness>
         <SolidColorBrush x:Key="WarningInkBrush" Color="#24221F" />
         <PathGeometry x:Key="WarningTriangle"
                       Figures="M11.20,3.73 A0.92,0.92 0 0 1 12.80,3.73 L21.95,19.59 A0.92,0.92 0 0 1 21.15,20.97 L2.85,20.97 A0.92,0.92 0 0 1 2.05,19.59 Z" />
@@ -44,6 +54,36 @@
                 </DrawingGroup>
             </DrawingImage.Drawing>
         </DrawingImage>
+        <DataTemplate x:Key="FileActionWarningFailureTemplate">
+            <Grid x:Name="FailureEntry" Margin="{StaticResource FileActionWarningRowInset}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Image x:Name="FailureIcon" Source="{StaticResource WarningImage}"
+                       Width="{StaticResource WarningDialogIconSize}" Height="{StaticResource WarningDialogIconSize}"
+                       VerticalAlignment="Center" Visibility="Hidden" IsHitTestVisible="False" />
+                <StackPanel Grid.Column="1" Margin="{StaticResource WarningDialogIconGap}" VerticalAlignment="Center">
+                    <TextBlock x:Name="FailurePath" Text="{Binding Path}" TextWrapping="Wrap"
+                               FontSize="{StaticResource WarningDialogBodyFontSize}" Foreground="{StaticResource InkBrush}" />
+                    <TextBlock x:Name="FailureReason" Text="{Binding Message}" TextWrapping="Wrap"
+                               FontSize="{StaticResource WarningDialogSecondaryFontSize}" Foreground="{StaticResource MutedBrush}"
+                               Margin="{StaticResource FileActionWarningReasonGap}" />
+                </StackPanel>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding (ItemsControl.AlternationIndex), RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="0">
+                    <Setter TargetName="FailureEntry" Property="Margin" Value="{StaticResource FileActionWarningFirstRowInset}" />
+                    <Setter TargetName="FailureIcon" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Path}" Value="">
+                    <Setter TargetName="FailurePath" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="FailureReason" Property="FontSize" Value="{StaticResource WarningDialogBodyFontSize}" />
+                    <Setter TargetName="FailureReason" Property="Foreground" Value="{StaticResource InkBrush}" />
+                    <Setter TargetName="FailureReason" Property="Margin" Value="0" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
     </Window.Resources>
     <Grid Margin="14">
         <Grid.RowDefinitions>
@@ -51,18 +91,39 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid HorizontalAlignment="Center" VerticalAlignment="Center"
+        <Grid x:Name="MessageBody" HorizontalAlignment="Center" VerticalAlignment="Center"
               MinWidth="{StaticResource WarningDialogBodyMinWidth}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Image Source="{StaticResource WarningImage}" Width="32" Height="32"
+            <Image Source="{StaticResource WarningImage}" Width="{StaticResource WarningDialogIconSize}" Height="{StaticResource WarningDialogIconSize}"
                    VerticalAlignment="Center" IsHitTestVisible="False" />
-            <TextBlock x:Name="MessageText" Grid.Column="1" Margin="8,0,0,0"
-                       FontFamily="Microsoft YaHei UI" FontSize="14" LineHeight="21"
+            <TextBlock x:Name="MessageText" Grid.Column="1" Margin="{StaticResource WarningDialogIconGap}"
+                       FontFamily="Microsoft YaHei UI" FontSize="{StaticResource WarningDialogBodyFontSize}" LineHeight="21"
                        LineStackingStrategy="BlockLineHeight" TextWrapping="Wrap" VerticalAlignment="Center" />
         </Grid>
+
+        <ListBox x:Name="FailureList" Visibility="Collapsed" Background="Transparent" BorderThickness="0" Padding="0"
+                 AutomationProperties.Name="文件操作失败明细" FontFamily="Microsoft YaHei UI"
+                 ItemTemplate="{StaticResource FileActionWarningFailureTemplate}" HorizontalContentAlignment="Stretch"
+                 ScrollViewer.CanContentScroll="True" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
+            <ListBox.Resources>
+                <Style TargetType="ScrollBar" BasedOn="{StaticResource ResultVerticalScrollBarStyle}" />
+            </ListBox.Resources>
+            <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Focusable" Value="False" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Template">
+                        <Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+        </ListBox>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
             <Button x:Name="CloseButton" Width="56" Height="28" Content="关闭" IsCancel="True"
