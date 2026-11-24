@@ -125,6 +125,7 @@ jobs:
           retention-days: 7
 
   package:
+    needs: [test-desktop, test-core]
     runs-on: windows-latest
     timeout-minutes: 15
 
