@@ -39,7 +39,7 @@ Sims 4 Mod Sieve 能找出 Mods 文件夹里重复的文件、互相覆盖的 pa
 | 文件之间有没有冲突 | `scan-conflicts --json "<报告文件路径>"`  |
 | 脚本有没有同名模块 | `scan-scripts --json "<报告文件路径>"`    |
 
-三个命令是包含关系：`scan-conflicts` 的结果里已经包含了重复组（`duplicate`）和脚本组（`script_*`），`scan-duplicates`、`scan-scripts` 是它的子集。同一件事只报一次，以 `scan-conflicts` 为准；也不要因为「已经查过重复」就跳过它里面的脚本碰撞。
+三个命令是包含关系：`scan-conflicts` 的结果里已经包含了重复组（`duplicate`）和脚本组（`script_*`），`scan-duplicates`、`scan-scripts` 是它的子集。同一件事只报一次，以 `scan-conflicts` 为准；也不要因为「已经查过重复」就跳过它里面的脚本碰撞。两个例外：读不出来的 package 在冲突报告里只算读取问题，它们之间的完全重复只出现在 `scan-duplicates` 里；`scan-duplicates` 用 `--source` 指定目录又没给 `--extension` 时，不按扩展名过滤，报告里可能出现 `.off`、压缩包等文件，这些不能用 Sieve 处理。
 
 建议先查重复，清理完重复副本后，再查冲突，结果更清晰。
 
@@ -52,7 +52,7 @@ Get-Content -LiteralPath "<报告文件路径>" -Encoding utf8 | Select-Object -
 
 分段读到的是文本片段，可能从某个对象中间开始，判断有没有读全要结合顶层的汇总数字。组很多时建议写个小脚本读 JSON，按目录、按资源种类、按 kind 统计，比一段段翻快得多，也更容易看出规律。
 
-退出码 `0` 表示完成且无发现。退出码 `1` 通常表示「有发现」，是正常结果，照常读报告。退出码 `2` 表示参数错误或没有能扫的目录。
+退出码 `0` 表示完成且无发现。退出码 `1` 通常表示「有发现」，是正常结果，照常读报告；但读取设置、写报告等失败时也是 `1`，这时报告文件不存在或标准输出为空，先看标准错误里的原因。退出码 `2` 表示参数错误或没有能扫的目录。
 
 ## 3. 分析：找到真正的问题
 
@@ -183,10 +183,10 @@ Sims4ModSieve.Cli.exe scan-conflicts --source "D:\Mods" --json "conflicts-mod.js
 - `groupCount` 是完整结果的组数，`visibleGroupCount` 是这份 JSON 列出的组数。`severityCounts` 按完整结果统计四级数量（结果组与读取问题合计），`issueCount` 是完整的扫描和读取问题数。`abnormalCount` 是异常组与异常读取问题合计，`incompleteCount` 只统计未分析的读取问题。
 - `groups` 列出结果组，`issues` 给出扫描和读取问题。文件字段 `path` 是完整路径，`sha256` 是整个文件的哈希，为 `null` 时没有可用哈希。
 - 重复组带 `suggestedKeepPath`（建议保留）、`suggestedDeletePaths`（可处理的副本）和 `reclaimableBytes`（处理后能腾出的字节数）。
-- 重复组的每个文件还带：`size`、`lastWriteTimeUtc`（修改时间）、`sourceIds` / `primarySourceIds`（来自哪个扫描来源）、`isInsideMods`（是否在 Mods 根目录里面）、`directoryDepth`（所在文件夹从盘符算起的总层数）、`identity`（磁盘上的文件身份，同一个文件的硬链接会相同）。组本身有 `section`：`FocusCrossScope` 重点范围和参照范围之间的重复，`FocusInternal` 重点范围内部的重复，`ReferenceInternal` 参照范围内部的重复，`Ordinary` 普通重复。只扫 Mods 时一般都是 `Ordinary`。
+- 重复组的每个文件还带：`size`、`lastWriteTimeUtc`（修改时间）、`sourceIds` / `primarySourceIds`（来自哪个扫描来源）、`isInsideMods`（是否在 Mods 根目录里面）、`directoryDepth`（所在文件夹从盘符算起的总层数）、`identity`（磁盘上的文件身份，同一个文件的硬链接会相同）。组本身有 `section`：`focusCrossScope` 重点范围和参照范围之间的重复，`focusInternal` 重点范围内部的重复，`referenceInternal` 参照范围内部的重复，`ordinary` 普通重复。只扫 Mods 时一般都是 `ordinary`。
 - 冲突组（`resource_conflict`、`suspected_same_mod`、`bundle_containment`）的每个文件带：`size`、`lastWriteTimeUtc`、`sha256`、`duplicateSha256`（它同时属于某个重复组时，那个组的哈希）、`isBundle`（是不是合集）、`containedContentIdentical`（单件被合集包含时，内容是否完全一样，`null` 表示不适用）、`resourceCount`、`sharedResourceCount`（与组里其他文件共有的资源数）、`uniqueResourceCount`（自己独有的资源数）。组本身带 `bundlePath`、`bundleUniqueResourceCount`（合集独有的资源数），以及 `relations`：两两之间的 `firstPath`、`secondPath`、`overlap`、`differentResourceCount`、`identicalResourceCount`、`incompleteResourceCount`。
 - package 组的 `resourceKeys` 是完整 TGI 字符串数组，格式为 `Type:Group:Instance`。名称用 TGI 的 Type 编号查同组的 `resourceTypes`：每个 Type 一项，`type` 是带 `0x` 的十六进制编号，`typeName` 是程序给出的名字，和桌面版技术详情显示的一致。
-- `severity` 有四级：`abnormal` 异常，`risk` 有隐患，`no_effect` 不影响，`incomplete` 未分析。`certainty` 标出确定（`confirmed`）和可能（`possible`）。`kind` 是结果的具体类型。
+- `severity` 目前会出现三级：`abnormal` 异常，`risk` 有隐患，`incomplete` 未分析。`no_effect`（不影响）是预留的一级，现在不会输出，汇总里它总是 0，不代表没有只影响显示的覆盖，要看 `resourceTypes` 自己判断。`certainty` 标出确定（`confirmed`）和可能（`possible`）。`kind` 是结果的具体类型。
 - 相同内容、已经比较出差异和未比完要分开说明。部分内容不同时，仍可能有未比完的条目。
 - `ignored: true` 表示玩家以前忽略过此文件，默认会显示。汇总的 `ignoredCount` 按结果中不同的文件路径计数。
 - `scan-conflicts` 在分组规模超限时不生成部分组，`complete=false`、退出码为 `1`。扫描问题 `code=conflict-grouping-too-large` 的 `reason` 为 `duplicate-copies`（建议先查重复）或 `too-many-shared-resources`（建议分批检测），附 `resourceMatchCount`、`collapsedResourceMatchCount`、`resourceMatchLimit`，副本原因另附多余副本数 `redundantCopyCount`。该问题的 `kind=read_incomplete`、`severity=incomplete`；中文提示与估算值、上限始终写入标准错误。
