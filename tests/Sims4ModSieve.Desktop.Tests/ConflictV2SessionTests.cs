@@ -71,7 +71,24 @@ public sealed class ConflictV2SessionTests
             ResourceInventories = inventories.Select(item => new PackageResourceInventory(item.Path, stampFor?.Invoke(item.Path) ?? Stamp, item.Count)
             { ResourceTypeCounts = new Dictionary<uint, int> { [0x034AEECB] = item.Count } }).ToArray(),
         };
-        session.Replace(report, Contents(comparisons), scripts ?? Scripts(), duplicates: duplicates);
+        var contents = Contents(comparisons);
+        if (stampFor is not null)
+            contents = contents with
+            {
+                Comparisons = contents.Comparisons.Select(comparison => comparison with
+                {
+                    ContentGroups = comparison.ContentGroups.Select(group => group with
+                    {
+                        Occurrences = group.Occurrences.Select(item => item with { PackageStamp = stampFor(item.PackagePath) }).ToArray(),
+                    }).ToArray(),
+                    Uncompared = comparison.Uncompared.Select(item => item with { PackageStamp = stampFor(item.PackagePath) }).ToArray(),
+                }).ToArray(),
+                Packages = contents.Packages.Select(version => version with
+                {
+                    ScannedStamp = stampFor(version.Path), StampAfterRead = stampFor(version.Path),
+                }).ToArray(),
+            };
+        session.Replace(report, contents, scripts ?? Scripts(), duplicates: duplicates);
         return session;
     }
 
