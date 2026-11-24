@@ -94,6 +94,15 @@ internal static class CliCommands
         }
     }
 
+    // 用 --source 时只是借已保存的 Mods 来判断保留哪份；设置读不出来就当没有，不让扫描失败。
+    private static string? TryLoadSavedModsRoot(DuplicateSettingsStore settings)
+    {
+        try { return settings.Load()?.ModsRoot; }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException
+            or System.Security.SecurityException)
+        { return null; }
+    }
+
     private static async Task<int> ScanAsync(string command, string[] args, DuplicateSettingsStore settings,
         TextWriter output, TextWriter error, string? documentsDirectory, long? conflictGroupingMemoryBudgetBytes, IStorageProfile? storageProfile)
     {
@@ -101,7 +110,7 @@ internal static class CliCommands
         var explicitSources = options.Sources.Count > 0;
         string? modsRoot = options.ModsRoot;
         if (explicitSources && modsRoot is null && command != "scan-scripts"
-            && settings.Load()?.ModsRoot is { } savedRoot && Directory.Exists(savedRoot))
+            && TryLoadSavedModsRoot(settings) is { } savedRoot && Directory.Exists(savedRoot))
             modsRoot = NormalizePath(savedRoot);
         if (!explicitSources)
         {
