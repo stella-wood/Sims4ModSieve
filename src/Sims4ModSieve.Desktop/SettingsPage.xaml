@@ -13,6 +13,10 @@
         <Thickness x:Key="ScanConcurrencyInfoGap">2,0,0,0</Thickness>
         <Thickness x:Key="SettingsSectionGap">0,36,0,0</Thickness>
         <Thickness x:Key="SettingsGroupRowInset">0,16,0,16</Thickness>
+        <SolidColorBrush x:Key="SettingsButtonHoverBrush" Color="#ECEAE7" />
+        <CornerRadius x:Key="RadiusM">4</CornerRadius>
+        <sys:Double x:Key="CacheClearIconSize">12</sys:Double>
+        <Thickness x:Key="CacheClearIconGap">0,0,4,0</Thickness>
         <Style x:Key="SettingsGroupDivider" TargetType="Border">
             <Setter Property="Background" Value="#ECE9E5" />
             <Setter Property="Height" Value="1" />
@@ -50,17 +54,83 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid Background="Transparent">
-                            <Border x:Name="Host" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4">
+                            <Border x:Name="Host" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="{StaticResource RadiusM}">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
                             </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Host" Property="Background" Value="#ECEAE7" /></Trigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Host" Property="Background" Value="{StaticResource SettingsButtonHoverBrush}" /></Trigger>
                             <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Host" Property="Opacity" Value="0.45" /></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+        <Style x:Key="ClearCacheButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingsButton}">
+            <Setter Property="AutomationProperties.Name" Value="清除缓存" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="Transparent">
+                            <Border x:Name="Host" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
+                                    CornerRadius="{StaticResource RadiusM}">
+                                <Grid IsHitTestVisible="False">
+                                    <TextBlock x:Name="IdleLabel" Text="清除缓存" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" IsVisibleChanged="CacheClearContent_IsVisibleChanged" />
+                                    <StackPanel x:Name="ClearingLabel" Orientation="Horizontal" HorizontalAlignment="Center"
+                                                VerticalAlignment="Center" Visibility="Hidden">
+                                        <Grid x:Name="ClearSpinner" Width="{StaticResource CacheClearIconSize}" Height="{StaticResource CacheClearIconSize}"
+                                              Margin="{StaticResource CacheClearIconGap}" VerticalAlignment="Center"
+                                              RenderTransformOrigin="0.5,0.5" IsVisibleChanged="CacheClearSpinner_IsVisibleChanged">
+                                            <Grid.RenderTransform><RotateTransform /></Grid.RenderTransform>
+                                            <Path Data="M 6,1 A 5,5 0 1 1 1,6" Stroke="{StaticResource AccentBrush}"
+                                                  StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        </Grid>
+                                        <TextBlock Text="正在清除" />
+                                    </StackPanel>
+                                    <StackPanel x:Name="ClearedLabel" Orientation="Horizontal" HorizontalAlignment="Center"
+                                                VerticalAlignment="Center" Visibility="Hidden"
+                                                IsVisibleChanged="CacheClearContent_IsVisibleChanged">
+                                        <Grid Width="{StaticResource CacheClearIconSize}" Height="{StaticResource CacheClearIconSize}"
+                                              Margin="{StaticResource CacheClearIconGap}" VerticalAlignment="Center">
+                                            <Path Data="M 1.5,6 L 4.5,9 L 10.5,3" Stroke="{StaticResource AccentBrush}"
+                                                  StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                        </Grid>
+                                        <TextBlock Text="缓存已清除" Foreground="{StaticResource AccentBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Host" Property="Background" Value="{StaticResource SettingsButtonHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Host" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding CacheClearStatus}" Value="Clearing">
+                                <Setter TargetName="Host" Property="Opacity" Value="1" />
+                                <Setter TargetName="IdleLabel" Property="Visibility" Value="Hidden" />
+                                <Setter TargetName="ClearingLabel" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding CacheClearStatus}" Value="Cleared">
+                                <Setter TargetName="Host" Property="Opacity" Value="1" />
+                                <Setter TargetName="Host" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                <Setter TargetName="IdleLabel" Property="Visibility" Value="Hidden" />
+                                <Setter TargetName="ClearedLabel" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CacheClearStatus}" Value="Clearing">
+                    <Setter Property="AutomationProperties.Name" Value="正在清除缓存" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CacheClearStatus}" Value="Cleared">
+                    <Setter Property="AutomationProperties.Name" Value="缓存已清除" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
         <Style x:Key="ManagedBulkRestoreButton" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -466,8 +536,7 @@
                             </Grid>
                             <Border Style="{StaticResource SettingsGroupDivider}" />
                             <DockPanel Margin="{StaticResource SettingsGroupRowInset}">
-                                <Button x:Name="ClearCacheButton" DockPanel.Dock="Right" Content="清除缓存"
-                                        AutomationProperties.Name="清除缓存" Style="{StaticResource SettingsButton}"
+                                <Button x:Name="ClearCacheButton" DockPanel.Dock="Right" Style="{StaticResource ClearCacheButtonStyle}"
                                         Command="{Binding ClearCacheCommand}" VerticalAlignment="Center" />
                                 <TextBlock x:Name="CacheSizeText" Text="{Binding CacheSize, StringFormat='缓存（{0}）'}"
                                            Style="{StaticResource SettingsLabel}" VerticalAlignment="Center" />

@@ -329,9 +329,15 @@ public sealed class SettingsViewModelTests
     {
         using var files = new Scenario();
         var model = files.Model(scanCacheDirectory: files.Root);
+        var states = new List<CacheClearState>();
+        model.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(model.CacheClearStatus)) states.Add(model.CacheClearStatus);
+        };
         await model.ClearCacheCommand.ExecuteAsync();
 
-        Assert.AreEqual("缓存已清除", model.CacheFeedback);
+        CollectionAssert.AreEqual(new[] { CacheClearState.Clearing, CacheClearState.Cleared, CacheClearState.Idle }, states);
+        Assert.AreEqual(string.Empty, model.CacheFeedback);
         Assert.AreEqual("0B", model.CacheSize);
         Assert.IsFalse(File.Exists(SqliteSha256Cache.DatabasePath(files.Root)));
     });
@@ -348,6 +354,8 @@ public sealed class SettingsViewModelTests
         await model.ClearCacheCommand.ExecuteAsync();
 
         Assert.AreEqual($"未能清除缓存。缓存文件：{database}", model.CacheFeedback);
+        Assert.AreEqual(CacheClearState.Idle, model.CacheClearStatus);
+        Assert.IsTrue(model.ClearCacheCommand.CanExecute(null));
         Assert.IsTrue(File.Exists(database));
     });
 

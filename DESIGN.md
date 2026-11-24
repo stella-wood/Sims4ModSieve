@@ -100,6 +100,8 @@
 
 常规设置的「扫描性能」卡片沿用 `SettingsGroup`，缓存行使用 `SettingsButton` 和上下留白对应 `SpaceL` 的 `SettingsGroupRowInset`。`SettingsGroupDivider` 共用于游戏文件夹和扫描性能卡片，颜色为 `#ECE9E5`，高 1 DIP。
 
+`ClearCacheButtonStyle` 沿用设置按钮的 `RadiusM` 和悬停色 `SettingsButtonHoverBrush`（`#ECEAE7`）。进度和成功图标使用 `CacheClearIconSize`（12 DIP），与文字右间距使用 `CacheClearIconGap`（4 DIP）。成功状态使用 `AccentSoftBrush` 底色和 `AccentBrush` 文字。
+
 ## 圆角
 
 | 令牌 | 值 | 用在 |
