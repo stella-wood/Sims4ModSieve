@@ -13,6 +13,7 @@ $data = Join-Path $case 'Sims4ModSieve'
 $screenshots = Join-Path $root 'artifacts/installer-review'
 New-Item -ItemType Directory -Path $screenshots -Force | Out-Null
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @'
 using System;
 using System.Collections.Generic;
@@ -167,6 +168,73 @@ if ($confirmation) { Click-Button $confirmation }
 Wait-ReviewExit
 Write-Host 'PASS ChineseWizardOpensAndCancels'
 
+function Advance-PathReview([string]$StopAt) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (-not (Update-ReviewProcesses)) { throw "Installer exited before showing $StopAt." }
+        Assert-NoRuntimeError
+        foreach ($window in [InstallerReviewWindows]::Windows()) {
+            $button = [InstallerReviewWindows]::Button($window, $StopAt)
+            if ($button -ne [IntPtr]::Zero) { return @{ Window = $window; Button = $button } }
+            if ([InstallerReviewWindows]::Button($window, '仍然安装') -ne [IntPtr]::Zero) { throw 'Unexpected or repeated path warning.' }
+            if ([InstallerReviewWindows]::Text($window) -eq '文件夹已存在') {
+                Click-Button @{ Button = [InstallerReviewWindows]::Button($window, '是') }
+                continue
+            }
+            foreach ($label in @('下一步', '安装', '我同意此协议')) {
+                $button = [InstallerReviewWindows]::Button($window, $label)
+                if ($button -ne [IntPtr]::Zero) { Click-Button @{ Button = $button }; break }
+            }
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    throw "Installer did not show $StopAt."
+}
+
+function Read-PathWarning([IntPtr]$Window) {
+    $rootElement = [System.Windows.Automation.AutomationElement]::FromHandle($Window)
+    $elements = $rootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    return ($elements | ForEach-Object { $_.Current.Name }) -join "`n"
+}
+
+$script:reviewProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @('/SP-', '/SIEVETESTPATHCHECK=start', ('/DIR="' + $app + '"')) -PassThru
+Click-Button (Advance-PathReview '完成')
+Wait-ReviewExit
+if ($script:reviewProcess.ExitCode -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $app 'Sims4ModSieve.exe'))) { throw 'Default path did not install.' }
+Write-Host 'PASS InteractiveDefaultPathContinuesWithoutWarning'
+
+$customApp = Join-Path $case ('Custom review app ' + [guid]::NewGuid().ToString('N'))
+$script:reviewProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @('/SP-', '/SIEVETESTPATHCHECK=start', ('/DIR="' + $customApp + '"')) -PassThru
+$change = Advance-PathReview '换个位置'
+Save-Window $change.Window 'installer-path-check-warning.png'
+$warning = Read-PathWarning $change.Window
+if (-not $warning.Contains('未能完成安装位置检查') -or -not $warning.Contains('安装位置检查程序未能启动') -or
+    -not $warning.Contains((Join-Path $data 'installer-check.log'))) { throw "Missing reason or log location: $warning" }
+Click-Button $change
+$next = Find-Button '下一步'
+if ([InstallerReviewWindows]::WindowText($next.Window) -notlike '*选择目标位置*' -or (Test-Path -LiteralPath $customApp)) { throw 'Change location did not return to the location page.' }
+Click-Button $next
+Click-Button (Find-Button '仍然安装')
+Click-Button (Advance-PathReview '完成')
+Wait-ReviewExit
+if ($script:reviewProcess.ExitCode -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $customApp 'Sims4ModSieve.exe'))) { throw 'Confirmed custom path did not install.' }
+Write-Host 'PASS InteractiveCustomPathCanChangeOrContinueWithoutRepeat'
+
+$lateApp = Join-Path $case ('Late review app ' + [guid]::NewGuid().ToString('N'))
+$script:reviewProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @('/SP-', '/SIEVETESTPATHCHECK=late-target', ('/DIR="' + $lateApp + '"')) -PassThru
+$lateWarning = Advance-PathReview '换个位置'
+if ((Read-PathWarning $lateWarning.Window) -notlike '*路径必须为绝对路径*') { throw 'Late warning did not show the helper reason.' }
+Click-Button $lateWarning
+$back = Find-Button '上一步'
+if ([InstallerReviewWindows]::WindowText($back.Window) -notlike '*安装尚未开始*' -or (Test-Path -LiteralPath $lateApp)) { throw 'Late warning did not allow the user to go back.' }
+Click-Button $back
+$cancel = Find-Button '取消'
+Click-Button $cancel
+$confirmation = Find-Button '是' -AllowExit
+if ($confirmation) { Click-Button $confirmation }
+Wait-ReviewExit
+Write-Host 'PASS InteractiveLateWarningCanGoBack'
+
 function Install-TestFixture {
     $install = Start-Process -FilePath $setup[0].FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
         ('/DIR="' + $app + '"'), ('/LOG="' + (Join-Path $case 'native-ui-install.log') + '"')) -WindowStyle Hidden -Wait -PassThru
@@ -213,6 +281,30 @@ try {
     if ($manual.ExitCode -ne 0) { throw 'Manual installation did not resume after lock release.' }
 } finally { $lock.Dispose() }
 Write-Host 'PASS ManualRunningInstallPromptsAndRetries'
+
+$lateProtected = Join-Path $case ('Late protected app ' + [guid]::NewGuid().ToString('N'))
+$settings = Join-Path $data 'duplicate-settings.json'
+$hadSettings = Test-Path -LiteralPath $settings -PathType Leaf
+if ($hadSettings) { $originalSettings = [IO.File]::ReadAllBytes($settings) }
+$lock = [IO.File]::Open((Join-Path $data 'application.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+try {
+    $script:reviewProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @('/SP-', ('/DIR="' + $lateProtected + '"')) -PassThru
+    $retry = Find-RunningAppPrompt -AdvanceWizard
+    @{ ModsRoot = $lateProtected; Sources = @() } | ConvertTo-Json | Set-Content -LiteralPath $settings
+    $lock.Dispose()
+    Click-Button $retry
+    $back = Find-Button '上一步'
+    if ([InstallerReviewWindows]::WindowText($back.Window) -notlike '*不能安装到游戏用户目录*' -or (Test-Path -LiteralPath $lateProtected)) { throw 'Protected location was missed after acquiring the lock.' }
+    Click-Button (Find-Button '取消')
+    $confirmation = Find-Button '是' -AllowExit
+    if ($confirmation) { Click-Button $confirmation }
+    Wait-ReviewExit
+} finally {
+    $lock.Dispose()
+    if ($hadSettings) { [IO.File]::WriteAllBytes($settings, $originalSettings) }
+    elseif (Test-Path -LiteralPath $settings) { Remove-Item -LiteralPath $settings }
+}
+Write-Host 'PASS PathCheckedAgainAfterAcquiringLock'
 
 $lock = [IO.File]::Open((Join-Path $data 'application.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
 try {

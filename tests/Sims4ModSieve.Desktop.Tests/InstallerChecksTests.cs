@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Sims4ModSieve.Core.Settings;
 using Sims4ModSieve.Desktop.Services;
 using static Sims4ModSieve.Desktop.Tests.SettingsViewModelTests;
 
@@ -16,7 +17,9 @@ public sealed class InstallerChecksTests
         var data = files.Folder("Sims4ModSieve");
         var documents = files.Folder("Documents");
         Assert.AreEqual(0, Program.Main(["--installer-check-path", files.Folder("App"), data, documents]));
-        Assert.AreEqual(InstallerChecks.UnsafePath, Program.Main(["--installer-check-path", data, data, documents]));
+        var report = Path.Combine(files.Root, "path.ini");
+        Assert.AreEqual(InstallerChecks.UnsafePath, Program.Main(["--installer-check-path", data, data, documents, report]));
+        StringAssert.Contains(File.ReadAllText(report), "命中受保护目录：工具数据目录");
         Assert.AreSame(application, System.Windows.Application.Current);
     }
 
@@ -71,32 +74,135 @@ public sealed class InstallerChecksTests
         var mods = files.Folder("Mods");
         files.Store.Save(new(mods, []));
         var link = Path.Combine(files.Root, "Alias");
-        var start = new System.Diagnostics.ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var arg in new[] { "/c", "mklink", "/J", link, mods }) start.ArgumentList.Add(arg);
-        using var process = System.Diagnostics.Process.Start(start)!;
-        process.WaitForExit();
-        Assert.AreEqual(0, process.ExitCode);
+        CreateJunction(link, mods);
         try
         {
             Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(Path.Combine(link, "Tool"),
+                Path.Combine(files.Root, "Sims4ModSieve"), files.Folder("Documents")));
+            files.Store.Save(new(link, []));
+            Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(Path.Combine(mods, "Tool"),
                 Path.Combine(files.Root, "Sims4ModSieve"), files.Folder("Documents")));
         }
         finally { Directory.Delete(link); }
     }
 
+    private static void CreateJunction(string link, string target)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var arg in new[] { "/c", "mklink", "/J", link, target }) start.ArgumentList.Add(arg);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        process.WaitForExit();
+        Assert.AreEqual(0, process.ExitCode);
+    }
+
     [TestMethod]
-    public void UnreadableSettingsOrRelativePathsStopInstallation()
+    [DataRow("malformed")]
+    [DataRow("missing-sources")]
+    [DataRow("locked")]
+    public void SkipsUnreadableSettingsAndUsesNextReadableFile(string failure)
     {
         using var files = new Scenario();
         var data = files.Folder("Sims4ModSieve");
         var target = files.Folder("Apps");
         var docs = files.Folder("Documents");
-        File.WriteAllText(Path.Combine(data, "duplicate-settings.json"), "{");
-        Assert.AreEqual(InstallerChecks.CannotCheck, InstallerChecks.CheckPath(target, data, docs));
-        File.Delete(Path.Combine(data, "duplicate-settings.json"));
-        Assert.AreEqual(InstallerChecks.CannotCheck, InstallerChecks.CheckPath("relative", data, docs));
-        Assert.IsTrue(InstallerChecks.TryRun(["--installer-check-path"], out var code));
-        Assert.AreEqual(InstallerChecks.CannotCheck, code);
+        var report = Path.Combine(files.Root, "path.ini");
+        var primary = Path.Combine(data, "duplicate-settings.json");
+        var older = Path.Combine(files.Folder("Sim4ModSieve"), "duplicate-settings.json");
+        var oldest = Path.Combine(files.Folder("Sims4ModDoctor"), "duplicate-settings.json");
+        var mods = files.Folder("OldMods");
+        var tray = files.Folder("OldTray");
+        var invalidSettings = failure == "malformed" ? "{" : "{}";
+        File.WriteAllText(primary, invalidSettings);
+        File.WriteAllText(older, "null");
+        using (var locked = failure == "locked" ? File.Open(primary, FileMode.Open, FileAccess.Read, FileShare.None) : null)
+        {
+            Assert.AreEqual(0, InstallerChecks.CheckPath(target, data, docs, report));
+            StringAssert.Contains(File.ReadAllText(report), $"跳过设置：{primary}");
+            StringAssert.Contains(File.ReadAllText(report), $"跳过设置：{older}");
+            Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(data, data, docs));
+            Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(Path.Combine(docs, "Electronic Arts", "The Sims 4"), data, docs));
+            File.WriteAllText(oldest, JsonSerializer.Serialize(new DuplicateSettings(mods, [], tray)));
+            foreach (var path in new[] { mods, tray })
+                Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(Path.Combine(path, "Tool"), data, docs, report));
+            StringAssert.Contains(File.ReadAllText(report), $"读取设置：{oldest}");
+        }
+
+        Assert.AreEqual(invalidSettings, File.ReadAllText(primary));
+        Assert.AreEqual("null", File.ReadAllText(older));
+        var current = files.Folder("CurrentMods");
+        File.WriteAllText(primary, JsonSerializer.Serialize(new DuplicateSettings(current, [])));
+        Assert.AreEqual(0, InstallerChecks.CheckPath(mods, data, docs));
+        Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(current, data, docs));
+    }
+
+    [TestMethod]
+    public void UnresolvedGameDirectoryDoesNotHideOtherMatchesOrDirectGamePath()
+    {
+        using var files = new Scenario();
+        var data = files.Folder("Sims4ModSieve");
+        var documents = Path.Combine(files.Root, "Documents");
+        File.WriteAllText(documents, "模拟文档路径中无法解析的目录项");
+        var report = Path.Combine(files.Root, "path.ini");
+        var tray = files.Folder("Tray");
+        files.Store.Save(new(null, [], tray));
+        Assert.AreEqual(0, InstallerChecks.CheckPath(files.Folder("App"), data, documents, report));
+        StringAssert.Contains(File.ReadAllText(report), "文档中的《模拟人生 4》文件夹：");
+        StringAssert.Contains(File.ReadAllText(report), "解析失败");
+        Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(tray, data, documents));
+        var game = Path.Combine(documents, "Electronic Arts", "The Sims 4", "Tool");
+        Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(game, data, documents));
+    }
+
+    [TestMethod]
+    public void BrokenModsJunctionUsesFullPathAndKeepsCheckingTray()
+    {
+        using var files = new Scenario();
+        var data = files.Folder("Sims4ModSieve");
+        var documents = files.Folder("Documents");
+        var tray = files.Folder("Tray");
+        var mods = files.Folder("ModsTarget");
+        var link = Path.Combine(files.Root, "ModsLink");
+        var report = Path.Combine(files.Root, "path.ini");
+        CreateJunction(link, mods);
+        try
+        {
+            Directory.Delete(mods);
+            files.Store.Save(new(link, [], tray));
+            Assert.AreEqual(0, InstallerChecks.CheckPath(files.Folder("App"), data, documents, report));
+            StringAssert.Contains(File.ReadAllText(report), "目录链接指向的位置当前无法访问");
+            StringAssert.Contains(File.ReadAllText(report), $"使用完整路径 {link}");
+            Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(Path.Combine(link, "Tool"), data, documents));
+            Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(tray, data, documents));
+        }
+        finally { Directory.Delete(link); }
+    }
+
+    [TestMethod]
+    public void OfflineModsDriveIsLoggedAndUnresolvedInstallTargetReturns11()
+    {
+        using var files = new Scenario();
+        var data = files.Folder("Sims4ModSieve");
+        var documents = files.Folder("Documents");
+        var report = Path.Combine(files.Root, "path.ini");
+        var drives = DriveInfo.GetDrives();
+        var drive = Enumerable.Range('D', 23).Select(letter => $"{(char)letter}:\\")
+            .First(root => !drives.Any(existing => existing.Name == root));
+        files.Store.Save(new(Path.Combine(drive, "Mods"), []));
+        Assert.AreEqual(0, InstallerChecks.CheckPath(files.Folder("App"), data, documents, report));
+        StringAssert.Contains(File.ReadAllText(report), "所在的盘当前无法访问");
+        Assert.AreEqual(InstallerChecks.CannotCheck, InstallerChecks.CheckPath("relative", data, documents, report));
+        StringAssert.Contains(File.ReadAllText(report), "Reason=无法解析所选安装位置。路径必须为绝对路径。");
+    }
+
+    [TestMethod]
+    public void ReportWriteFailureDoesNotOverridePathDecision()
+    {
+        using var files = new Scenario();
+        var data = files.Folder("Sims4ModSieve");
+        var documents = files.Folder("Documents");
+        var unwritableReport = files.Folder("ReportIsADirectory");
+        Assert.AreEqual(InstallerChecks.UnsafePath, InstallerChecks.CheckPath(data, data, documents, unwritableReport));
+        Assert.AreEqual(0, InstallerChecks.CheckPath(files.Folder("App"), data, documents, unwritableReport));
     }
 
     [TestMethod]

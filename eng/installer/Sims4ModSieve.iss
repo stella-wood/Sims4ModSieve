@@ -7,6 +7,11 @@
 #ifndef OutputDirectory
   #error OutputDirectory is required.
 #endif
+#ifdef TestDefaultDirectory
+  #define SieveDefaultDirectory TestDefaultDirectory
+#else
+  #define SieveDefaultDirectory "{localappdata}\Programs\Sims4ModSieve"
+#endif
 
 [Setup]
 #ifdef TestDataDirectory
@@ -23,7 +28,7 @@ AppSupportURL=https://github.com/stella-wood/Sims4ModSieve/issues
 AppUpdatesURL=https://github.com/stella-wood/Sims4ModSieve/releases
 VersionInfoVersion={#FileVersion}
 VersionInfoProductTextVersion={#AppVersion}
-DefaultDirName={localappdata}\Programs\Sims4ModSieve
+DefaultDirName={#SieveDefaultDirectory}
 DisableProgramGroupPage=yes
 DisableDirPage=no
 PrivilegesRequired=lowest
@@ -54,6 +59,19 @@ Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.i
 [Messages]
 ConfirmUninstall=确定要卸载 Sims 4 Mod Sieve 吗？你的 Mods、存档和游戏文件都不会被删除。
 
+[CustomMessages]
+PathCheckTitle=未能完成安装位置检查
+PathCheckExtractFailed=安装位置检查程序未能解包。
+PathCheckStartFailed=安装位置检查程序未能启动。
+PathCheckBlocked=安装位置检查程序未能启动，可能被安全软件拦截。
+PathCheckExited=安装位置检查程序意外退出，未返回检查结果。
+PathCheckNoReason=检查程序未能确认所选位置的实际目录。
+PathCheckLog=检查日志保存在 %1
+PathCheckLogFailed=检查日志未能保存。
+PathCheckChooseAnother=换个位置
+PathCheckContinue=仍然安装
+PathCheckGoBack=安装尚未开始。请返回「选择目标位置」换个位置。
+
 [Tasks]
 Name: "startmenu"; Description: "创建开始菜单快捷方式"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; Flags: unchecked
@@ -82,10 +100,15 @@ Filename: "{app}\Sims4ModSieve.exe"; Flags: nowait; Check: IsApplicationUpdate; 
 [Code]
 const
   InvalidHandle = -1;
+  PathUnsafe = 10;
+  PathUnknown = 11;
+  UnsafePathMessage = '不能安装到游戏用户目录、Mods、Tray 或工具的数据目录。请选择其他位置。';
 var
   DataLock: THandle;
   UpdatingProcess: THandle;
   HelperReady: Boolean;
+  PathCheckNumber: Integer;
+  AcceptedInstallPath: String;
   RemoveUserData: Boolean;
   PreserveDisabledRecords: Boolean;
   DisabledFolders: TStringList;
@@ -176,17 +199,148 @@ begin
   HelperReady := True;
 end;
 
-function CheckSelectedPath: String;
+function WritePathCheckLog(const Lines: TArrayOfString): String;
+var
+  Data, Candidate: String;
+  Attributes: Cardinal;
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to GetArrayLength(Lines) - 1 do Log(Lines[I]);
+  Data := DataDirectory;
+  Attributes := GetFileAttributesW(Data);
+  if ((Attributes = $FFFFFFFF) or ((Attributes and $400) = 0)) and ForceDirectories(Data) then begin
+    Candidate := AddBackslash(Data) + 'installer-check.log';
+    Attributes := GetFileAttributesW(Candidate);
+    if ((Attributes = $FFFFFFFF) or ((Attributes and $400) = 0)) and
+      SaveStringsToUTF8File(Candidate, Lines, True) then begin
+      Result := Candidate;
+      exit;
+    end;
+  end;
+  Candidate := AddBackslash(ExtractFileDir(Data)) + 'Sims4ModSieve-installer-check.log';
+  Attributes := GetFileAttributesW(Candidate);
+  if ((Attributes = $FFFFFFFF) or ((Attributes and $400) = 0)) and
+    SaveStringsToUTF8File(Candidate, Lines, True) then Result := Candidate;
+end;
+
+function PathCheckArgument(Value: String): String;
+begin
+  Value := RemoveBackslashUnlessRoot(Value);
+  if (Length(Value) > 0) and (Value[Length(Value)] = '\') then Value := Value + '\';
+  Result := '"' + Value + '"';
+end;
+
+function CheckSelectedPath(const Stage, Target: String; ContinueIfUnknown: Boolean; var Reason, LogPath: String): Integer;
+var
+  Code, EntryCount, I: Integer;
+  Helper, Arguments, ReportPath, Documents, Detail, PathToCheck: String;
+  Lines: TArrayOfString;
+#ifdef TestDataDirectory
+  TestFailure: String;
+#endif
+begin
+  Result := PathUnknown;
+  Reason := '';
+  EntryCount := 0;
+  Documents := '';
+  try
+    Documents := DocumentsDirectory;
+  except
+    Detail := '无法取得 Windows 文档目录：' + GetExceptionMessage;
+  end;
+  PathCheckNumber := PathCheckNumber + 1;
+  ReportPath := ExpandConstant('{tmp}\sieve-install-path-') + IntToStr(PathCheckNumber) + '.ini';
+  Helper := ExpandConstant('{tmp}\Sims4ModSieve.exe');
+  PathToCheck := Target;
+#ifdef TestDataDirectory
+  TestFailure := ExpandConstant('{param:SIEVETESTPATHCHECK|}');
+  if (TestFailure = 'late-target') and (DataLock <> 0) then PathToCheck := 'relative';
+#endif
+  try
+#ifdef TestDataDirectory
+    if TestFailure = 'extract' then ExtractTemporaryFile('missing-test-helper.exe');
+#endif
+    PrepareHelper;
+  except
+    Reason := CustomMessage('PathCheckExtractFailed');
+    Detail := Detail + ' 解包失败：' + GetExceptionMessage;
+  end;
+  if Reason = '' then begin
+    Arguments := '--installer-check-path ' + PathCheckArgument(PathToCheck) + ' ' + PathCheckArgument(DataDirectory) +
+      ' ' + PathCheckArgument(Documents) + ' ' + PathCheckArgument(ReportPath);
+#ifdef TestDataDirectory
+    if TestFailure = 'start' then
+      Helper := ExpandConstant('{tmp}\missing-test-helper.exe');
+    if TestFailure = 'exit' then begin
+      Helper := ExpandConstant('{cmd}');
+      Arguments := '/D /C exit 23';
+    end;
+#endif
+    if Exec(Helper, Arguments, ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, Code) then begin
+      Detail := Detail + ' 检查程序退出码：' + IntToStr(Code);
+      if (Code = 0) or (Code = PathUnsafe) or (Code = PathUnknown) then begin
+        Result := Code;
+        EntryCount := StrToIntDef(GetIniString('PathCheck', 'EntryCount', '-1', ReportPath), -1);
+        if (EntryCount < 0) or (EntryCount > 32) then begin
+          Detail := Detail + '。未读到有效的检查报告';
+          EntryCount := 0;
+        end;
+        if Code = PathUnknown then Reason := GetIniString('PathCheck', 'Reason', CustomMessage('PathCheckNoReason'), ReportPath);
+      end else Reason := CustomMessage('PathCheckExited');
+    end else begin
+      if (Code = 225) or (Code = 226) or (Code = 1260) then Reason := CustomMessage('PathCheckBlocked')
+      else Reason := CustomMessage('PathCheckStartFailed');
+      Detail := Detail + ' 启动失败，Windows 错误 ' + IntToStr(Code) + '：' + SysErrorMessage(Code);
+    end;
+  end;
+  SetArrayLength(Lines, 4 + EntryCount);
+  Lines[0] := '';
+  Lines[1] := GetDateTimeString('yyyy-mm-dd hh:nn:ss', '-', ':') + ' ' + Stage + '，安装位置：' + Target;
+  Lines[2] := Trim(Detail);
+  for I := 0 to EntryCount - 1 do
+    Lines[3 + I] := GetIniString('PathCheck', 'Entry' + IntToStr(I), '', ReportPath);
+  case Result of
+    0: Lines[3 + EntryCount] := '路径检查通过';
+    PathUnsafe: Lines[3 + EntryCount] := '拦截：' + UnsafePathMessage;
+    PathUnknown: begin
+      Lines[3 + EntryCount] := '未完成检查：' + Reason;
+      if ContinueIfUnknown then Lines[3 + EntryCount] := Lines[3 + EntryCount] + ' 继续安装。';
+    end;
+  end;
+  LogPath := WritePathCheckLog(Lines);
+end;
+
+function SelectedPathBlockReason(const Stage: String): String;
 var
   Code: Integer;
+  ContinueIfUnknown: Boolean;
+  Target, Reason, LogPath, LogNote, Decision: String;
 begin
-  Result := '无法检查安装位置，请检查本机设置和目录权限后重试。';
-  PrepareHelper;
-  if not Exec(ExpandConstant('{tmp}\Sims4ModSieve.exe'), '--installer-check-path ' +
-    AddQuotes(ExpandConstant('{app}')) + ' ' + AddQuotes(DataDirectory) + ' ' + AddQuotes(DocumentsDirectory),
-    ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, Code) then exit;
-  if Code = 0 then Result := ''
-  else if Code = 10 then Result := '不能安装到游戏用户目录、Mods、Tray 或工具的数据目录。请选择其他位置。';
+  Result := '';
+  Target := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
+  ContinueIfUnknown := WizardSilent or IsApplicationUpdate or
+    (CompareText(Target, ExpandConstant('{#SieveDefaultDirectory}')) = 0) or
+    (CompareText(Target, AcceptedInstallPath) = 0);
+  Code := CheckSelectedPath(Stage, Target, ContinueIfUnknown, Reason, LogPath);
+  if Code = PathUnsafe then begin
+    Result := UnsafePathMessage;
+    exit;
+  end;
+  if (Code <> PathUnknown) or ContinueIfUnknown then exit;
+
+  if LogPath = '' then LogNote := CustomMessage('PathCheckLogFailed')
+  else LogNote := FmtMessage(CustomMessage('PathCheckLog'), [LogPath]);
+  if TaskDialogMsgBox(CustomMessage('PathCheckTitle'), Reason + #13#10#13#10 + LogNote, mbInformation,
+    MB_YESNO, [CustomMessage('PathCheckChooseAnother'), CustomMessage('PathCheckContinue')], 0) = IDNO then begin
+    AcceptedInstallPath := Target;
+    Decision := CustomMessage('PathCheckContinue');
+  end else begin
+    Result := CustomMessage('PathCheckGoBack');
+    Decision := CustomMessage('PathCheckChooseAnother');
+  end;
+  Log('用户选择：' + Decision);
+  if LogPath <> '' then SaveStringsToUTF8File(LogPath, ['用户选择：' + Decision], True);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -195,9 +349,9 @@ var
 begin
   Result := True;
   if CurPageID = wpSelectDir then begin
-    Reason := CheckSelectedPath;
+    Reason := SelectedPathBlockReason('选择目标位置');
     Result := Reason = '';
-    if not Result then SuppressibleMsgBox(Reason, mbError, MB_OK, IDOK);
+    if Reason = UnsafePathMessage then SuppressibleMsgBox(Reason, mbError, MB_OK, IDOK);
   end;
 end;
 
@@ -208,7 +362,7 @@ var
   Attempt: Integer;
   ProcessId: Integer;
 begin
-  Result := CheckSelectedPath;
+  Result := SelectedPathBlockReason('安装前');
   if Result <> '' then exit;
   Handoff := ExpandConstant('{param:SIEVEHANDOFF|}');
   if Handoff <> '' then begin
@@ -249,7 +403,8 @@ begin
     exit;
   end;
   // 取得运行锁后重查配置，覆盖向导打开期间的设置变化。
-  Result := CheckSelectedPath;
+  Result := SelectedPathBlockReason('取得运行锁后');
+  if Result = CustomMessage('PathCheckGoBack') then ReleaseDataLock;
 end;
 
 procedure DeinitializeSetup;
