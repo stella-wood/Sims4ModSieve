@@ -188,6 +188,7 @@ public sealed class UpdateCheckTests
         await model.CheckForUpdatesAsync(new UpdateCheckService(client));
         var window = new MainWindow(model) { Width = 1180, Height = 780 };
         WpfTestHost.ShowOffScreen(window);
+        if (status is UpdateCheckStatus.Available or UpdateCheckStatus.Failed) WpfTestHost.PlaceOnScreen(window);
         model.OpenSettingsCommand.Execute(null);
         model.SelectSettingsSectionCommand.Execute("about");
         await WpfTestHost.LayoutAsync(window);
@@ -195,18 +196,26 @@ public sealed class UpdateCheckTests
         var page = Descendants<SettingsPage>(window).Single();
         var check = (Button)page.FindName("CheckUpdateButton");
         var result = (TextBlock)page.FindName("UpdateCheckResultText");
+        var spinner = (FrameworkElement)check.Template.FindName("CheckUpdateSpinner", check);
+        var current = (FrameworkElement)check.Template.FindName("CurrentUpdateLabel", check);
         var release = (Button)page.FindName("OpenUpdateReleasePageButton");
+        var popup = (Popup)page.FindName("AboutUpdatePopup");
         var download = (Button)page.FindName("AboutUpdateDownloadButton");
         Assert.IsFalse(result.IsVisible);
         Assert.IsTrue(check.IsVisible && check.IsEnabled && check.IsTabStop);
         Assert.AreEqual("检查更新", AutomationProperties.GetName(check));
+        if (status == UpdateCheckStatus.UpToDate) SaveScreenshot(window, null, "about-update-idle.png");
         PressEnter(check);
+        await WpfTestHost.LayoutAsync(window);
         Assert.IsFalse(check.IsEnabled);
-        Assert.AreEqual("正在检查更新", result.Text);
+        Assert.IsTrue(spinner.IsVisible);
+        if (SystemParameters.ClientAreaAnimation) Assert.IsTrue(((RotateTransform)spinner.RenderTransform).HasAnimatedProperties);
+        Assert.AreEqual("检查中", AutomationProperties.GetName(check));
+        SaveScreenshot(window, null, "about-update-checking.png");
         await model.CheckUpdateCommand.ExecuteAsync();
         Assert.AreEqual(2, checks);
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        check.IsEnabledChanged += (_, _) => { if (check.IsEnabled) finished.TrySetResult(); };
+        spinner.IsVisibleChanged += (_, _) => { if (!spinner.IsVisible) finished.TrySetResult(); };
         manualResponse.SetResult(status switch
         {
             UpdateCheckStatus.Available => Redirect(Url),
@@ -215,24 +224,36 @@ public sealed class UpdateCheckTests
         });
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await WpfTestHost.LayoutAsync(window);
-        Assert.IsTrue(check.IsEnabled);
-        Assert.AreEqual(status switch
-        {
-            UpdateCheckStatus.Available => "发现新版本 v99.0.0",
-            UpdateCheckStatus.UpToDate => $"已是最新版本 v{model.ProductVersion}",
-            _ => "检查失败：GitHub 拒绝了请求",
-        }, result.Text);
+        Assert.AreEqual(status != UpdateCheckStatus.UpToDate, check.IsEnabled);
+        Assert.AreEqual(status == UpdateCheckStatus.UpToDate, current.IsVisible);
+        Assert.AreEqual(status == UpdateCheckStatus.UpToDate ? "已是最新版本" : "检查更新", AutomationProperties.GetName(check));
         Assert.AreEqual(status == UpdateCheckStatus.Failed, release.IsVisible);
+        Assert.AreEqual(status == UpdateCheckStatus.Failed, result.IsVisible);
+        Assert.AreEqual(status == UpdateCheckStatus.Available, popup.IsOpen);
         Assert.AreEqual(status == UpdateCheckStatus.Available, download.IsVisible);
-        SaveScreenshot(window, null, screenshot);
+        if (!release.IsVisible) SaveScreenshot(window, popup, screenshot);
 
         if (release.IsVisible)
         {
-            PressEnter(release);
+            var toast = (Border)page.FindName("AboutUpdateFailureToast");
+            Assert.AreEqual(SystemParameters.ClientAreaAnimation, toast.HasAnimatedProperties);
+            Assert.AreEqual("检查失败：GitHub 拒绝了请求", result.Text);
+            Assert.IsTrue(release.PointToScreen(new Point()).Y >= check.PointToScreen(new Point(0, check.ActualHeight)).Y);
+            await WpfTestHost.ClickAsync(release);
             Assert.AreEqual(UpdateCheckService.LatestReleaseUrl, opened);
+            SaveScreenshot(window, null, screenshot);
+            var hidden = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            result.IsVisibleChanged += (_, _) => { if (!result.IsVisible) hidden.TrySetResult(); };
+            await hidden.Task.WaitAsync(TimeSpan.FromSeconds(4));
+            Assert.IsFalse(toast.HasAnimatedProperties);
+            Assert.IsTrue(release.IsVisible);
         }
         if (download.IsVisible)
         {
+            var heading = (TextBlock)page.FindName("AboutAvailableUpdateText");
+            Assert.AreEqual("发现新版本 v99.0.0", heading.Text);
+            var panel = (FrameworkElement)popup.Child;
+            Assert.IsTrue(panel.PointToScreen(new Point(0, panel.ActualHeight)).Y <= check.PointToScreen(new Point()).Y);
             var restart = (Button)page.FindName("AboutUpdateRestartButton");
             var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             restart.IsVisibleChanged += (_, _) => { if (restart.IsVisible) ready.TrySetResult(); };
@@ -240,7 +261,54 @@ public sealed class UpdateCheckTests
             await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await WpfTestHost.LayoutAsync(window);
             Assert.IsTrue(restart.IsEnabled);
+            restart.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(restart)!, 0, Key.Escape)
+                { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+            Assert.IsFalse(popup.IsOpen);
+            PressEnter(check);
+            Assert.IsTrue(popup.IsOpen);
+            Assert.AreEqual(2, checks);
         }
+        model.GoHomeCommand.Execute(null);
+        model.OpenSettingsCommand.Execute(null);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual("检查更新", AutomationProperties.GetName(check));
+        Assert.IsTrue(check.IsEnabled);
+        Assert.IsFalse(current.IsVisible);
+        Assert.IsFalse(result.IsVisible);
+        Assert.IsFalse(release.IsVisible);
+        Assert.IsFalse(popup.IsOpen);
+        window.Close();
+    });
+
+    [TestMethod]
+    public Task LeavingAboutCancelsPendingUpdateCheck() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var requests = 0;
+        using var handler = new Handler(async (_, token) =>
+        {
+            if (++requests == 2) await Task.Delay(Timeout.Infinite, token);
+            return Redirect(UpdateCheckService.ReleasePrefix + "tag/v" + model.ProductVersion);
+        });
+        using var client = new HttpClient(handler);
+        await model.CheckForUpdatesAsync(new UpdateCheckService(client));
+        var window = new MainWindow(model);
+        WpfTestHost.ShowOffScreen(window);
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("about");
+        await WpfTestHost.LayoutAsync(window);
+
+        var pending = model.CheckUpdateCommand.ExecuteAsync();
+        Assert.IsTrue(model.IsManualUpdateChecking);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        model.SelectSettingsSectionCommand.Execute("about");
+        Assert.IsFalse(model.IsManualUpdateChecking);
+        Assert.IsTrue(model.CheckUpdateCommand.CanExecute(null));
+        await model.CheckUpdateCommand.ExecuteAsync();
+        Assert.IsTrue(model.IsManualUpdateCurrent);
+        Assert.AreEqual(3, requests);
         window.Close();
     });
 

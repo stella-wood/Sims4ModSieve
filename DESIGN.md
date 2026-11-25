@@ -52,6 +52,9 @@
 | `IncompleteBrush` | 同 `SubtleBrush` | 未分析 | `ConflictPage.xaml` 局部 `ConflictIncompleteBrush` |
 | `NoEffectBrush` | 待定 | 不影响 | 界面上还没有绿色结果 |
 | `WarningTextBrush` | `#9A6A32` | 「不可访问」这类提示文字 | 待迁移（9 处） |
+| `UpdateFailureToastBrush` | `#F8EFED` | 检查更新失败提示底色 | 关于页局部资源 |
+| `UpdateFailureToastTextBrush` | `#9F4944` | 检查更新失败提示文字 | 关于页局部资源 |
+| `UpdateReleaseLinkBrush` | `#8068A3` | 「打开发布页」文字 | 关于页局部资源 |
 
 `#F8EFED`、`#F8F3E8`、`#88774E`、`#FBF8FC` 各只出现一两次，迁移时逐个看是并入上面的令牌还是新增，新增要先写进本表。
 
@@ -103,6 +106,8 @@
 常规设置的「扫描性能」卡片沿用 `SettingsGroup`，缓存行使用 `SettingsButton` 和上下留白对应 `SpaceL` 的 `SettingsGroupRowInset`。`SettingsGroupDivider` 共用于游戏文件夹和扫描性能卡片，颜色为 `#ECE9E5`，高 1 DIP。
 
 `ClearCacheButtonStyle` 沿用设置按钮的底色、文字色、`RadiusM` 和悬停色 `SettingsButtonHoverBrush`（`#ECEAE7`）。进度和成功图标使用 `CacheClearIconSize`（12 DIP），与文字的间距使用 `CacheClearIconGap`（4 DIP）。成功勾号使用 `CacheClearCheckBrush`（`#39734F`）。
+
+「检查更新」沿用设置按钮和清除缓存的图标令牌。失败提示使用 `UpdateFailureToastInset`（左右 16、上 32 DIP）和 `UpdateFailureToastPadding`（横向 12、纵向 8 DIP）。关于页更新弹窗使用 `AboutUpdatePopupGap`（距按钮 6 DIP）、`AboutUpdatePopupPadding`（横向 18、纵向 14 DIP）、`AboutUpdatePopupVersionMargin`（上 8、下 16 DIP）、`AboutUpdatePopupRowMargin`（下 8 DIP）、`AboutUpdatePopupBorderThickness`（1 DIP）、`AboutUpdatePopupMaxWidth`（320 DIP）和 `AboutUpdatePopupProgressHeight`（4 DIP）。
 
 ## 圆角
 

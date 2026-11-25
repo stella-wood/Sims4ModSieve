@@ -18,6 +18,18 @@
         <sys:Double x:Key="CacheClearIconSize">12</sys:Double>
         <Thickness x:Key="CacheClearIconGap">0,0,4,0</Thickness>
         <SolidColorBrush x:Key="CacheClearCheckBrush" Color="#39734F" />
+        <SolidColorBrush x:Key="UpdateFailureToastBrush" Color="#F8EFED" />
+        <SolidColorBrush x:Key="UpdateFailureToastTextBrush" Color="#9F4944" />
+        <SolidColorBrush x:Key="UpdateReleaseLinkBrush" Color="#8068A3" />
+        <Thickness x:Key="UpdateFailureToastInset">16,32,16,0</Thickness>
+        <Thickness x:Key="UpdateFailureToastPadding">12,8</Thickness>
+        <sys:Double x:Key="AboutUpdatePopupGap">6</sys:Double>
+        <Thickness x:Key="AboutUpdatePopupPadding">18,14</Thickness>
+        <Thickness x:Key="AboutUpdatePopupVersionMargin">0,8,0,16</Thickness>
+        <Thickness x:Key="AboutUpdatePopupRowMargin">0,0,0,8</Thickness>
+        <Thickness x:Key="AboutUpdatePopupBorderThickness">1</Thickness>
+        <sys:Double x:Key="AboutUpdatePopupMaxWidth">320</sys:Double>
+        <sys:Double x:Key="AboutUpdatePopupProgressHeight">4</sys:Double>
         <Style x:Key="SettingsGroupDivider" TargetType="Border">
             <Setter Property="Background" Value="#ECE9E5" />
             <Setter Property="Height" Value="1" />
@@ -67,6 +79,67 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="CheckUpdateButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingsButton}">
+            <Setter Property="AutomationProperties.Name" Value="检查更新" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Host" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
+                                CornerRadius="{StaticResource RadiusM}">
+                            <Grid IsHitTestVisible="False">
+                                <TextBlock x:Name="CheckUpdateLabel" Text="检查更新" HorizontalAlignment="Center" />
+                                <StackPanel x:Name="CheckingUpdateLabel" Orientation="Horizontal" HorizontalAlignment="Center" Visibility="Collapsed">
+                                    <Grid x:Name="CheckUpdateSpinner" Width="{StaticResource CacheClearIconSize}" Height="{StaticResource CacheClearIconSize}"
+                                          Margin="{StaticResource CacheClearIconGap}" VerticalAlignment="Center"
+                                          RenderTransformOrigin="0.5,0.5" IsVisibleChanged="SettingsSpinner_IsVisibleChanged">
+                                        <Grid.RenderTransform><RotateTransform /></Grid.RenderTransform>
+                                        <Path Data="M 6,1 A 5,5 0 1 1 1,6" Stroke="{TemplateBinding Foreground}"
+                                              StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    </Grid>
+                                    <TextBlock Text="检查中" Foreground="{StaticResource MutedBrush}" />
+                                </StackPanel>
+                                <StackPanel x:Name="CurrentUpdateLabel" Orientation="Horizontal" HorizontalAlignment="Center" Visibility="Collapsed">
+                                    <Grid Width="{StaticResource CacheClearIconSize}" Height="{StaticResource CacheClearIconSize}"
+                                          Margin="{StaticResource CacheClearIconGap}" VerticalAlignment="Center">
+                                        <Path Data="M 1.5,6 L 4.5,9 L 10.5,3" Stroke="{StaticResource CacheClearCheckBrush}"
+                                              StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                    </Grid>
+                                    <TextBlock Text="已是最新版本" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="IsEnabled" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Host" Property="Background" Value="{StaticResource SettingsButtonHoverBrush}" />
+                            </MultiTrigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Host" Property="Background" Value="{StaticResource SettingsButtonHoverBrush}" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsManualUpdateChecking}" Value="True">
+                                <Setter TargetName="CheckUpdateLabel" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="CheckingUpdateLabel" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsManualUpdateCurrent}" Value="True">
+                                <Setter TargetName="CheckUpdateLabel" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="CurrentUpdateLabel" Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsManualUpdateChecking}" Value="True">
+                    <Setter Property="AutomationProperties.Name" Value="检查中" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsManualUpdateCurrent}" Value="True">
+                    <Setter Property="AutomationProperties.Name" Value="已是最新版本" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="ClearCacheButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingsButton}">
             <Setter Property="AutomationProperties.Name" Value="清除缓存" />
             <Setter Property="Template">
@@ -82,7 +155,7 @@
                                                 VerticalAlignment="Center" Visibility="Hidden">
                                         <Grid x:Name="ClearSpinner" Width="{StaticResource CacheClearIconSize}" Height="{StaticResource CacheClearIconSize}"
                                               Margin="{StaticResource CacheClearIconGap}" VerticalAlignment="Center"
-                                              RenderTransformOrigin="0.5,0.5" IsVisibleChanged="CacheClearSpinner_IsVisibleChanged">
+                                              RenderTransformOrigin="0.5,0.5" IsVisibleChanged="SettingsSpinner_IsVisibleChanged">
                                             <Grid.RenderTransform><RotateTransform /></Grid.RenderTransform>
                                             <Path Data="M 6,1 A 5,5 0 1 1 1,6" Stroke="{TemplateBinding Foreground}"
                                                   StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
@@ -617,12 +690,55 @@
                     <TextBlock Text="可附上诊断信息，帮助定位问题" Style="{StaticResource SettingsDescription}" />
                     <Button Content="前往 GitHub 反馈" Style="{StaticResource SettingsTextButton}" HorizontalAlignment="Left" Margin="0,12,0,0" Command="{Binding OpenFeedbackCommand}" />
                 </StackPanel>
-                <StackPanel Visibility="{Binding IsAboutSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel x:Name="AboutContent" IsVisibleChanged="AboutContent_IsVisibleChanged"
+                            Visibility="{Binding IsAboutSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="关于" Style="{StaticResource SettingsTitle}" />
                     <DockPanel>
-                        <Button x:Name="CheckUpdateButton" DockPanel.Dock="Right" VerticalAlignment="Center"
-                                Content="检查更新" AutomationProperties.Name="检查更新" Command="{Binding CheckUpdateCommand}"
-                                Style="{StaticResource SettingsButton}" />
+                        <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center">
+                            <Button x:Name="CheckUpdateButton" Command="{Binding CheckUpdateCommand}"
+                                    Style="{StaticResource CheckUpdateButtonStyle}" />
+                            <Popup x:Name="AboutUpdatePopup" PlacementTarget="{Binding ElementName=CheckUpdateButton}"
+                                   IsOpen="{Binding ShowManualUpdate, Mode=OneWay}" Placement="Custom" StaysOpen="False"
+                                   AllowsTransparency="True" Opened="AboutUpdatePopup_Opened">
+                                <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="{StaticResource AboutUpdatePopupBorderThickness}"
+                                        CornerRadius="{StaticResource RadiusM}"
+                                        Padding="{StaticResource AboutUpdatePopupPadding}" PreviewKeyDown="AboutUpdatePopup_PreviewKeyDown">
+                                    <StackPanel MaxWidth="{StaticResource AboutUpdatePopupMaxWidth}">
+                                        <TextBlock x:Name="AboutAvailableUpdateText" Text="{Binding AvailableUpdateText}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding CurrentVersionText}" Foreground="{StaticResource MutedBrush}"
+                                                   Margin="{StaticResource AboutUpdatePopupVersionMargin}" />
+                                        <ProgressBar Value="{Binding UpdateDownloadProgress, Mode=OneWay}" Height="{StaticResource AboutUpdatePopupProgressHeight}"
+                                                     Margin="{StaticResource AboutUpdatePopupRowMargin}" Foreground="{StaticResource AccentBrush}"
+                                                     Visibility="{Binding IsUpdateDownloading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <TextBlock Text="{Binding UpdateStatusText}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                                                   Margin="{StaticResource AboutUpdatePopupRowMargin}" />
+                                        <Button x:Name="AboutUpdateDownloadButton" Content="下载更新" HorizontalAlignment="Left"
+                                                Foreground="{StaticResource HoverTextBrush}" Background="Transparent" Cursor="Hand"
+                                                Style="{StaticResource BareIconButtonStyle}" Command="{Binding DownloadUpdateCommand}"
+                                                Visibility="{Binding ShowUpdateDownload, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Button x:Name="AboutUpdateRestartButton" Content="重启并更新" HorizontalAlignment="Left"
+                                                Style="{StaticResource SecondaryButtonStyle}" Command="{Binding RestartUpdateCommand}"
+                                                Visibility="{Binding ShowUpdateRestart, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Button x:Name="AboutUpdateCancelButton" Content="取消下载" HorizontalAlignment="Left"
+                                                Style="{StaticResource GhostButtonStyle}" Command="{Binding CancelUpdateDownloadCommand}"
+                                                Visibility="{Binding IsUpdateDownloading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
+                            <Canvas>
+                                <Button x:Name="OpenUpdateReleasePageButton" Width="{Binding ActualWidth, ElementName=CheckUpdateButton}"
+                                        Content="打开发布页"
+                                        AutomationProperties.Name="打开发布页" Command="{Binding OpenUpdateReleasePageCommand}"
+                                        Visibility="{Binding ShowUpdateReleasePage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource SettingsTextButton}">
+                                            <Setter Property="Foreground" Value="{StaticResource UpdateReleaseLinkBrush}" />
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </Canvas>
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Image Source="{StaticResource BrandMarkImage}" Width="38" Height="48" Margin="0,0,18,0" IsHitTestVisible="False" />
                             <StackPanel VerticalAlignment="Center">
@@ -631,33 +747,6 @@
                             </StackPanel>
                         </StackPanel>
                     </DockPanel>
-                    <StackPanel>
-                        <StackPanel.Resources>
-                            <Style x:Key="AboutUpdateStatus" TargetType="TextBlock" BasedOn="{StaticResource SettingsDescription}">
-                                <Style.Triggers>
-                                    <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </StackPanel.Resources>
-                        <TextBlock x:Name="UpdateCheckResultText" Text="{Binding ManualUpdateCheckText}"
-                                   Style="{StaticResource AboutUpdateStatus}" AutomationProperties.LiveSetting="Polite" />
-                        <Button x:Name="OpenUpdateReleasePageButton" Content="打开发布页" AutomationProperties.Name="打开发布页"
-                                HorizontalAlignment="Left" Style="{StaticResource SettingsTextButton}"
-                                Visibility="{Binding ShowUpdateReleasePage, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                Command="{Binding OpenUpdateReleasePageCommand}" />
-                        <StackPanel Visibility="{Binding ShowManualUpdate, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <TextBlock Text="{Binding ManualUpdateDownloadText}" Style="{StaticResource AboutUpdateStatus}" />
-                            <Button x:Name="AboutUpdateDownloadButton" Content="下载更新" HorizontalAlignment="Left"
-                                    Style="{StaticResource SettingsTextButton}" Command="{Binding DownloadUpdateCommand}"
-                                    Visibility="{Binding ShowUpdateDownload, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            <Button Content="取消下载" HorizontalAlignment="Left" Style="{StaticResource SettingsTextButton}"
-                                    Command="{Binding CancelUpdateDownloadCommand}"
-                                    Visibility="{Binding IsUpdateDownloading, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            <Button x:Name="AboutUpdateRestartButton" Content="重启并更新" HorizontalAlignment="Left"
-                                    Style="{StaticResource SettingsTextButton}" Command="{Binding RestartUpdateCommand}"
-                                    Visibility="{Binding ShowUpdateRestart, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        </StackPanel>
-                    </StackPanel>
                     <TextBlock Text="《模拟人生 4》Mod 整理工具" TextWrapping="Wrap" Style="{StaticResource SettingsDescription}" Margin="0,20,0,26" />
                     <Grid Margin="0,0,0,12">
                         <TextBlock Text="项目主页" Style="{StaticResource SettingsLabel}" VerticalAlignment="Center" />
@@ -680,5 +769,13 @@
                 </StackPanel>
             </Grid>
         </ScrollViewer>
+        <Border x:Name="AboutUpdateFailureToast" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Top"
+                MaxWidth="{StaticResource AboutUpdatePopupMaxWidth}" Visibility="Collapsed" IsHitTestVisible="False"
+                Margin="{StaticResource UpdateFailureToastInset}" Padding="{StaticResource UpdateFailureToastPadding}"
+                CornerRadius="{StaticResource RadiusM}" Background="{StaticResource UpdateFailureToastBrush}">
+            <TextBlock x:Name="UpdateCheckResultText" Text="{Binding ManualUpdateCheckText, NotifyOnTargetUpdated=True}"
+                       TargetUpdated="AboutUpdateFailureToast_TargetUpdated" Foreground="{StaticResource UpdateFailureToastTextBrush}"
+                       TextWrapping="Wrap" TextAlignment="Center" AutomationProperties.LiveSetting="Polite" />
+        </Border>
     </Grid>
 </UserControl>
