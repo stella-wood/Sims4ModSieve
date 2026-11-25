@@ -1,6 +1,7 @@
 using Sims4ModSieve.Core.Settings;
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -16,6 +17,93 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class LinkTargetScanTests
 {
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task LinkedModsRegistersExternalFilesWithoutChangingContentScanScope(bool conflict) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new LinkFiles();
+        var directory = Directory.CreateDirectory(Path.Combine(files.Target, "Nested")).FullName;
+        var disabled = Path.Combine(directory, "linked.packageOFF");
+        File.WriteAllText(disabled, "temporary mod");
+        var model = files.Model();
+
+        if (conflict)
+        {
+            model.OpenConflictCommand.Execute(null);
+            await model.StartConflictScanCommand.ExecuteAsync();
+            Assert.AreEqual(files.Target, model.ConflictRangeProblems.Single().LinkTarget);
+        }
+        else
+        {
+            await model.StartScanCommand.ExecuteAsync();
+            Assert.AreEqual(files.Target, model.DuplicateLinkTarget);
+        }
+
+        var row = model.DisabledFiles.Files.Single();
+        Assert.IsTrue(row.IsExternalDisabled);
+        Assert.AreEqual(Path.Combine(directory, "linked.package"), row.Path);
+        Assert.AreEqual("temporary mod", File.ReadAllText(disabled));
+        Assert.AreEqual("", model.FileManagementFeedback);
+        if (conflict) await model.StartConflictScanCommand.ExecuteAsync();
+        else await model.StartScanCommand.ExecuteAsync();
+        Assert.AreEqual(row.Id, model.DisabledFiles.Files.Single().Id);
+        Assert.AreEqual("", model.FileManagementFeedback);
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CliListsResolvedExternalFileAndRestoresThroughLinkedMods(bool selectRealDirectory)
+    {
+        using var files = new LinkFiles();
+        var path = Path.Combine(files.Target, "linked.ts4script.off");
+        File.WriteAllText(path, "temporary script");
+        var settings = new DuplicateSettingsStore(Path.Combine(files.Root, "state"));
+        settings.Save(new DuplicateSettings(files.Link, []));
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var source = selectRealDirectory ? files.Target : files.Link;
+        await Sims4ModSieve.Cli.CliCommands.RunAsync(["scan-scripts", "--source", source, "--json", "-", "--no-cache"], settings, output, error);
+        Assert.IsFalse(error.ToString().Contains("外部禁用记录", StringComparison.Ordinal), error.ToString());
+        output.GetStringBuilder().Clear();
+        var listed = await Sims4ModSieve.Cli.CliCommands.RunAsync(["list-disabled", "--json", "-"], settings, output, error);
+        Assert.AreEqual(0, listed);
+        var record = JsonNode.Parse(output.ToString())!["files"]!.AsArray().Single()!;
+        Assert.AreEqual(path, record["path"]!.GetValue<string>());
+        Assert.AreEqual("external", record["source"]!.GetValue<string>());
+
+        output.GetStringBuilder().Clear();
+        var alias = Path.Combine(files.Link, "linked.ts4script.off");
+        var restored = await Sims4ModSieve.Cli.CliCommands.RunAsync(["restore", "--path", alias, "--apply", "--json", "-"], settings, output, error);
+        Assert.AreEqual(0, restored, output.ToString());
+        Assert.AreEqual("temporary script", File.ReadAllText(path[..^4]));
+        Assert.IsFalse(File.Exists(path));
+    }
+
+    [TestMethod]
+    public void ExternalRegistrationResolvesLinkedAncestorAndRejectsProtectedOrUnavailableTargets()
+    {
+        using var files = new LinkFiles();
+        var assets = Directory.CreateDirectory(Path.Combine(files.Target, "Assets")).FullName;
+        var nested = Directory.CreateDirectory(Path.Combine(files.Target, "Nested")).FullName;
+        var protectedPath = Path.Combine(assets, "protected.package.off");
+        var physical = Path.Combine(nested, "same.package.off");
+        File.WriteAllText(protectedPath, "protected");
+        File.WriteAllText(physical, "external");
+        var service = new ModDisableService(Path.Combine(files.Root, "state"), files.Target);
+        var result = service.RegisterExternal([Path.Combine(files.Link, "Assets", "protected.package.off"),
+            Path.Combine(files.Link, "Nested", "same.package.off"), physical])!;
+        Assert.AreEqual(physical, result.Records.Single().DisabledPath);
+        StringAssert.Contains(result.Failures.Single().Message, "程序自身的文件");
+
+        Directory.Move(nested, nested + "-offline");
+        var unavailable = service.RegisterExternal([Path.Combine(files.Link, "Nested", "new.package.off")])!;
+        Assert.AreEqual(result.Records.Single(), unavailable.Records.Single());
+        Assert.IsNotEmpty(unavailable.Failures);
+        Assert.AreEqual("protected", File.ReadAllText(protectedPath));
+    }
+
     [TestMethod]
     [DataRow(false, false)]
     [DataRow(false, true)]

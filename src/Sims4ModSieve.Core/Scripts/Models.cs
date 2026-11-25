@@ -29,6 +29,7 @@ public sealed record ScriptModuleScanRequest(
     ScriptModuleLimits? Limits = null)
 {
     public ScanCoverage? Coverage { get; init; }
+    public Action<string>? ObserveFile { get; init; }
 }
 
 public enum ScriptModuleScanPhase

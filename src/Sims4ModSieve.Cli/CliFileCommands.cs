@@ -18,7 +18,7 @@ internal sealed class CliFileCommands(string dataDirectory, IRecycleBinAdapter b
     [
         ("list-disabled", "", "查看已禁用文件", "list-disabled --json -"),
         ("disable", "--path <文件> [--path <文件> …] [--apply]", "禁用文件，改名加 .off", "disable --path \"D:\\Mods\\mod.package\""),
-        ("restore", "(--path <原路径或 .off 路径> … | --all) [--apply]", "恢复已禁用文件", "restore --all"),
+        ("restore", "(--path <原路径或禁用路径> … | --all) [--apply]", "恢复已禁用文件", "restore --all"),
         ("recycle", "--path <文件> … [--apply --expect-sha256 <哈希> …]", "移入 Windows 回收站", "recycle --path \"D:\\Mods\\mod.package\""),
         ("undo", "[--apply]", "撤回最近一批删除", "undo --json -"),
     ];
@@ -101,7 +101,12 @@ internal sealed class CliFileCommands(string dataDirectory, IRecycleBinAdapter b
             target.Path, target.Size, target.Destination, target.Status, target.Messages,
         }).ToArray();
         if (options.JsonOutput)
-            await output.WriteLineAsync(JsonSerializer.Serialize(new { SchemaVersion = 1, Command = command, options.Apply, Files = report, Errors = errors }, Json));
+        {
+            object files = command == "list-disabled"
+                ? targets.Select(target => new { target.Path, target.Size, target.Destination, target.Status, target.Messages, target.Source }).ToArray()
+                : report;
+            await output.WriteLineAsync(JsonSerializer.Serialize(new { SchemaVersion = 1, Command = command, options.Apply, Files = files, Errors = errors }, Json));
+        }
         else
         {
             if (report.Length > 0 && command != "list-disabled")
@@ -136,7 +141,7 @@ internal sealed class CliFileCommands(string dataDirectory, IRecycleBinAdapter b
         if (command == "list-disabled")
         {
             targets.AddRange(state.Records.Select(record => new Target(record.DisabledPath)
-                { Size = record.Size, Destination = record.OriginalPath, Status = "listed" }));
+                { Size = record.Size, Destination = record.OriginalPath, Status = "listed", Source = record.Source }));
             ReportFailures(targets, state.Failures, errors);
             return;
         }
@@ -148,13 +153,23 @@ internal sealed class CliFileCommands(string dataDirectory, IRecycleBinAdapter b
             targets.Add(target);
             try
             {
-                target.Path = ValidatePath(target.Path, allowDisabled: command == "restore");
+                target.Path = ValidatePath(target.Path, allowDisabled: command == "restore", checkDirectoryLinks: command != "restore");
                 if (command == "restore")
                 {
-                    var original = HasDisabledSuffix(target.Path) ? target.Path[..^4] : target.Path;
-                    if (!records.TryGetValue(original, out var record)) throw new IOException("找不到匹配的禁用记录");
-                    target.Path = ValidatePath(record.DisabledPath, allowDisabled: true);
-                    target.Destination = ValidatePath(record.OriginalPath);
+                    ModDisableService.TryGetExternalOriginalPath(target.Path, out var original);
+                    var matchedPath = target.Path;
+                    if (!records.TryGetValue(original ?? target.Path, out var record))
+                    {
+                        matchedPath = ModDisableService.ResolveFileParent(target.Path);
+                        ModDisableService.TryGetExternalOriginalPath(matchedPath, out original);
+                        if (!records.TryGetValue(original ?? matchedPath, out record) || !record.IsExternal)
+                            throw new IOException("找不到匹配的禁用记录");
+                    }
+                    if (original is not null && !Paths.Equals(matchedPath, record.DisabledPath))
+                        throw new IOException("找不到匹配的禁用记录");
+                    if (record.IsExternal) disabled.EnsureExternalPaths(record);
+                    target.Path = ValidatePath(record.DisabledPath, allowDisabled: true, checkDirectoryLinks: !record.IsExternal);
+                    target.Destination = ValidatePath(record.OriginalPath, checkDirectoryLinks: !record.IsExternal);
                     target.RecordId = record.Id;
                     target.Stamp = ReadStamp(target);
                     if (target.Stamp != new FileStamp(record.Size, record.LastWriteTimeUtc, record.Identity))
@@ -237,7 +252,7 @@ internal sealed class CliFileCommands(string dataDirectory, IRecycleBinAdapter b
 
     private FileActionService CreateFileActions() => new(bin, metadata, history, disabled, applicationDirectory);
 
-    private string ValidatePath(string value, bool allowDisabled = false)
+    private string ValidatePath(string value, bool allowDisabled = false, bool checkDirectoryLinks = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(value));
@@ -246,12 +261,13 @@ internal sealed class CliFileCommands(string dataDirectory, IRecycleBinAdapter b
         if (path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal)
             || tail.Contains(':') || tail.Split('\\').Any(part => part.EndsWith('.') || part.EndsWith(' ')))
             throw new IOException("不支持设备路径、备用数据流或含有末尾空格或点的路径");
-        if (!ModDisableService.IsModPath(allowDisabled && HasDisabledSuffix(path) ? path[..^4] : path))
+        if (!ModDisableService.IsModPath(path) && !(allowDisabled && ModDisableService.TryGetExternalOriginalPath(path, out _)))
             throw new IOException("只能操作 .package 或 .ts4script 文件；.off 请用 restore");
         // A junction in a parent could redirect the operation outside the checked path.
-        for (var parent = Path.GetDirectoryName(path); parent is not null; parent = Path.GetDirectoryName(parent))
-            if ((File.GetAttributes(parent) & FileAttributes.ReparsePoint) != 0)
-                throw new IOException("不支持经过目录链接的文件操作");
+        if (checkDirectoryLinks)
+            for (var parent = Path.GetDirectoryName(path); parent is not null; parent = Path.GetDirectoryName(parent))
+                if ((File.GetAttributes(parent) & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("不支持经过目录链接的文件操作");
         return path;
     }
 
@@ -295,8 +311,6 @@ internal sealed class CliFileCommands(string dataDirectory, IRecycleBinAdapter b
         }
     }
 
-    private static bool HasDisabledSuffix(string path) => path.EndsWith(".off", StringComparison.OrdinalIgnoreCase);
-
     private static string RedactPath(string path)
     {
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -316,6 +330,7 @@ internal sealed class CliFileCommands(string dataDirectory, IRecycleBinAdapter b
         public List<string> Messages { get; } = [];
         public FileStamp Stamp { get; set; }
         public string? RecordId { get; set; }
+        public string? Source { get; set; }
         public string? Hash { get; set; }
 
         public void Reject(string message)

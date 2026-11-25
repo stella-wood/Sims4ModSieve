@@ -124,6 +124,8 @@
 
 设置页局部资源：`ScanConcurrencyInfoSize` = 11（矢量图标），`ScanConcurrencyInfoTargetSize` = 24（键盘和鼠标宿主），`ScanConcurrencyInfoGap` = 左侧 2。颜色使用 `MutedBrush`，图标上沿与标题文字对齐。
 
+「外部禁用」标签用 `AccentSoftBrush` 浅紫底、`AccentBrush` 文字和 `RadiusS`。`ExternalDisabledLabelSize` 为 11，`ExternalDisabledLabelGap` 为左侧 6，`ExternalDisabledLabelPadding` 为左右各 6。
+
 ## 结果搜索
 
 - `ResultPathSearch` 收起宽 30 DIP。展开时重复检测高 30、宽 164–260 DIP，冲突检测高 24、宽 144–236 DIP。两端圆角为高度的一半，右侧间距分别为 8 和 4 DIP。

@@ -62,7 +62,7 @@ public sealed class ScriptModuleScanner(IFileSystemAccess fileSystem, string? ap
                     ScriptModuleScanPhase.Discovering,
                     message,
                     DiscoveredArchiveCount: count)),
-            cancellationToken, request.Coverage);
+            cancellationToken, request.Coverage, request.ObserveFile);
 
         var bytes = discoveryTiming is null ? 0 : discovered.Values.Sum(file => file.DiscoveredStamp.Length);
         if (discoveryTiming is not null)

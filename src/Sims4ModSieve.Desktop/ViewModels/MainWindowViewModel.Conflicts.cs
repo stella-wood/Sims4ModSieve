@@ -352,7 +352,7 @@ public sealed partial class MainWindowViewModel
     private IReadOnlyList<ConflictResultRow> PublishConflictRows(IReadOnlyList<ConflictResultRow> rows, int parentCount,
         Action<IReadOnlyList<ConflictResultRow>>? restoreViewport = null)
     {
-        var disabledByPath = disabledRecords.ToDictionary(record => record.OriginalPath, StringComparer.OrdinalIgnoreCase);
+        var disabledByPath = SieveDisabledRecords.ToDictionary(record => record.OriginalPath, StringComparer.OrdinalIgnoreCase);
         bool IsDisabled(ConflictFile? file) => file?.Stamp is { } stamp
             && disabledByPath.TryGetValue(file.Path, out var record)
             && record.Size == stamp.Length && record.LastWriteTimeUtc == stamp.LastWriteTimeUtc
@@ -519,10 +519,13 @@ public sealed partial class MainWindowViewModel
 
         var storage = new WindowsStorageProfile();
         var scanOptions = new ConflictScanOptions(DuplicateHashConcurrency, storage);
-        var duplicateInput = new DuplicateRunInput(sources.Select(source => new DuplicateRunSource(source.Path, source.Label ?? source.Path)).ToArray(), ModsRoot)
+        var modsRoot = ModsRoot;
+        var externalDisabledPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var duplicateInput = new DuplicateRunInput(sources.Select(source => new DuplicateRunSource(source.Path, source.Label ?? source.Path)).ToArray(), modsRoot)
         {
             HashConcurrency = scanOptions.Concurrency,
             StorageProfile = storage,
+            ObserveFile = modsRoot is null ? null : path => ObserveExternalDisabled(path, externalDisabledPaths),
         };
         var duplicateProgress = new Progress<DuplicateScanProgress>(p => Report(3, "正在核对文件内容…", p.CompletedItems, p.TotalItems));
         var initialView = conflictView;
@@ -627,6 +630,7 @@ public sealed partial class MainWindowViewModel
                 : string.Empty;
             RefreshConflictVisibility();
             timingOutcome = "完成";
+            await RegisterExternalDisabledAsync(modsRoot, sources.Select(source => source.Path), externalDisabledPaths, cancellation.Token);
             await CommitScanCacheAsync(cache, cancellation.Token);
         }
         catch (OperationCanceledException)

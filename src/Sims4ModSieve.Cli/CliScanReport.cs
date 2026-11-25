@@ -78,7 +78,8 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
         + $" · 读取问题 {issues.Count} 项"
         + (Complete ? "" : $" · {OutputOmissionsText}");
 
-    public async Task RunAsync(IReadOnlyList<ScanSource> scanSources, string? modsRoot, IReadOnlyCollection<string> extensions)
+    public async Task RunAsync(IReadOnlyList<ScanSource> scanSources, string? modsRoot, IReadOnlyCollection<string> extensions,
+        Action<string>? observeFile = null)
     {
         startedAtUtc = DateTime.UtcNow;
         var duplicateScanner = DuplicateScanner.CreateDefault(hasher);
@@ -89,6 +90,7 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             StorageProfile = snapshot.StorageProfile,
             ConcurrencyDecided = snapshot.ConcurrencyDecided,
             Coverage = coverage,
+            ObserveFile = observeFile,
         };
         if (command == "scan-duplicates")
         {
@@ -113,7 +115,11 @@ internal sealed class CliScanReport(string command, string sourceOrigin, string?
             }
 
             var scripts = await new ScriptModuleScanner(fileSystem)
-                .ScanAsync(new(scanSources) { Coverage = command == "scan-scripts" ? coverage : null });
+                .ScanAsync(new(scanSources)
+                {
+                    Coverage = command == "scan-scripts" ? coverage : null,
+                    ObserveFile = command == "scan-scripts" ? observeFile : null,
+                });
             sources = (packages?.Sources ?? []).Concat(scripts.Sources)
                 .DistinctBy(source => source.Path, StringComparer.OrdinalIgnoreCase).ToArray();
             discoveredFileCount = scripts.DiscoveredArchiveCount + (packages?.DiscoveredPackageCount ?? 0);

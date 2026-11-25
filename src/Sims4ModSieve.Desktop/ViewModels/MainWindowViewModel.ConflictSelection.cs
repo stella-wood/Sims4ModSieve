@@ -149,7 +149,7 @@ public sealed partial class MainWindowViewModel
         var remaining = await RefreshMissingResultMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
         var candidates = selected.Where(candidate => remaining.Contains(candidate.Path)).Select(candidate =>
         {
-            var disabled = disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, candidate.Path)
+            var disabled = SieveDisabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, candidate.Path)
                 && record.Size == candidate.ExpectedSize && record.LastWriteTimeUtc == candidate.ExpectedLastWriteTimeUtc
                 && record.Identity is not null && record.Identity == candidate.ExpectedIdentity);
             return disabled is null ? candidate : candidate with
@@ -208,7 +208,7 @@ public sealed partial class MainWindowViewModel
         var remaining = await RefreshMissingResultMembersAsync(selected.Select(candidate => candidate.Path), fromConflicts: true);
         if (remaining.Count == 0) return;
         var candidates = selected.Where(candidate => remaining.Contains(candidate.Path))
-            .Where(candidate => !disabledRecords.Any(record => PathRulesEqual(record.OriginalPath, candidate.Path)
+            .Where(candidate => !SieveDisabledRecords.Any(record => PathRulesEqual(record.OriginalPath, candidate.Path)
                 && record.Size == candidate.ExpectedSize && record.LastWriteTimeUtc == candidate.ExpectedLastWriteTimeUtc
                 && record.Identity is not null && record.Identity == candidate.ExpectedIdentity))
             .ToArray();

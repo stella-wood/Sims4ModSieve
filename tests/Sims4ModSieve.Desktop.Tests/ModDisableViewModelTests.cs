@@ -1,6 +1,7 @@
 using Sims4ModSieve.Core.Settings;
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
 using System.Windows.Controls;
@@ -20,6 +21,105 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class ModDisableViewModelTests
 {
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task DesktopScanRegistersExternalRowsWithAccessibleLabelAndExistingActions(bool conflict) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var mods = files.Folder("Mods");
+        files.Store.Save(new(mods, []));
+        var external = NewFile(mods, "SpringGarden.packageOFF");
+        var other = NewFile(mods, "TownStories.ts4script.off");
+        var original = NewFile(mods, "WeekendMarket.package");
+        var unrelated = NewFile(mods, "notes.off");
+        var service = new ModDisableService(files.Store.DataDirectory);
+        var actions = new FileActionService(new TemporaryRecycleBin(files.Folder("Recycle")),
+            new PhysicalFileMetadataAccess(), new FileManagementStore(files.Store.DataDirectory), service);
+        service.Disable([original]);
+        var model = Model(files, actions: actions, disableService: service);
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        WpfTestHost.ShowOffScreen(window);
+        try
+        {
+            model.OpenSettingsCommand.Execute("files");
+            await model.FileManagementRefreshTask;
+            Assert.AreEqual(original, model.DisabledFiles.Files.Single().Path);
+            if (conflict)
+            {
+                model.OpenConflictCommand.Execute(null);
+                await model.StartConflictScanCommand.ExecuteAsync();
+            }
+            else await model.StartScanCommand.ExecuteAsync();
+            Assert.HasCount(3, model.DisabledFiles.Files);
+            Assert.AreEqual(original, model.DisabledFiles.Files[0].Path);
+            Assert.HasCount(2, model.DisabledFiles.Files.Where(row => row.IsExternalDisabled).ToArray());
+            Assert.IsTrue(File.Exists(unrelated));
+
+            model.OpenSettingsCommand.Execute("files");
+            await model.FileManagementRefreshTask;
+            await WpfTestHost.LayoutAsync(window);
+            var label = Descendants<TextBlock>(window).Where(text => text.IsVisible && text.Text == "外部禁用").ToArray();
+            Assert.HasCount(2, label);
+            foreach (var text in label)
+            {
+                var peer = new TextBlockAutomationPeer(text);
+                Assert.AreEqual("外部禁用", peer.GetName());
+                StringAssert.Contains(peer.GetHelpText(), "工具的记录可能对不上");
+                Assert.AreEqual(AutomationProperties.GetHelpText(text), ((Border)text.Parent).ToolTip as string);
+            }
+            if (!conflict) SaveReview(window, "issue-82-external-disabled.png");
+
+            var deleted = model.DisabledFiles.Files.Single(row => row.Name == "SpringGarden.package");
+            await deleted.DeleteCommand!.ExecuteAsync();
+            Assert.IsFalse(File.Exists(external));
+            Assert.IsFalse(File.Exists(deleted.Path));
+            await model.RecentDeletedFiles.Files.Single().RestoreCommand!.ExecuteAsync();
+            Assert.IsTrue(File.Exists(external));
+            Assert.IsTrue(model.DisabledFiles.Files.Single(row => row.Id == deleted.Id).IsExternalDisabled);
+
+            model.DisabledFiles.ToggleMultiSelectCommand.Execute(null);
+            foreach (var row in model.DisabledFiles.Files.Where(row => row.IsExternalDisabled)) row.IsSelected = true;
+            await model.DisabledFiles.BulkRestoreCommand!.ExecuteAsync();
+            Assert.IsTrue(File.Exists(deleted.Path));
+            Assert.IsTrue(File.Exists(other[..^4]));
+            Assert.IsFalse(File.Exists(external));
+            Assert.IsFalse(File.Exists(other));
+            Assert.AreEqual(original, model.DisabledFiles.Files.Single().Path);
+        }
+        finally { window.Close(); }
+    });
+
+    [TestMethod]
+    public Task ExternalDisabledDeletionKeepsActiveConflictResultAtSameOriginalPath() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var mods = files.Folder("Mods");
+        files.Store.Save(new(mods, []));
+        var original = NewFile(mods, "active.package");
+        NewFile(mods, "other.package");
+        var disabled = NewFile(mods, "active.packageOFF");
+        var service = new ModDisableService(files.Store.DataDirectory);
+        var actions = new FileActionService(new TemporaryRecycleBin(files.Folder("Recycle")),
+            new PhysicalFileMetadataAccess(), new FileManagementStore(files.Store.DataDirectory), service);
+        var model = Model(files, actions: actions, disableService: service);
+        await model.StartScanCommand.ExecuteAsync();
+        var report = await new DuplicateRunService(DuplicateScanner.CreateDefault()).RunAsync(new([new(mods, "Mods")], mods));
+        var session = V2([], [], report);
+        session.ToggleExpanded(session.Cards.Single().Key);
+        await SetSessionAsync(model, session, "all");
+        var row = model.DisabledFiles.Files.Single();
+        Assert.IsTrue(row.IsExternalDisabled);
+        Assert.IsFalse(model.ConflictRows.Single(item => item.File?.Path == original).IsDisabled);
+
+        await row.DeleteCommand!.ExecuteAsync();
+
+        Assert.IsFalse(File.Exists(disabled));
+        Assert.IsTrue(File.Exists(original));
+        Assert.IsFalse(model.ConflictRows.Single(item => item.File?.Path == original).IsDisabled);
+        Assert.HasCount(2, model.Groups.Single().Files);
+    });
+
     [TestMethod]
     public Task CancelledDisableAndRestoreKeepFilesAndLedgerUnchanged() => WpfTestHost.RunAsync(async () =>
     {
