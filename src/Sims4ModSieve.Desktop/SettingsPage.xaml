@@ -619,11 +619,43 @@
                 </StackPanel>
                 <StackPanel Visibility="{Binding IsAboutSettings, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock Text="关于" Style="{StaticResource SettingsTitle}" />
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="{StaticResource BrandMarkImage}" Width="38" Height="48" Margin="0,0,18,0" IsHitTestVisible="False" />
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="Sims 4 Mod Sieve" Style="{StaticResource BrandTextStyle}" FontSize="22" />
-                            <TextBlock Text="{Binding ProductVersion, StringFormat=版本 {0}}" Style="{StaticResource SettingsDescription}" />
+                    <DockPanel>
+                        <Button x:Name="CheckUpdateButton" DockPanel.Dock="Right" VerticalAlignment="Center"
+                                Content="检查更新" AutomationProperties.Name="检查更新" Command="{Binding CheckUpdateCommand}"
+                                Style="{StaticResource SettingsButton}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource BrandMarkImage}" Width="38" Height="48" Margin="0,0,18,0" IsHitTestVisible="False" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Sims 4 Mod Sieve" Style="{StaticResource BrandTextStyle}" FontSize="22" />
+                                <TextBlock Text="{Binding ProductVersion, StringFormat=版本 {0}}" Style="{StaticResource SettingsDescription}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </DockPanel>
+                    <StackPanel>
+                        <StackPanel.Resources>
+                            <Style x:Key="AboutUpdateStatus" TargetType="TextBlock" BasedOn="{StaticResource SettingsDescription}">
+                                <Style.Triggers>
+                                    <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Resources>
+                        <TextBlock x:Name="UpdateCheckResultText" Text="{Binding ManualUpdateCheckText}"
+                                   Style="{StaticResource AboutUpdateStatus}" AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="OpenUpdateReleasePageButton" Content="打开发布页" AutomationProperties.Name="打开发布页"
+                                HorizontalAlignment="Left" Style="{StaticResource SettingsTextButton}"
+                                Visibility="{Binding ShowUpdateReleasePage, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                Command="{Binding OpenUpdateReleasePageCommand}" />
+                        <StackPanel Visibility="{Binding ShowManualUpdate, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="{Binding ManualUpdateDownloadText}" Style="{StaticResource AboutUpdateStatus}" />
+                            <Button x:Name="AboutUpdateDownloadButton" Content="下载更新" HorizontalAlignment="Left"
+                                    Style="{StaticResource SettingsTextButton}" Command="{Binding DownloadUpdateCommand}"
+                                    Visibility="{Binding ShowUpdateDownload, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <Button Content="取消下载" HorizontalAlignment="Left" Style="{StaticResource SettingsTextButton}"
+                                    Command="{Binding CancelUpdateDownloadCommand}"
+                                    Visibility="{Binding IsUpdateDownloading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <Button x:Name="AboutUpdateRestartButton" Content="重启并更新" HorizontalAlignment="Left"
+                                    Style="{StaticResource SettingsTextButton}" Command="{Binding RestartUpdateCommand}"
+                                    Visibility="{Binding ShowUpdateRestart, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </StackPanel>
                     </StackPanel>
                     <TextBlock Text="《模拟人生 4》Mod 整理工具" TextWrapping="Wrap" Style="{StaticResource SettingsDescription}" Margin="0,20,0,26" />
