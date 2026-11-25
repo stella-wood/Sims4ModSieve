@@ -525,7 +525,7 @@ public sealed partial class MainWindowViewModel
         {
             HashConcurrency = scanOptions.Concurrency,
             StorageProfile = storage,
-            ObserveFile = modsRoot is null ? null : path => ObserveExternalDisabled(path, modsRoot, externalDisabledPaths),
+            ObserveFile = modsRoot is null ? null : path => ObserveExternalDisabled(path, externalDisabledPaths),
         };
         var duplicateProgress = new Progress<DuplicateScanProgress>(p => Report(3, "正在核对文件内容…", p.CompletedItems, p.TotalItems));
         var initialView = conflictView;

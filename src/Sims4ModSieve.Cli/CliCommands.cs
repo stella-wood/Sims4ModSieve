@@ -129,7 +129,7 @@ internal static class CliCommands
         var externalDisabledPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         Action<string>? observeFile = registrationRoot is null ? null : path =>
         {
-            if (ModDisableService.IsExternalDisabledInMods(path, registrationRoot)) externalDisabledPaths.Add(path);
+            if (ModDisableService.TryGetExternalOriginalPath(path, out _)) externalDisabledPaths.Add(path);
         };
         var sources = paths.Select((path, index) => new ScanSource($"source-{index + 1}", path, Order: index, Label: path)).ToArray();
         var ignored = IgnoredFileRecord.Read(settings.DataDirectory)
@@ -190,22 +190,20 @@ internal static class CliCommands
         await summary.WriteLineAsync(scan.SummaryText);
         if (options.JsonPath is null && (options.HasOutputFilters || options.HideIgnored))
             await error.WriteLineAsync(scan.OutputOmissionsText);
-        if (hasSources)
+        if (hasSources) cache?.Commit();
+        if (registrationRoot is not null)
         {
-            cache?.Commit();
-            if (registrationRoot is not null && ModDisableService.ScansMods(registrationRoot, scan.Sources.Select(source => source.Path)))
+            try
             {
-                try
-                {
-                    var registered = new ModDisableService(settings.DataDirectory, applicationDirectory).RegisterExternal(externalDisabledPaths);
-                    foreach (var failure in registered?.Failures ?? [])
-                        await error.WriteLineAsync($"外部禁用记录 · {failure.Path} · {failure.Message}");
-                }
-                catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException
-                    or System.Text.Json.JsonException or System.Security.SecurityException)
-                {
-                    await error.WriteLineAsync("无法登记外部禁用文件：" + exception.Message);
-                }
+                var registered = new ModDisableService(settings.DataDirectory, applicationDirectory)
+                    .RegisterExternalInMods(registrationRoot, paths, externalDisabledPaths);
+                foreach (var failure in registered?.Failures ?? [])
+                    await error.WriteLineAsync($"外部禁用记录 · {failure.Path} · {failure.Message}");
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException
+                or System.Text.Json.JsonException or System.Security.SecurityException)
+            {
+                await error.WriteLineAsync("无法登记外部禁用文件：" + exception.Message);
             }
         }
         return hasSources ? scan.ExitCode : 2;

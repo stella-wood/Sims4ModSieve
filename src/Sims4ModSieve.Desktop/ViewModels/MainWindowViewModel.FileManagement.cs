@@ -240,18 +240,18 @@ public sealed partial class MainWindowViewModel
         new(action, exception => FileManagementFeedback = exception.Message,
             () => !IsBusy && (canExecute?.Invoke() ?? true));
 
-    private static void ObserveExternalDisabled(string path, string modsRoot, HashSet<string> paths)
+    private static void ObserveExternalDisabled(string path, HashSet<string> paths)
     {
-        if (ModDisableService.IsExternalDisabledInMods(path, modsRoot)) paths.Add(path);
+        if (ModDisableService.TryGetExternalOriginalPath(path, out _)) paths.Add(path);
     }
 
     private async Task RegisterExternalDisabledAsync(string? modsRoot, IEnumerable<string> scanSources, HashSet<string> paths,
         CancellationToken cancellationToken)
     {
-        if (modsRoot is null || cancellationToken.IsCancellationRequested || !ModDisableService.ScansMods(modsRoot, scanSources)) return;
+        if (modsRoot is null || cancellationToken.IsCancellationRequested) return;
         try
         {
-            var result = await Task.Run(() => modDisableService.RegisterExternal(paths, cancellationToken), cancellationToken);
+            var result = await Task.Run(() => modDisableService.RegisterExternalInMods(modsRoot, scanSources, paths, cancellationToken), cancellationToken);
             if (result is not null) PublishDisabledMods(result);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }

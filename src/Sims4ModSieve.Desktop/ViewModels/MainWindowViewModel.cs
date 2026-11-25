@@ -515,7 +515,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             HashConcurrency = DuplicateHashConcurrency,
             StorageProfile = storage,
-            ObserveFile = modsRoot is null ? null : path => ObserveExternalDisabled(path, modsRoot, externalDisabledPaths),
+            ObserveFile = modsRoot is null ? null : path => ObserveExternalDisabled(path, externalDisabledPaths),
         };
 
         using var performance = ScanPerformance.Start("重复检测");
@@ -597,7 +597,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     + (firstIssue.Code.EndsWith("-failed", StringComparison.Ordinal) ? "无法读取：" : "未完成检查：")
                     + $"{firstIssue.Path}\n{firstIssue.Message}";
             timingOutcome = "完成";
-            await RegisterExternalDisabledAsync(modsRoot, report.Sources.Select(source => source.Path),
+            await RegisterExternalDisabledAsync(modsRoot, enabledSources.Select(source => source.Path),
                 externalDisabledPaths, scanCancellation.Token);
             await CommitScanCacheAsync(cache, scanCancellation.Token);
         }
