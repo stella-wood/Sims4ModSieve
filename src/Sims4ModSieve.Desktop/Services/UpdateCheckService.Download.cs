@@ -16,12 +16,17 @@ public sealed partial class UpdateCheckService
     public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{C897868A-0997-463F-B377-A68A616F831E}_is1";
 
     private static bool IsAssetUrl(string url, string tag, string name) => Uri.TryCreate(url, UriKind.Absolute, out var uri)
-        && uri.AbsoluteUri == ReleasePrefix + "download/" + Uri.EscapeDataString(tag) + "/" + Uri.EscapeDataString(name);
+        && uri.AbsoluteUri == GetAssetUrl(tag, name);
 
     public async Task<DownloadedUpdate> DownloadAsync(AvailableUpdate update, IProgress<double>? progress = null,
         CancellationToken cancellationToken = default, string? temporaryRoot = null)
     {
         var installer = update.Installer ?? throw new InvalidDataException("此版本缺少安装包或校验信息，请稍后重试");
+        var name = GetInstallerName(update.Version);
+        if (GetReleaseTag(update.ReleaseUrl) is not { } tag || !SemVersionPattern().IsMatch(tag) || tag.TrimStart('v') != update.Version
+            || !IsAssetUrl(installer.DownloadUrl, tag, name) || !IsAssetUrl(installer.ChecksumUrl, tag, name + ".sha256"))
+            throw new InvalidDataException("更新下载来源无效");
+
         var directory = Path.Combine(temporaryRoot ?? Path.GetTempPath(), DownloadDirectoryPrefix + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "setup.exe");
@@ -39,9 +44,11 @@ public sealed partial class UpdateCheckService
                 throw new InvalidDataException("更新校验信息无效，请稍后重试");
 
             using var response = await GetAssetAsync(installer.DownloadUrl, timeout.Token).ConfigureAwait(false);
-            if (installer.Size is <= 0 or > MaximumInstallerBytes
-                || response.Content.Headers.ContentLength is long length && length != installer.Size)
+            var contentLength = response.Content.Headers.ContentLength;
+            var expectedSize = installer.Size ?? contentLength;
+            if (expectedSize is <= 0 or > MaximumInstallerBytes || contentLength is long length && length != expectedSize)
                 throw new InvalidDataException("更新包大小不匹配，请重新下载");
+            var maximumSize = expectedSize ?? MaximumInstallerBytes;
             await using (var input = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false))
             await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
             {
@@ -52,12 +59,13 @@ public sealed partial class UpdateCheckService
                 while ((count = await input.ReadAsync(buffer, timeout.Token).ConfigureAwait(false)) != 0)
                 {
                     received += count;
-                    if (received > installer.Size) throw new InvalidDataException("更新包大小不匹配，请重新下载");
+                    if (received > maximumSize) throw new InvalidDataException("更新包大小不匹配，请重新下载");
                     sha256.AppendData(buffer, 0, count);
                     await output.WriteAsync(buffer.AsMemory(0, count), timeout.Token).ConfigureAwait(false);
-                    progress?.Report(100d * received / installer.Size);
+                    if (expectedSize is long total) progress?.Report(100d * received / total);
                 }
-                if (received != installer.Size || !Convert.ToHexString(sha256.GetHashAndReset()).Equals(hash, StringComparison.OrdinalIgnoreCase))
+                if (received == 0 || expectedSize is long expected && received != expected
+                    || !Convert.ToHexString(sha256.GetHashAndReset()).Equals(hash, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("更新包校验失败，请重新下载");
             }
             timeout.Token.ThrowIfCancellationRequested();

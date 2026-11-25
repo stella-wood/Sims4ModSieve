@@ -12,6 +12,9 @@ public sealed partial class MainWindowViewModel
     private AvailableUpdate? availableUpdate;
     private UpdateCheckService? updateService;
     private bool updateCheckStarted;
+    private bool isCheckingForUpdates;
+    private UpdateCheckResult? manualUpdateCheckResult;
+    private CancellationTokenSource? manualUpdateCheckCancellation;
     private UpdateState updateState;
     private DownloadedUpdate? downloadedUpdate;
     private CancellationTokenSource? updateDownloadCancellation;
@@ -28,6 +31,14 @@ public sealed partial class MainWindowViewModel
     public bool IsUpdateDownloading => updateState == UpdateState.Downloading;
     public bool ShowUpdateDownload => downloadedUpdate is null && !IsUpdateDownloading;
     public bool ShowUpdateRestart => downloadedUpdate is not null;
+    public bool IsManualUpdateChecking { get; private set; }
+    public bool IsManualUpdateCurrent => manualUpdateCheckResult?.Status == UpdateCheckStatus.UpToDate;
+    public string ManualUpdateCheckText => manualUpdateCheckResult?.FailureReason is { } reason
+        ? $"检查失败：{reason}" : string.Empty;
+    public bool ShowManualUpdate => manualUpdateCheckResult?.Status == UpdateCheckStatus.Available && HasAvailableUpdate;
+    public bool ShowUpdateReleasePage => manualUpdateCheckResult?.Status == UpdateCheckStatus.Failed;
+    public AsyncRelayCommand CheckUpdateCommand { get; private set; } = null!;
+    public RelayCommand OpenUpdateReleasePageCommand { get; private set; } = null!;
     public AsyncRelayCommand DownloadUpdateCommand { get; private set; } = null!;
     public AsyncRelayCommand RestartUpdateCommand { get; private set; } = null!;
     public RelayCommand CancelUpdateDownloadCommand { get; private set; } = null!;
@@ -36,8 +47,15 @@ public sealed partial class MainWindowViewModel
     private void InitializeUpdates(Func<DownloadedUpdate, Task>? start)
     {
         startUpdate = start ?? (download => UpdateCheckService.StartInstallerAsync(download, AppContext.BaseDirectory, updateLifetime.Token));
+        CheckUpdateCommand = new(CheckManualUpdateAsync,
+            _ => SetManualUpdateCheckResult(new(UpdateCheckStatus.Failed, FailureReason: "暂时无法检查，请重试")),
+            () => updateService is not null && !isCheckingForUpdates && !IsManualUpdateCurrent
+                && updateState is UpdateState.Available or UpdateState.Downloading or UpdateState.Ready);
+        OpenUpdateReleasePageCommand = new(_ => RunSettingsOperation(
+            () => settingsSupport.OpenReleasePage(UpdateCheckService.LatestReleaseUrl),
+            message => AboutFeedback = message, string.Empty, "无法打开发布页"));
         DownloadUpdateCommand = new(DownloadUpdateAsync, ShowUpdateError,
-            () => availableUpdate is not null && updateState == UpdateState.Available);
+            () => availableUpdate is not null && !isCheckingForUpdates && updateState == UpdateState.Available);
         RestartUpdateCommand = new(RestartUpdateAsync, ShowUpdateError, () => updateState == UpdateState.Ready);
         CancelUpdateDownloadCommand = new(_ => updateDownloadCancellation?.Cancel(), _ => IsUpdateDownloading);
     }
@@ -47,11 +65,67 @@ public sealed partial class MainWindowViewModel
         if (updateCheckStarted) return;
         updateCheckStarted = true;
         updateService = service;
-        availableUpdate = await Task.Run(() => service.CheckAsync(ProductVersion, cancellationToken));
-        if (cancellationToken.IsCancellationRequested) availableUpdate = null;
-        OnPropertyChanged(nameof(AvailableUpdateText));
-        OnPropertyChanged(nameof(HasAvailableUpdate));
+        await CheckForUpdatesCoreAsync(manual: false, cancellationToken);
+    }
+
+    private Task CheckManualUpdateAsync()
+    {
+        if (updateState == UpdateState.Available) return CheckForUpdatesCoreAsync(manual: true);
+        SetManualUpdateCheckResult(null);
+        SetManualUpdateCheckResult(new(UpdateCheckStatus.Available, availableUpdate));
+        return Task.CompletedTask;
+    }
+
+    internal void ResetManualUpdateCheck()
+    {
+        manualUpdateCheckCancellation?.Cancel();
+        SetManualUpdateCheckResult(null);
+    }
+
+    private async Task CheckForUpdatesCoreAsync(bool manual, CancellationToken cancellationToken = default)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(updateLifetime.Token, cancellationToken);
+        isCheckingForUpdates = true;
+        if (manual)
+        {
+            manualUpdateCheckCancellation = cancellation;
+            SetManualUpdateCheckResult(null, checking: true);
+        }
         NotifyUpdateState();
+        try
+        {
+            var result = await updateService!.CheckAsync(ProductVersion, cancellation.Token);
+            if (cancellation.IsCancellationRequested) return;
+            if (result.Status != UpdateCheckStatus.Failed && availableUpdate != result.Update)
+            {
+                availableUpdate = result.Update;
+                updateStatusText = string.Empty;
+                OnPropertyChanged(nameof(AvailableUpdateText));
+                OnPropertyChanged(nameof(HasAvailableUpdate));
+            }
+            if (manual) SetManualUpdateCheckResult(result);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            isCheckingForUpdates = false;
+            if (manual) manualUpdateCheckCancellation = null;
+            NotifyUpdateState();
+        }
+    }
+
+    private void SetManualUpdateCheckResult(UpdateCheckResult? result, bool checking = false)
+    {
+        manualUpdateCheckResult = result;
+        IsManualUpdateChecking = checking;
+        OnPropertyChanged(nameof(IsManualUpdateChecking));
+        OnPropertyChanged(nameof(IsManualUpdateCurrent));
+        OnPropertyChanged(nameof(ManualUpdateCheckText));
+        OnPropertyChanged(nameof(ShowManualUpdate));
+        OnPropertyChanged(nameof(ShowUpdateReleasePage));
+        CheckUpdateCommand.RaiseCanExecuteChanged();
     }
 
     private async Task DownloadUpdateAsync()
@@ -158,6 +232,7 @@ public sealed partial class MainWindowViewModel
     {
         foreach (var name in new[] { nameof(UpdateStatusText), nameof(UpdateDownloadProgress), nameof(IsUpdateDownloading),
             nameof(ShowUpdateDownload), nameof(ShowUpdateRestart) }) OnPropertyChanged(name);
+        CheckUpdateCommand.RaiseCanExecuteChanged();
         DownloadUpdateCommand.RaiseCanExecuteChanged();
         RestartUpdateCommand.RaiseCanExecuteChanged();
         CancelUpdateDownloadCommand.RaiseCanExecuteChanged();

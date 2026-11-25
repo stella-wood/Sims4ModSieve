@@ -2,7 +2,6 @@ using System.Net;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Security.Cryptography;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -23,26 +22,36 @@ public sealed class UpdateDownloadTests
     private static readonly string Hash = Convert.ToHexString(SHA256.HashData(Payload));
 
     [TestMethod]
-    [DataRow("valid", true)]
-    [DataRow("missing-hash", false)]
-    [DataRow("wrong-version", false)]
-    [DataRow("other-repo", false)]
-    [DataRow("duplicate", false)]
-    [DataRow("oversized", false)]
-    public async Task InstallerAssetsMustMatchReleaseAndRepository(string scenario, bool expected)
+    [DataRow("wrong-tag")]
+    [DataRow("wrong-version")]
+    [DataRow("other-repo")]
+    [DataRow("wrong-checksum")]
+    public async Task InstallerAssetsMustMatchReleaseAndRepository(string scenario)
     {
-        using var handler = new Handler((_, _) => Task.FromResult(JsonResponse(ReleaseJson(scenario))));
+        using var files = new Scenario();
+        var update = Update();
+        var installer = update.Installer!;
+        update = update with { Installer = scenario switch
+        {
+            "wrong-tag" => installer with { DownloadUrl = AssetUrl.Replace("/v99.0.0/", "/v98.0.0/", StringComparison.Ordinal) },
+            "wrong-version" => installer with { DownloadUrl = AssetUrl.Replace(Name, "Sims4ModSieve-98.0.0-setup.exe", StringComparison.Ordinal) },
+            "other-repo" => installer with { DownloadUrl = AssetUrl.Replace("stella-wood", "someone", StringComparison.Ordinal) },
+            _ => installer with { ChecksumUrl = AssetUrl },
+        } };
+        using var handler = new Handler((_, _) => throw new AssertFailedException("Invalid asset URLs must not reach the network."));
         using var client = new HttpClient(handler);
-        var update = await new UpdateCheckService(client).CheckAsync("0.1.0");
-        Assert.IsNotNull(update);
-        Assert.AreEqual(expected, update.Installer is not null);
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => new UpdateCheckService(client).DownloadAsync(update, temporaryRoot: files.Root));
+        Assert.IsFalse(Directory.EnumerateFileSystemEntries(files.Root).Any());
     }
 
     [TestMethod]
     [DataRow("valid")]
+    [DataRow("no-length")]
     [DataRow("hash")]
     [DataRow("truncated")]
     [DataRow("oversized")]
+    [DataRow("oversized-header")]
+    [DataRow("missing-checksum")]
     [DataRow("invalid-checksum")]
     [DataRow("redirect")]
     [DataRow("offline")]
@@ -52,7 +61,8 @@ public sealed class UpdateDownloadTests
         using var handler = new Handler((request, _) =>
         {
             if (request.RequestUri!.AbsoluteUri.EndsWith(".sha256", StringComparison.Ordinal))
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(scenario == "invalid-checksum" ? "invalid" : Hash) });
+                return Task.FromResult(scenario == "missing-checksum" ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                    : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(scenario == "invalid-checksum" ? "invalid" : Hash) });
             if (scenario == "offline") throw new HttpRequestException();
             if (scenario == "redirect") return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Redirect)
                 { Headers = { Location = new Uri("https://example.com/setup.exe") } });
@@ -61,12 +71,15 @@ public sealed class UpdateDownloadTests
                 "hash" => new byte[Payload.Length], "truncated" => Payload[..^1],
                 "oversized" => Payload.Concat(new byte[1]).ToArray(), _ => Payload,
             };
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) });
+            HttpContent content = scenario == "no-length" ? new StreamContent(new UnseekableStream(payload)) : new ByteArrayContent(payload);
+            if (scenario is "truncated" or "oversized") content.Headers.ContentLength = Payload.Length;
+            if (scenario == "oversized-header") content.Headers.ContentLength = UpdateCheckService.MaximumInstallerBytes + 1;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         });
         using var client = new HttpClient(handler);
         var service = new UpdateCheckService(client);
         var download = service.DownloadAsync(Update(), temporaryRoot: files.Root);
-        if (scenario == "valid")
+        if (scenario is "valid" or "no-length")
         {
             var result = await download;
             CollectionAssert.AreEqual(Payload, File.ReadAllBytes(result.Path));
@@ -79,6 +92,23 @@ public sealed class UpdateDownloadTests
             await Assert.ThrowsAsync<Exception>(async () => await download);
             Assert.IsFalse(Directory.EnumerateFileSystemEntries(files.Root).Any());
         }
+    }
+
+    [TestMethod]
+    public async Task DownloadWithoutLengthStopsAtSizeLimitAndDiscardsPartialFile()
+    {
+        using var files = new Scenario();
+        using var input = new UnseekableStream([], UpdateCheckService.MaximumInstallerBytes + 1024 * 1024);
+        using var handler = new Handler((request, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = request.RequestUri!.AbsoluteUri.EndsWith(".sha256", StringComparison.Ordinal)
+                ? new StringContent(Hash) : new StreamContent(input),
+        }));
+        using var client = new HttpClient(handler);
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => new UpdateCheckService(client).DownloadAsync(Update(), temporaryRoot: files.Root));
+        Assert.IsGreaterThan(UpdateCheckService.MaximumInstallerBytes, input.BytesRead);
+        Assert.IsLessThan(UpdateCheckService.MaximumInstallerBytes + 1024 * 1024, input.BytesRead);
+        Assert.IsFalse(Directory.EnumerateFileSystemEntries(files.Root).Any());
     }
 
     [TestMethod]
@@ -223,7 +253,7 @@ public sealed class UpdateDownloadTests
         model.UpdateRestartRequested += (_, _) => closed = true;
         using var handler = new Handler((request, _) =>
         {
-            if (request.RequestUri!.AbsolutePath.EndsWith("latest", StringComparison.Ordinal)) return Task.FromResult(JsonResponse(ReleaseJson()));
+            if (request.RequestUri!.AbsoluteUri == UpdateCheckService.LatestReleaseUrl) return Task.FromResult(ReleaseResponse());
             if (request.RequestUri.AbsoluteUri.EndsWith(".sha256", StringComparison.Ordinal))
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Hash) });
             if (fail) throw new HttpRequestException();
@@ -254,7 +284,7 @@ public sealed class UpdateDownloadTests
         using var files = new Scenario();
         var reading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var handler = new Handler((request, _) => Task.FromResult(
-            request.RequestUri!.AbsolutePath.EndsWith("latest", StringComparison.Ordinal) ? JsonResponse(ReleaseJson())
+            request.RequestUri!.AbsoluteUri == UpdateCheckService.LatestReleaseUrl ? ReleaseResponse()
             : new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = request.RequestUri.AbsoluteUri.EndsWith(".sha256", StringComparison.Ordinal)
@@ -309,29 +339,21 @@ public sealed class UpdateDownloadTests
     }
 
     private static AvailableUpdate Update() => new(Version, UpdateCheckService.ReleasePrefix + "tag/v" + Version,
-        new(AssetUrl, AssetUrl + ".sha256", Payload.Length));
+        new(AssetUrl, AssetUrl + ".sha256"));
 
-    internal static string ReleaseJson(string scenario = "valid")
+    private static HttpResponseMessage ReleaseResponse() => new(HttpStatusCode.Found)
     {
-        var assets = new List<object>();
-        var url = scenario == "other-repo" ? AssetUrl.Replace("stella-wood", "someone", StringComparison.Ordinal) : AssetUrl;
-        var name = scenario == "wrong-version" ? "Sims4ModSieve-98.0.0-setup.exe" : Name;
-        var size = scenario == "oversized" ? UpdateCheckService.MaximumInstallerBytes + 1 : Payload.Length;
-        assets.Add(new { name, browser_download_url = url, size });
-        if (scenario == "duplicate") assets.Add(new { name, browser_download_url = url, size });
-        if (scenario != "missing-hash") assets.Add(new { name = Name + ".sha256", browser_download_url = AssetUrl + ".sha256", size = 65 });
-        return JsonSerializer.Serialize(new { tag_name = "v" + Version, html_url = UpdateCheckService.ReleasePrefix + "tag/v" + Version, assets });
-    }
+        Headers = { Location = new Uri(UpdateCheckService.ReleasePrefix + "tag/v" + Version) },
+    };
 
     internal static HttpMessageHandler ValidHandler() => new Handler((request, _) => Task.FromResult(
-        request.RequestUri!.AbsolutePath.EndsWith("latest", StringComparison.Ordinal) ? JsonResponse(ReleaseJson())
+        request.RequestUri!.AbsoluteUri == UpdateCheckService.LatestReleaseUrl ? ReleaseResponse()
         : new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = request.RequestUri.AbsoluteUri.EndsWith(".sha256", StringComparison.Ordinal)
                 ? new StringContent(Hash) : new ByteArrayContent(Payload),
         }));
 
-    private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK) { Content = new StringContent(json) };
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => send(request, cancellationToken);
@@ -346,6 +368,22 @@ public sealed class UpdateDownloadTests
             reading.TrySetResult();
             await Task.Delay(Timeout.Infinite, cancellationToken);
             return 0;
+        }
+    }
+
+    private sealed class UnseekableStream(byte[] payload, long? generatedLength = null) : MemoryStream(payload)
+    {
+        public override bool CanSeek => false;
+        public long BytesRead { get; private set; }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (generatedLength is not long length) return base.ReadAsync(buffer, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            var count = (int)Math.Min(length - BytesRead, buffer.Length);
+            buffer.Span[..count].Clear();
+            BytesRead += count;
+            return ValueTask.FromResult(count);
         }
     }
 

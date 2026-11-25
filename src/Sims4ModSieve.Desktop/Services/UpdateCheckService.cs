@@ -1,64 +1,72 @@
+using System.Net;
 using System.Net.Http;
 using System.Numerics;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Sims4ModSieve.Desktop.Services;
 
-public sealed record UpdateInstaller(string DownloadUrl, string ChecksumUrl, long Size);
+public sealed record UpdateInstaller(string DownloadUrl, string ChecksumUrl, long? Size = null);
 public sealed record AvailableUpdate(string Version, string ReleaseUrl, UpdateInstaller? Installer = null);
+public enum UpdateCheckStatus { Available, UpToDate, Failed }
+public sealed record UpdateCheckResult(UpdateCheckStatus Status, AvailableUpdate? Update = null, string? FailureReason = null);
 
 public sealed partial class UpdateCheckService(HttpClient client)
 {
     public const string ReleasePrefix = "https://github.com/stella-wood/Sims4ModSieve/releases/";
+    public const string LatestReleaseUrl = ReleasePrefix + "latest";
+    private const string ReleaseTagPrefix = ReleasePrefix + "tag/";
 
     public static bool IsReleaseUrl(string url) => url.StartsWith(ReleasePrefix, StringComparison.Ordinal)
         && Uri.TryCreate(url, UriKind.Absolute, out _);
 
-    public async Task<AvailableUpdate?> CheckAsync(string currentVersion, CancellationToken cancellationToken = default)
+    public async Task<UpdateCheckResult> CheckAsync(string currentVersion, CancellationToken cancellationToken = default)
     {
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(10));
-            using var request = new HttpRequestMessage(HttpMethod.Get,
-                "https://api.github.com/repos/stella-wood/Sims4ModSieve/releases/latest");
+            using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseUrl);
             request.Headers.UserAgent.ParseAdd("Sims4ModSieve/" + currentVersion);
-            using var response = await client.SendAsync(request, timeout.Token).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) return null;
-            await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
-            using var json = await JsonDocument.ParseAsync(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
-            var tag = json.RootElement.GetProperty("tag_name").GetString();
-            var url = json.RootElement.GetProperty("html_url").GetString();
-            if (tag is null || url is null || !IsReleaseUrl(url)
-                || !TryCompareVersions(tag, currentVersion, out var comparison) || comparison <= 0) return null;
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
+                .ConfigureAwait(false);
             timeout.Token.ThrowIfCancellationRequested();
-            var version = tag.TrimStart('v');
-            var name = $"Sims4ModSieve-{version}-setup.exe";
-            UpdateInstaller? installer = null;
-            if (json.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            if (response.StatusCode != HttpStatusCode.Found)
             {
-                var matches = assets.EnumerateArray().Where(asset => asset.TryGetProperty("name", out var assetName)
-                    && assetName.ValueKind == JsonValueKind.String && assetName.GetString() == name).ToArray();
-                var hashes = assets.EnumerateArray().Where(asset => asset.TryGetProperty("name", out var assetName)
-                    && assetName.ValueKind == JsonValueKind.String && assetName.GetString() == name + ".sha256").ToArray();
-                if (matches.Length == 1 && hashes.Length == 1
-                    && matches[0].TryGetProperty("size", out var size) && size.TryGetInt64(out var bytes)
-                    && bytes is > 0 and <= MaximumInstallerBytes
-                    && matches[0].TryGetProperty("browser_download_url", out var download)
-                    && hashes[0].TryGetProperty("browser_download_url", out var checksum)
-                    && download.ValueKind == JsonValueKind.String && checksum.ValueKind == JsonValueKind.String
-                    && IsAssetUrl(download.GetString()!, tag, name) && IsAssetUrl(checksum.GetString()!, tag, name + ".sha256"))
-                    installer = new(download.GetString()!, checksum.GetString()!, bytes);
+                return new(UpdateCheckStatus.Failed, FailureReason: response.StatusCode switch
+                {
+                    HttpStatusCode.Forbidden => "GitHub 拒绝了请求",
+                    HttpStatusCode.TooManyRequests => "GitHub 请求过于频繁",
+                    _ => $"GitHub 返回了意外响应（{(int)response.StatusCode}）",
+                });
             }
-            return new AvailableUpdate(version, url, installer);
+
+            if (response.Headers.Location is not { } location || !Uri.TryCreate(request.RequestUri!, location, out var release)
+                || GetReleaseTag(release.AbsoluteUri) is not { } tag || !TryCompareVersions(tag, currentVersion, out var comparison))
+                return new(UpdateCheckStatus.Failed, FailureReason: "无法读取发布页版本");
+
+            if (comparison <= 0) return new(UpdateCheckStatus.UpToDate);
+
+            var version = tag.TrimStart('v');
+            var url = GetAssetUrl(tag, GetInstallerName(version));
+            return new(UpdateCheckStatus.Available, new(version, release.AbsoluteUri, new(url, url + ".sha256")));
         }
-        catch (Exception)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // 更新检查是可选的网络操作，失败不进入应用错误诊断。
-            return null;
+            return new(UpdateCheckStatus.Failed, FailureReason: "连接 GitHub 超时");
+        }
+        catch (HttpRequestException)
+        {
+            return new(UpdateCheckStatus.Failed, FailureReason: "无法连接 GitHub");
         }
     }
+
+    private static string? GetReleaseTag(string url) => url.StartsWith(ReleaseTagPrefix, StringComparison.Ordinal)
+        ? Uri.UnescapeDataString(url[ReleaseTagPrefix.Length..]) : null;
+
+    private static string GetInstallerName(string version) => $"Sims4ModSieve-{version}-setup.exe";
+
+    private static string GetAssetUrl(string tag, string name) => ReleasePrefix + "download/"
+        + Uri.EscapeDataString(tag) + "/" + Uri.EscapeDataString(name);
 
     public static bool TryCompareVersions(string left, string right, out int comparison)
     {

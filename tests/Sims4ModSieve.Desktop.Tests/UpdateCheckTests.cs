@@ -2,12 +2,15 @@ using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Desktop.Services;
+using static Sims4ModSieve.Desktop.Tests.ConflictPageRenderTests;
 using static Sims4ModSieve.Desktop.Tests.SettingsViewModelTests;
 
 namespace Sims4ModSieve.Desktop.Tests;
@@ -53,49 +56,77 @@ public sealed class UpdateCheckTests
     }
 
     [TestMethod]
-    [DataRow("new", true)]
-    [DataRow("latest", false)]
-    [DataRow("older", false)]
-    [DataRow("timeout", false)]
-    [DataRow("offline", false)]
-    [DataRow("403", false)]
-    [DataRow("429", false)]
-    [DataRow("404", false)]
-    [DataRow("json", false)]
-    [DataRow("missing", false)]
-    [DataRow("type", false)]
-    [DataRow("version", false)]
-    [DataRow("url", false)]
-    [DataRow("http", false)]
-    [DataRow("other-repo", false)]
-    public Task RequestControlsIconState(string scenario, bool visible) => WpfTestHost.RunAsync(async () =>
+    [DataRow("v99.0.0", UpdateCheckStatus.UpToDate)]
+    [DataRow("v98.0.0", UpdateCheckStatus.UpToDate)]
+    [DataRow("v99.0.1", UpdateCheckStatus.Available)]
+    public async Task ReleaseRedirectDeterminesUpdateStatus(string tag, UpdateCheckStatus expected)
     {
-        using var files = new Scenario();
-        var model = files.Model();
         using var handler = new Handler((request, _) =>
         {
             Assert.AreEqual(HttpMethod.Get, request.Method);
-            Assert.AreEqual("https://api.github.com/repos/stella-wood/Sims4ModSieve/releases/latest", request.RequestUri!.AbsoluteUri);
-            Assert.IsTrue(request.Headers.UserAgent.ToString().StartsWith("Sims4ModSieve/", StringComparison.Ordinal));
-            if (scenario == "timeout") throw new TaskCanceledException();
-            if (scenario == "offline") throw new HttpRequestException();
-            if (int.TryParse(scenario, out var status)) return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status));
-            var tag = scenario switch { "latest" => model.ProductVersion, "older" => "0.0.1", "version" => "garbage", _ => "v99.0.0+build" };
-            var url = scenario switch
-            {
-                "url" => "https://example.com/releases/tag/v99.0.0",
-                "http" => Url.Replace("https:", "http:", StringComparison.Ordinal),
-                "other-repo" => "https://github.com/other/Sims4ModSieve/releases/tag/v99.0.0", _ => Url,
-            };
-            var json = scenario switch { "json" => "{", "missing" => "{}", "type" => "{\"tag_name\":123}", _ => $$"""{"tag_name":"{{tag}}","html_url":"{{url}}"}""" };
-            return Task.FromResult(Response(json));
+            Assert.AreEqual("https://github.com/stella-wood/Sims4ModSieve/releases/latest", request.RequestUri!.AbsoluteUri);
+            Assert.AreEqual("Sims4ModSieve/99.0.0", request.Headers.UserAgent.ToString());
+            return Task.FromResult(Redirect("/stella-wood/Sims4ModSieve/releases/tag/" + tag));
         });
         using var client = new HttpClient(handler);
-        Assert.IsFalse(model.HasAvailableUpdate);
+        var result = await new UpdateCheckService(client).CheckAsync("99.0.0");
+        Assert.AreEqual(expected, result.Status);
+        Assert.IsNull(result.FailureReason);
+        Assert.AreEqual(1, handler.Calls);
+        if (expected == UpdateCheckStatus.Available)
+        {
+            var update = result.Update!;
+            Assert.AreEqual("99.0.1", update.Version);
+            Assert.AreEqual(UpdateCheckService.ReleasePrefix + "tag/v99.0.1", update.ReleaseUrl);
+            var installer = update.Installer!;
+            Assert.AreEqual(UpdateCheckService.ReleasePrefix + "download/v99.0.1/Sims4ModSieve-99.0.1-setup.exe", installer.DownloadUrl);
+            Assert.AreEqual(installer.DownloadUrl + ".sha256", installer.ChecksumUrl);
+            Assert.IsNull(installer.Size);
+        }
+        else Assert.IsNull(result.Update);
+    }
+
+    [TestMethod]
+    [DataRow(302, null)]
+    [DataRow(302, "https://example.com/releases/tag/v99.0.0")]
+    [DataRow(302, "http://github.com/stella-wood/Sims4ModSieve/releases/tag/v99.0.0")]
+    [DataRow(302, "https://github.com/other/Sims4ModSieve/releases/tag/v99.0.0")]
+    [DataRow(302, UpdateCheckService.LatestReleaseUrl)]
+    [DataRow(302, Url + "/extra")]
+    [DataRow(302, Url + "%2Fextra")]
+    [DataRow(302, Url + "?source=proxy")]
+    [DataRow(302, UpdateCheckService.ReleasePrefix + "tag/garbage")]
+    [DataRow(200, Url)]
+    [DataRow(301, Url)]
+    [DataRow(403, null)]
+    [DataRow(404, null)]
+    [DataRow(429, null)]
+    public async Task UnexpectedReleaseResponseReportsFailure(int status, string? location)
+    {
+        using var handler = new Handler((_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
+        {
+            Headers = { Location = location is null ? null : new Uri(location) },
+        }));
+        using var client = new HttpClient(handler);
+        var result = await new UpdateCheckService(client).CheckAsync("0.1.0");
+        Assert.AreEqual(UpdateCheckStatus.Failed, result.Status);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.FailureReason));
+        Assert.IsNull(result.Update);
+        Assert.AreEqual(1, handler.Calls);
+    }
+
+    [TestMethod]
+    public Task AutomaticCheckFailureStaysSilentAndOnlyRunsOnce() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        using var handler = new Handler((_, _) => throw new HttpRequestException("offline"));
+        using var client = new HttpClient(handler);
         await model.CheckForUpdatesAsync(new UpdateCheckService(client));
-        Assert.AreEqual(visible, model.HasAvailableUpdate);
         await model.CheckForUpdatesAsync(new UpdateCheckService(client));
         Assert.AreEqual(1, handler.Calls);
+        Assert.IsFalse(model.HasAvailableUpdate);
+        Assert.AreEqual(string.Empty, model.ManualUpdateCheckText);
         Assert.IsFalse(File.Exists(Path.Combine(files.Root, "Sims4ModSieve", "application-error.log")));
     });
 
@@ -105,11 +136,12 @@ public sealed class UpdateCheckTests
         using var handler = new Handler(async (_, token) =>
         {
             await Task.Delay(Timeout.Infinite, token);
-            return Response("{}");
+            return Redirect(Url);
         });
         using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         var result = await new UpdateCheckService(client).CheckAsync("0.1.0").WaitAsync(TimeSpan.FromSeconds(15));
-        Assert.IsNull(result);
+        Assert.AreEqual(UpdateCheckStatus.Failed, result.Status);
+        Assert.AreEqual("连接 GitHub 超时", result.FailureReason);
     }
 
     [TestMethod]
@@ -122,7 +154,7 @@ public sealed class UpdateCheckTests
         {
             started.SetResult();
             await Task.Delay(Timeout.Infinite, token);
-            return Response("{}");
+            return Redirect(Url);
         });
         using var client = new HttpClient(handler);
         using var cancellation = new CancellationTokenSource();
@@ -133,6 +165,175 @@ public sealed class UpdateCheckTests
         cancellation.Cancel();
         await check.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.IsFalse(model.HasAvailableUpdate);
+    });
+
+    [TestMethod]
+    [DataRow(UpdateCheckStatus.Available, "about-update-available.png")]
+    [DataRow(UpdateCheckStatus.UpToDate, "about-update-current.png")]
+    [DataRow(UpdateCheckStatus.Failed, "about-update-failed.png")]
+    public Task AboutUpdateCheckShowsResultAndAction(UpdateCheckStatus status, string screenshot) => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        string? opened = null;
+        var model = files.Model(support: new SettingsSupportService(files.Root, files.Folder("Documents"), openTarget: url => opened = url));
+        var manualResponse = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var assets = new HttpMessageInvoker(UpdateDownloadTests.ValidHandler());
+        var checks = 0;
+        using var handler = new Handler((request, token) =>
+        {
+            if (request.RequestUri!.AbsoluteUri != UpdateCheckService.LatestReleaseUrl) return assets.SendAsync(request, token);
+            return ++checks == 1 ? Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden)) : manualResponse.Task.WaitAsync(token);
+        });
+        using var client = new HttpClient(handler);
+        await model.CheckForUpdatesAsync(new UpdateCheckService(client));
+        var window = new MainWindow(model) { Width = 1180, Height = 780 };
+        WpfTestHost.ShowOffScreen(window);
+        if (status is UpdateCheckStatus.Available or UpdateCheckStatus.Failed) WpfTestHost.PlaceOnScreen(window);
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("about");
+        await WpfTestHost.LayoutAsync(window);
+
+        var page = Descendants<SettingsPage>(window).Single();
+        var check = (Button)page.FindName("CheckUpdateButton");
+        var result = (TextBlock)page.FindName("UpdateCheckResultText");
+        var spinner = (FrameworkElement)check.Template.FindName("CheckUpdateSpinner", check);
+        var current = (FrameworkElement)check.Template.FindName("CurrentUpdateLabel", check);
+        var release = (Button)page.FindName("OpenUpdateReleasePageButton");
+        var popup = (Popup)page.FindName("AboutUpdatePopup");
+        var download = (Button)page.FindName("AboutUpdateDownloadButton");
+        Assert.IsFalse(result.IsVisible);
+        Assert.IsTrue(check.IsVisible && check.IsEnabled && check.IsTabStop);
+        Assert.AreEqual("检查更新", AutomationProperties.GetName(check));
+        if (status == UpdateCheckStatus.UpToDate) SaveScreenshot(window, null, "about-update-idle.png");
+        PressEnter(check);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.IsFalse(check.IsEnabled);
+        Assert.IsTrue(spinner.IsVisible);
+        if (SystemParameters.ClientAreaAnimation) Assert.IsTrue(((RotateTransform)spinner.RenderTransform).HasAnimatedProperties);
+        Assert.AreEqual("检查中", AutomationProperties.GetName(check));
+        SaveScreenshot(window, null, "about-update-checking.png");
+        await model.CheckUpdateCommand.ExecuteAsync();
+        Assert.AreEqual(2, checks);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        spinner.IsVisibleChanged += (_, _) => { if (!spinner.IsVisible) finished.TrySetResult(); };
+        manualResponse.SetResult(status switch
+        {
+            UpdateCheckStatus.Available => Redirect(Url),
+            UpdateCheckStatus.UpToDate => Redirect(UpdateCheckService.ReleasePrefix + "tag/v" + model.ProductVersion),
+            _ => new HttpResponseMessage(HttpStatusCode.Forbidden),
+        });
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual(status != UpdateCheckStatus.UpToDate, check.IsEnabled);
+        Assert.AreEqual(status == UpdateCheckStatus.UpToDate, current.IsVisible);
+        Assert.AreEqual(status == UpdateCheckStatus.UpToDate ? "已是最新版本" : "检查更新", AutomationProperties.GetName(check));
+        Assert.AreEqual(status == UpdateCheckStatus.Failed, release.IsVisible);
+        Assert.AreEqual(status == UpdateCheckStatus.Failed, result.IsVisible);
+        Assert.AreEqual(status == UpdateCheckStatus.Available, popup.IsOpen);
+        Assert.AreEqual(status == UpdateCheckStatus.Available, download.IsVisible);
+        if (!release.IsVisible) SaveScreenshot(window, popup, screenshot);
+
+        if (release.IsVisible)
+        {
+            var toast = (Border)page.FindName("AboutUpdateFailureToast");
+            Assert.AreEqual(SystemParameters.ClientAreaAnimation, toast.HasAnimatedProperties);
+            Assert.AreEqual("检查失败：GitHub 拒绝了请求", result.Text);
+            Assert.IsTrue(release.PointToScreen(new Point()).Y >= check.PointToScreen(new Point(0, check.ActualHeight)).Y);
+            await WpfTestHost.ClickAsync(release);
+            Assert.AreEqual(UpdateCheckService.LatestReleaseUrl, opened);
+            SaveScreenshot(window, null, screenshot);
+            var hidden = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            result.IsVisibleChanged += (_, _) => { if (!result.IsVisible) hidden.TrySetResult(); };
+            await hidden.Task.WaitAsync(TimeSpan.FromSeconds(4));
+            Assert.IsFalse(toast.HasAnimatedProperties);
+            Assert.IsTrue(release.IsVisible);
+        }
+        if (download.IsVisible)
+        {
+            var heading = (TextBlock)page.FindName("AboutAvailableUpdateText");
+            Assert.AreEqual("发现新版本 v99.0.0", heading.Text);
+            var panel = (FrameworkElement)popup.Child;
+            Assert.IsTrue(panel.PointToScreen(new Point(0, panel.ActualHeight)).Y <= check.PointToScreen(new Point()).Y);
+            var restart = (Button)page.FindName("AboutUpdateRestartButton");
+            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            restart.IsVisibleChanged += (_, _) => { if (restart.IsVisible) ready.TrySetResult(); };
+            PressEnter(download);
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await WpfTestHost.LayoutAsync(window);
+            Assert.IsTrue(restart.IsEnabled);
+            restart.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(restart)!, 0, Key.Escape)
+                { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+            Assert.IsFalse(popup.IsOpen);
+            PressEnter(check);
+            Assert.IsTrue(popup.IsOpen);
+            Assert.AreEqual(2, checks);
+        }
+        model.GoHomeCommand.Execute(null);
+        model.OpenSettingsCommand.Execute(null);
+        await WpfTestHost.LayoutAsync(window);
+        Assert.AreEqual("检查更新", AutomationProperties.GetName(check));
+        Assert.IsTrue(check.IsEnabled);
+        Assert.IsFalse(current.IsVisible);
+        Assert.IsFalse(result.IsVisible);
+        Assert.IsFalse(release.IsVisible);
+        Assert.IsFalse(popup.IsOpen);
+        window.Close();
+    });
+
+    [TestMethod]
+    public Task LeavingAboutCancelsPendingUpdateCheck() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var requests = 0;
+        using var handler = new Handler(async (_, token) =>
+        {
+            if (++requests == 2) await Task.Delay(Timeout.Infinite, token);
+            return Redirect(UpdateCheckService.ReleasePrefix + "tag/v" + model.ProductVersion);
+        });
+        using var client = new HttpClient(handler);
+        await model.CheckForUpdatesAsync(new UpdateCheckService(client));
+        var window = new MainWindow(model);
+        WpfTestHost.ShowOffScreen(window);
+        model.OpenSettingsCommand.Execute(null);
+        model.SelectSettingsSectionCommand.Execute("about");
+        await WpfTestHost.LayoutAsync(window);
+
+        var pending = model.CheckUpdateCommand.ExecuteAsync();
+        Assert.IsTrue(model.IsManualUpdateChecking);
+        model.SelectSettingsSectionCommand.Execute("credits");
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        model.SelectSettingsSectionCommand.Execute("about");
+        Assert.IsFalse(model.IsManualUpdateChecking);
+        Assert.IsTrue(model.CheckUpdateCommand.CanExecute(null));
+        await model.CheckUpdateCommand.ExecuteAsync();
+        Assert.IsTrue(model.IsManualUpdateCurrent);
+        Assert.AreEqual(3, requests);
+        window.Close();
+    });
+
+    [TestMethod]
+    public Task FailedManualCheckKeepsPreviouslyDiscoveredUpdate() => WpfTestHost.RunAsync(async () =>
+    {
+        using var files = new Scenario();
+        var model = files.Model();
+        var checks = 0;
+        using var handler = new Handler((_, _) => Task.FromResult(++checks == 2
+            ? new HttpResponseMessage(HttpStatusCode.Forbidden) : Redirect(Url)));
+        using var client = new HttpClient(handler);
+        await model.CheckForUpdatesAsync(new UpdateCheckService(client));
+        Assert.IsTrue(model.HasAvailableUpdate);
+        Assert.AreEqual(string.Empty, model.ManualUpdateCheckText);
+
+        await model.CheckUpdateCommand.ExecuteAsync();
+        Assert.IsTrue(model.ShowUpdateReleasePage);
+        Assert.IsTrue(model.HasAvailableUpdate);
+        Assert.IsTrue(model.DownloadUpdateCommand.CanExecute(null));
+
+        await model.CheckUpdateCommand.ExecuteAsync();
+        Assert.IsFalse(model.ShowUpdateReleasePage);
+        Assert.IsTrue(model.ShowManualUpdate);
+        Assert.AreEqual(3, checks);
     });
 
     [TestMethod]
@@ -230,7 +431,7 @@ public sealed class UpdateCheckTests
         Assert.IsTrue(new Rect(content.RenderSize).Contains(new Rect(offset, child.RenderSize)));
     }
 
-    internal static void SaveScreenshot(Window window, Popup popup, string name)
+    internal static void SaveScreenshot(Window window, Popup? popup, string name)
     {
         var directory = Environment.GetEnvironmentVariable("SIMS4_UPDATE_SCREENSHOTS");
         if (string.IsNullOrEmpty(directory)) return;
@@ -241,7 +442,7 @@ public sealed class UpdateCheckTests
         {
             drawing.DrawRectangle(window.Background, null, new Rect(content.RenderSize));
             drawing.DrawRectangle(new VisualBrush(content), null, new Rect(0, 0, content.ActualWidth, content.ActualHeight));
-            if (popup.IsOpen && popup.Child is FrameworkElement child)
+            if (popup is { IsOpen: true, Child: FrameworkElement child })
             {
                 var offset = content.PointFromScreen(child.PointToScreen(new Point()));
                 drawing.DrawRectangle(new VisualBrush(child), null, new Rect(offset.X, offset.Y, child.ActualWidth, child.ActualHeight));
@@ -255,7 +456,17 @@ public sealed class UpdateCheckTests
         encoder.Save(stream);
     }
 
-    private static HttpResponseMessage Response(string json) => new(HttpStatusCode.OK) { Content = new StringContent(json) };
+    private static HttpResponseMessage Redirect(string location) => new(HttpStatusCode.Found)
+    {
+        Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) },
+    };
+
+    private static void PressEnter(Button button)
+    {
+        Assert.IsTrue(button.Focus(), button.Name);
+        var source = PresentationSource.FromVisual(button)!;
+        button.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter) { RoutedEvent = Keyboard.KeyDownEvent });
+    }
 
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
