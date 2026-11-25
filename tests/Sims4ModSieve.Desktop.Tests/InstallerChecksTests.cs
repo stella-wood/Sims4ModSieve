@@ -103,6 +103,7 @@ public sealed class InstallerChecksTests
     [DataRow("missing", 0)]
     [DataRow("empty", 0)]
     [DataRow("disabled", InstallerChecks.DisabledMods)]
+    [DataRow("external", 0)]
     [DataRow("recycled", 0)]
     [DataRow("pending", InstallerChecks.DisabledMods)]
     [DataRow("invalid", InstallerChecks.CannotCheck)]
@@ -117,7 +118,9 @@ public sealed class InstallerChecksTests
         var disabled = original + ".off";
         File.WriteAllText(disabled, "user mod");
         var record = new DisabledModRecord(Guid.NewGuid().ToString("N"), original, 8, DateTime.UtcNow, DateTime.UtcNow,
-            Recycled: state is "recycled" or "pending", RestorePending: state == "pending");
+            Recycled: state is "recycled" or "pending", RestorePending: state == "pending",
+            Source: state == "external" ? DisabledModRecord.ExternalSource : DisabledModRecord.SieveSource,
+            DisabledSuffix: state == "external" ? ".off" : null);
         string? json = state switch
         {
             "missing" => null, "empty" => "[]", "invalid" => "[{}]", "null" => "null", "malformed" => "{",

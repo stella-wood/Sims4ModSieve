@@ -1,5 +1,6 @@
 using Sims4ModSieve.Core.Settings;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sims4ModSieve.Desktop.Services;
 using Sims4ModSieve.Core.Duplicates;
@@ -9,6 +10,136 @@ namespace Sims4ModSieve.Desktop.Tests;
 [TestClass]
 public sealed class ModDisableServiceTests
 {
+    [TestMethod]
+    [DataRow(".package.off", ".package")]
+    [DataRow(".ts4script.OFF", ".ts4script")]
+    [DataRow(".packageOFF", ".package")]
+    [DataRow(".ts4scriptOFF", ".ts4script")]
+    [DataRow(".package.disabled", ".package")]
+    [DataRow(".ts4script.DISABLED", ".ts4script")]
+    public void ExternalNamesAreRecordedWithoutChangingFileAndRestoreToOriginalName(string disabledExtension, string originalExtension)
+    {
+        using var files = new Scenario();
+        var disabled = files.Mod("Mods/nested/test" + disabledExtension, "external");
+        var original = Path.Combine(Path.GetDirectoryName(disabled)!, "test" + originalExtension);
+        var identity = PhysicalFileIdentity.Read(disabled);
+        var modified = File.GetLastWriteTimeUtc(disabled);
+
+        var registered = files.Service.RegisterExternal([disabled])!;
+        Assert.IsEmpty(registered.Failures);
+        var record = new ModDisableService(files.Data).Load().Records.Single();
+        Assert.IsTrue(record.IsExternal);
+        Assert.AreEqual(disabled, record.DisabledPath);
+        Assert.AreEqual(original, record.OriginalPath);
+        Assert.AreEqual(identity, record.Identity);
+        Assert.AreEqual(modified, record.LastWriteTimeUtc);
+        Assert.AreEqual("external", File.ReadAllText(disabled));
+        Assert.IsFalse(File.Exists(original));
+        Assert.IsNull(files.Service.RegisterExternal([disabled, disabled.ToUpperInvariant()]));
+        Assert.AreEqual(record.Id, files.Service.Load().Records.Single().Id);
+
+        CollectionAssert.AreEqual(new[] { original }, files.Service.Restore([record.Id]).CompletedPaths.ToArray());
+        Assert.AreEqual("external", File.ReadAllText(original));
+        Assert.IsFalse(File.Exists(disabled));
+        Assert.IsEmpty(files.Service.Load().Records);
+    }
+
+    [TestMethod]
+    public void LegacyLedgerDefaultsToSieveAndKeepsItsRecordWhenScannedAgain()
+    {
+        using var files = new Scenario();
+        var original = files.Mod("Mods/legacy.package", "legacy");
+        var record = files.Record(original);
+        File.Move(original, record.DisabledPath);
+        files.WriteLedger(record);
+        var oldJson = JsonNode.Parse(File.ReadAllText(files.Ledger))!.AsArray();
+        Assert.IsTrue(oldJson[0]!.AsObject().Remove("source"));
+        File.WriteAllText(files.Ledger, oldJson.ToJsonString());
+        var external = files.Mod("Mods/external.ts4script.off", "external");
+
+        Assert.AreEqual(record, files.Service.Load().Records.Single());
+        var registered = files.Service.RegisterExternal([record.DisabledPath, external])!;
+        Assert.IsEmpty(registered.Failures);
+        Assert.HasCount(2, registered.Records);
+        Assert.AreEqual(record, registered.Records.Single(item => item.OriginalPath == original));
+        var persisted = JsonNode.Parse(File.ReadAllText(files.Ledger))!.AsArray();
+        Assert.AreEqual("sieve", persisted[0]!["source"]!.GetValue<string>());
+        Assert.IsNull(persisted[0]!["DisabledSuffix"]);
+        Assert.AreEqual("external", persisted[1]!["source"]!.GetValue<string>());
+        Assert.HasCount(2, new ModDisableService(files.Data).Load().Records);
+    }
+
+    [TestMethod]
+    public void ExternalRestoreRejectsOccupiedOriginalAndReplacedDisabledFile()
+    {
+        using var files = new Scenario();
+        var disabled = files.Mod("Mods/blocked.packageOFF", "original");
+        var original = files.Mod("Mods/blocked.package", "active");
+        var record = files.Service.RegisterExternal([disabled])!.Records.Single();
+        Assert.IsEmpty(files.Service.Restore([record.Id]).CompletedPaths);
+        Assert.AreEqual("active", File.ReadAllText(original));
+        Assert.AreEqual("original", File.ReadAllText(disabled));
+        File.Delete(original);
+        File.Move(disabled, disabled + ".old");
+        File.WriteAllText(disabled, "replaced");
+        File.SetLastWriteTimeUtc(disabled, record.LastWriteTimeUtc);
+        var result = files.Service.Restore([record.Id]);
+        Assert.IsEmpty(result.CompletedPaths);
+        Assert.IsNotEmpty(result.Failures);
+        Assert.AreEqual(record, files.Service.Load().Records.Single());
+        Assert.IsFalse(File.Exists(original));
+    }
+
+    [TestMethod]
+    public void ExternalReconciliationClearsManualRestoreAndDeletionButKeepsUnavailablePath()
+    {
+        using var files = new Scenario();
+        var renamed = files.Mod("Mods/renamed.package.off", "renamed");
+        var deleted = files.Mod("Mods/deleted.ts4scriptOFF", "deleted");
+        var unavailable = files.Mod("Mods/Offline/offline.package.disabled", "unavailable");
+        var retained = files.Service.RegisterExternal([renamed, deleted, unavailable])!.Records
+            .Single(record => record.DisabledPath == unavailable);
+        var original = renamed[..^4];
+        File.Move(renamed, original);
+        File.Delete(deleted);
+        var folder = Path.GetDirectoryName(unavailable)!;
+        Directory.Move(folder, folder + "-moved");
+
+        var result = new ModDisableService(files.Data).Load();
+        Assert.AreEqual(retained, result.Records.Single());
+        Assert.HasCount(1, result.Failures);
+        Assert.AreEqual(retained, JsonSerializer.Deserialize<DisabledModRecord[]>(File.ReadAllText(files.Ledger))!.Single());
+        Assert.AreEqual("renamed", File.ReadAllText(original));
+    }
+
+    [TestMethod]
+    public void AmbiguousExternalSuffixesAndCancelledRegistrationLeaveFilesAlone()
+    {
+        using var files = new Scenario();
+        var first = files.Mod("Mods/ambiguous.package.off", "first");
+        var second = files.Mod("Mods/ambiguous.packageOFF", "second");
+        var result = files.Service.RegisterExternal([first, second])!;
+        Assert.IsEmpty(result.Records);
+        Assert.HasCount(1, result.Failures);
+        Assert.ThrowsExactly<OperationCanceledException>(() => files.Service.RegisterExternal([first], new CancellationToken(true)));
+        Assert.IsFalse(File.Exists(files.Ledger));
+        Assert.AreEqual("first", File.ReadAllText(first));
+        Assert.AreEqual("second", File.ReadAllText(second));
+    }
+
+    [TestMethod]
+    public async Task ConcurrentExternalRegistrationsMergeIntoOneLedger()
+    {
+        using var files = new Scenario();
+        var first = files.Mod("Mods/first.package.off", "first");
+        var second = files.Mod("Mods/second.packageOFF", "second");
+        await Task.WhenAll(
+            Task.Run(() => files.Service.RegisterExternal([first])),
+            Task.Run(() => new ModDisableService(files.Data).RegisterExternal([first, second])));
+        CollectionAssert.AreEquivalent(new[] { first, second },
+            files.Service.Load().Records.Select(record => record.DisabledPath).ToArray());
+    }
+
     [TestMethod]
     public void DisableRejectsSameStampPhysicalReplacementFromScan()
     {

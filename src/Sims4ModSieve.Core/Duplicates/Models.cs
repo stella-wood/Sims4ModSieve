@@ -16,6 +16,7 @@ public sealed record DuplicateScanRequest(
     public IStorageProfile? StorageProfile { get; init; }
     public Action<Diagnostics.ScanConcurrencyDecision>? ConcurrencyDecided { get; init; }
     public ScanCoverage? Coverage { get; init; }
+    public Action<string>? ObserveFile { get; init; }
 }
 
 public enum DuplicateScanPhase

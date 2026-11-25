@@ -18,6 +18,96 @@ namespace Sims4ModSieve.Desktop.Tests;
 public sealed class CliFileCommandsTests
 {
     [TestMethod]
+    [DataRow("scan-duplicates")]
+    [DataRow("scan-conflicts")]
+    [DataRow("scan-scripts")]
+    public Task CliModScansShareExternalLedgerWithDesktopAndRestoreByEitherPath(string command) => WpfTestHost.RunAsync(async () =>
+    {
+        using var temp = new TempDirectory();
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var package = temp.WriteFile("Mods/Nested/garden.packageOFF", "package");
+        var script = temp.WriteFile("Mods/story.ts4script.disabled", "script");
+        var unrelated = temp.WriteFile("Mods/notes.off", "notes");
+        var backup = temp.WriteFile("ModsBackup/backup.package.off", "backup");
+        var known = temp.WriteFile("Mods/known.package", "known");
+        var mods = Path.GetDirectoryName(known)!;
+        settings.Save(new(mods, []));
+        new ModDisableService(settings.DataDirectory).Disable([known]);
+
+        Assert.HasCount(1, (await Run(settings, null, ["list-disabled"])).Files);
+        var scan = await Run(settings, null, [command, "--no-cache",
+            "--source", mods, "--source", Path.GetDirectoryName(backup)!]);
+        Assert.AreEqual(0, scan.ExitCode);
+        var list = await Run(settings, null, ["list-disabled"]);
+        Assert.AreEqual(0, list.ExitCode);
+        Assert.HasCount(3, list.Files);
+        var sources = list.Files.ToDictionary(file => file!["path"]!.GetValue<string>(), file => file!["source"]!.GetValue<string>());
+        Assert.AreEqual("sieve", sources[known + ".off"]);
+        Assert.AreEqual("external", sources[package]);
+        Assert.AreEqual("external", sources[script]);
+        Assert.IsFalse(sources.ContainsKey(backup));
+        Assert.IsFalse(sources.ContainsKey(unrelated));
+        var model = new MainWindowViewModel(new DuplicateRunService(DuplicateScanner.CreateDefault()), new Picker(), settings,
+            fileActionDialogs: new Dialogs(), confirmModChange: _ => true);
+        Assert.AreEqual(list.Files.Count, model.DisabledFiles.Files.Count);
+
+        var ledger = Path.Combine(settings.DataDirectory, "disabled-mods.json");
+        var before = File.ReadAllText(ledger);
+        var preview = await Run(settings, null, ["restore", "--all"]);
+        Assert.HasCount(3, preview.Files);
+        Assert.IsTrue(preview.Files.All(file => file!["status"]!.GetValue<string>() == "preview"));
+        Assert.AreEqual(before, File.ReadAllText(ledger));
+        Assert.IsTrue(File.Exists(package) && File.Exists(script));
+        var wrongPath = await Run(settings, null, ["restore", "--path", package[..^3] + ".off", "--apply"]);
+        Assert.AreEqual(3, wrongPath.ExitCode);
+        Assert.IsTrue(File.Exists(package));
+        var restored = await Run(settings, null, ["restore", "--path", package,
+            "--path", script[..^".disabled".Length], "--apply"]);
+        Assert.AreEqual(0, restored.ExitCode);
+        Assert.AreEqual("package", File.ReadAllText(package[..^3]));
+        Assert.AreEqual("script", File.ReadAllText(script[..^".disabled".Length]));
+        Assert.HasCount(1, (await Run(settings, null, ["list-disabled"])).Files);
+        Assert.IsTrue(File.Exists(backup) && File.Exists(unrelated));
+    });
+
+    [TestMethod]
+    [TestCategory("WindowsIntegration")]
+    public async Task ExternalDisabledFileRoundTripsThroughWindowsRecycleBin()
+    {
+        if (Environment.GetEnvironmentVariable("SIMS4_MOD_SIEVE_RUN_RECYCLE_BIN_TEST") != "1")
+            Assert.Inconclusive("Set SIMS4_MOD_SIEVE_RUN_RECYCLE_BIN_TEST=1 to run the real Recycle Bin test.");
+        using var temp = new TempDirectory();
+        var settings = new DuplicateSettingsStore(temp.Path);
+        var disabled = temp.WriteFile("Mods/Temporary.packageOFF", "temporary mod");
+        var service = new ModDisableService(settings.DataDirectory);
+        var record = service.RegisterExternal([disabled])!.Records.Single();
+        var bin = new WindowsRecycleBinAdapter();
+        var history = new FileManagementStore(settings.DataDirectory);
+        var actions = new FileActionService(bin, new PhysicalFileMetadataAccess(), history, service);
+        try
+        {
+            var preflight = actions.Preflight(
+                [new(disabled, record.Size, record.LastWriteTimeUtc, "", record, record.Identity)], []);
+            Assert.IsTrue(preflight.CanExecute);
+            var deleted = await actions.DeleteAsync(preflight);
+            Assert.IsEmpty(deleted.Failures);
+            Assert.IsFalse(File.Exists(disabled));
+            Assert.IsEmpty(service.Load().Records);
+            var undo = await actions.UndoLastDeleteAsync();
+            Assert.IsEmpty(undo.Failures);
+            CollectionAssert.AreEqual(new[] { disabled }, undo.CompletedPaths.ToArray());
+            Assert.AreEqual("temporary mod", File.ReadAllText(disabled));
+            Assert.IsFalse(File.Exists(record.OriginalPath));
+            Assert.AreEqual(record, service.Load().Records.Single());
+        }
+        finally
+        {
+            await bin.RestoreAsync(history.Load().Deleted.Where(item => !File.Exists(item.Item.OriginalPath))
+                .Select(item => item.Item).ToArray());
+        }
+    }
+
+    [TestMethod]
     public async Task FileCommandPreviewsAndListingLeaveFilesAndLedgersUntouched()
     {
         using var temp = new TempDirectory();

@@ -73,7 +73,7 @@ internal static class CliCommands
                     await output.WriteLineAsync($"已保存默认 Mods：{path}");
                     return 0;
                 case "scan-conflicts" or "scan-scripts" or "scan-duplicates":
-                    return await ScanAsync(command, operands, settings, output, error, documentsDirectory, conflictGroupingMemoryBudgetBytes, storageProfile);
+                    return await ScanAsync(command, operands, settings, output, error, documentsDirectory, conflictGroupingMemoryBudgetBytes, storageProfile, applicationDirectory);
                 case "list-disabled" or "disable" or "restore" or "recycle" or "undo":
                     return await new CliFileCommands(settings.DataDirectory, recycleBin ?? new WindowsRecycleBinAdapter(),
                         applicationDirectory).RunAsync(command, operands, output, error);
@@ -104,7 +104,8 @@ internal static class CliCommands
     }
 
     private static async Task<int> ScanAsync(string command, string[] args, DuplicateSettingsStore settings,
-        TextWriter output, TextWriter error, string? documentsDirectory, long? conflictGroupingMemoryBudgetBytes, IStorageProfile? storageProfile)
+        TextWriter output, TextWriter error, string? documentsDirectory, long? conflictGroupingMemoryBudgetBytes,
+        IStorageProfile? storageProfile, string? applicationDirectory)
     {
         var options = ParseScanOptions(command, args);
         var explicitSources = options.Sources.Count > 0;
@@ -124,6 +125,12 @@ internal static class CliCommands
 
         var paths = options.Sources.Select(NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (!paths.Any(Directory.Exists)) throw new ArgumentException("没有可用的 --source 目录。");
+        var registrationRoot = modsRoot ?? TryLoadSavedModsRoot(settings) ?? DuplicateSettingsStore.FindDefaultFolder("Mods", documentsDirectory);
+        var externalDisabledPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Action<string>? observeFile = registrationRoot is null ? null : path =>
+        {
+            if (ModDisableService.IsExternalDisabledInMods(path, registrationRoot)) externalDisabledPaths.Add(path);
+        };
         var sources = paths.Select((path, index) => new ScanSource($"source-{index + 1}", path, Order: index, Label: path)).ToArray();
         var ignored = IgnoredFileRecord.Read(settings.DataDirectory)
             .Select(record => NormalizePath(record.Path)).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -156,7 +163,7 @@ internal static class CliCommands
                     if (size.ExceedsLimit) error.WriteLine(size.WarningMessage);
                 }, memoryObserved: error.WriteLine,
                 scanOptions: scanOptions, fileHasher: hasher, resourceHasher: resourceHasher, coverage: cache?.Coverage);
-            await report.RunAsync(sources, modsRoot, extensions);
+            await report.RunAsync(sources, modsRoot, extensions, observeFile);
             return report;
         }
         var resourceHasher = DbpfResourceContentHasher.CreateDefault();
@@ -183,7 +190,24 @@ internal static class CliCommands
         await summary.WriteLineAsync(scan.SummaryText);
         if (options.JsonPath is null && (options.HasOutputFilters || options.HideIgnored))
             await error.WriteLineAsync(scan.OutputOmissionsText);
-        if (hasSources) cache?.Commit();
+        if (hasSources)
+        {
+            cache?.Commit();
+            if (registrationRoot is not null && ModDisableService.ScansMods(registrationRoot, scan.Sources.Select(source => source.Path)))
+            {
+                try
+                {
+                    var registered = new ModDisableService(settings.DataDirectory, applicationDirectory).RegisterExternal(externalDisabledPaths);
+                    foreach (var failure in registered?.Failures ?? [])
+                        await error.WriteLineAsync($"外部禁用记录 · {failure.Path} · {failure.Message}");
+                }
+                catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException
+                    or System.Text.Json.JsonException or System.Security.SecurityException)
+                {
+                    await error.WriteLineAsync("无法登记外部禁用文件：" + exception.Message);
+                }
+            }
+        }
         return hasSources ? scan.ExitCode : 2;
     }
 
@@ -214,7 +238,8 @@ internal static class CliCommands
         if (fullPath[(Path.GetPathRoot(fullPath)?.Length ?? 0)..].Contains(':')
             || Path.GetFileName(fullPath).ToLowerInvariant() is "duplicate-settings.json" or "file-management.json" or "disabled-mods.json"
                 or CliFileCommands.LogFileName or ".file-management.lock"
-            || Path.GetExtension(fullPath).ToLowerInvariant() is ".package" or ".ts4script" or ".off")
+            || Path.GetExtension(fullPath).ToLowerInvariant() is ".package" or ".ts4script" or ".off"
+            || ModDisableService.TryGetExternalOriginalPath(fullPath, out _))
             throw new ArgumentException($"报告路径必须使用报告文件名：{fullPath}");
         return fullPath;
     }

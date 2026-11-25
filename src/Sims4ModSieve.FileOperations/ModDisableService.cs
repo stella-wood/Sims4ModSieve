@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,10 +10,18 @@ public sealed record DisabledRecycleRecord(string Id, RecycleBinItem Item, DateT
 
 public sealed record DisabledModRecord(string Id, string OriginalPath, long Size, DateTime LastWriteTimeUtc, DateTime DisabledAtUtc,
     bool RecyclePending = false, bool Recycled = false, bool RestorePending = false, DisabledRecycleRecord? RecycleEntry = null,
-    FileIdentity? Identity = null)
+    FileIdentity? Identity = null,
+    [property: JsonPropertyName("source")] string Source = DisabledModRecord.SieveSource,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DisabledSuffix = null)
 {
+    public const string SieveSource = "sieve";
+    public const string ExternalSource = "external";
+
     [JsonIgnore]
-    public string DisabledPath => OriginalPath + ".off";
+    public string DisabledPath => OriginalPath + (DisabledSuffix ?? ".off");
+
+    [JsonIgnore]
+    public bool IsExternal => Source == ExternalSource;
 }
 
 public sealed record DisabledModsResult(IReadOnlyList<DisabledModRecord> Records, IReadOnlyList<FileActionFailure> Failures);
@@ -28,6 +37,94 @@ public sealed class ModDisableService(string? directory = null, string? applicat
     private readonly string ledgerPath = Path.Combine(directory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sims4ModSieve"), "disabled-mods.json");
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly string[] ExternalSuffixes = [".off", ".disabled", "OFF"];
+
+    public static bool TryGetExternalOriginalPath(string path, [NotNullWhen(true)] out string? original)
+    {
+        foreach (var suffix in ExternalSuffixes)
+        {
+            if (path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && IsModPath(path[..^suffix.Length]))
+            {
+                original = path[..^suffix.Length];
+                return true;
+            }
+        }
+        original = null;
+        return false;
+    }
+
+    public static bool IsExternalDisabledInMods(string path, string modsRoot) =>
+        TryGetExternalOriginalPath(path, out _) && IsWithin(path, modsRoot);
+
+    public static bool ScansMods(string modsRoot, IEnumerable<string> sources) =>
+        sources.Any(source => IsWithin(source, modsRoot) || IsWithin(modsRoot, source));
+
+    private static bool IsWithin(string path, string root)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return !Path.IsPathRooted(relative) && relative != ".."
+            && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+    }
+
+    public DisabledModsResult? RegisterExternal(IReadOnlyCollection<string> paths, CancellationToken cancellationToken = default)
+    {
+        if (paths.Count == 0 && !File.Exists(ledgerPath)) return null;
+        using var operation = writeLock.Enter();
+        cancellationToken.ThrowIfCancellationRequested();
+        var previous = ReadRecords();
+        var state = Reconcile(previous, save: false, externalOnly: true);
+        var records = state.Records.ToList();
+        var active = records.Where(record => !record.Recycled || record.RestorePending)
+            .ToLookup(record => record.OriginalPath, StringComparer.OrdinalIgnoreCase);
+        var failures = state.Failures.ToList();
+        var candidates = new List<(string Path, string Original)>();
+        foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase))
+            if (TryGetExternalOriginalPath(path, out var original)) candidates.Add((path, original));
+
+        foreach (var group in candidates.GroupBy(candidate => candidate.Original, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var targets = group.ToArray();
+            if (active.Contains(group.Key))
+            {
+                foreach (var target in targets.Where(target => !active[group.Key].Any(record =>
+                    StringComparer.OrdinalIgnoreCase.Equals(record.DisabledPath, target.Path))))
+                    failures.Add(new(target.Path, "同一个原路径已有禁用记录，未登记该文件"));
+                continue;
+            }
+            if (targets.Length > 1)
+            {
+                failures.Add(new(group.Key, "多个外部禁用文件对应同一个原路径，未登记"));
+                continue;
+            }
+
+            var candidate = targets[0];
+            try
+            {
+                var record = new DisabledModRecord(Guid.NewGuid().ToString("N"), candidate.Original, 0, default, DateTime.UtcNow,
+                    Source: DisabledModRecord.ExternalSource, DisabledSuffix: candidate.Path[candidate.Original.Length..]);
+                if (!IsValidRecord(record)) throw new IOException("外部禁用路径无效，未登记");
+                EnsureExternalPaths(record);
+                if (TryReadStamp(candidate.Path) is not { } stamp) continue;
+                if (stamp.Identity is null) throw new IOException("无法取得可靠文件身份，未登记");
+                records.Add(record with { Size = stamp.Size, LastWriteTimeUtc = stamp.Modified, Identity = stamp.Identity });
+            }
+            catch (Exception exception) when (IsFileException(exception)) { failures.Add(new(candidate.Path, exception.Message)); }
+        }
+
+        if (!records.SequenceEqual(previous))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try { Save(records); }
+            catch (Exception exception) when (IsFileException(exception))
+            {
+                failures.Add(new("", "外部禁用记录未保存：" + exception.Message));
+                return new(previous.Where(record => !record.Recycled).ToArray(), failures);
+            }
+        }
+        else if (failures.Count == 0) return null;
+        return new(records.Where(record => !record.Recycled).ToArray(), failures);
+    }
 
     public DisabledModsResult Load()
     {
@@ -54,6 +151,8 @@ public sealed class ModDisableService(string? directory = null, string? applicat
                     && record.OriginalPath == requested.OriginalPath && record.Size == requested.Size
                     && record.LastWriteTimeUtc == requested.LastWriteTimeUtc);
                 if (index < 0) throw new InvalidDataException("找不到匹配的禁用记录，请刷新");
+                if (!StringComparer.OrdinalIgnoreCase.Equals(requested.DisabledPath, records[index].DisabledPath))
+                    throw new InvalidDataException("禁用路径与账本不符，请刷新");
                 RequireStamp(requested.DisabledPath, records[index]);
                 records[index] = records[index] with { RecyclePending = true };
             }
@@ -68,6 +167,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
             if (!IsValidRecord(record)) throw new InvalidDataException("禁用恢复记录格式无效");
             applicationGuard.EnsureAllowed(record.OriginalPath);
             applicationGuard.EnsureAllowed(record.DisabledPath);
+            if (record.IsExternal) EnsureExternalPaths(record);
             if (TryReadStamp(record.DisabledPath) is not null) throw new IOException("已禁用路径已有同名文件，未覆盖");
             var records = ReadAndReconcile().Records.ToList();
             if (records.Any(item => item.Id != record.Id && !item.Recycled
@@ -230,16 +330,22 @@ public sealed class ModDisableService(string? directory = null, string? applicat
         }
     }
 
-    private DisabledModsResult ReadAndReconcile(bool save = true)
+    private DisabledModsResult ReadAndReconcile(bool save = true) => Reconcile(ReadRecords(), save);
+
+    private DisabledModsResult Reconcile(DisabledModRecord[] records, bool save, bool externalOnly = false)
     {
-        var records = ReadRecords();
         var current = new List<DisabledModRecord>();
         var failures = new List<FileActionFailure>();
         foreach (var record in records)
         {
-            if (record.Recycled && !record.RestorePending) { current.Add(record); continue; }
+            if ((externalOnly && !record.IsExternal) || (record.Recycled && !record.RestorePending))
+            {
+                current.Add(record);
+                continue;
+            }
             try
             {
+                if (record.IsExternal) EnsureExternalPaths(record);
                 var disabled = TryReadStamp(record.DisabledPath);
                 if (record.RestorePending)
                 {
@@ -258,6 +364,7 @@ public sealed class ModDisableService(string? directory = null, string? applicat
                 }
                 if (disabled is null)
                 {
+                    if (record.IsExternal) continue;
                     var original = TryReadStamp(record.OriginalPath);
                     // 改名前或恢复后中断，磁盘上原文件匹配时可以清除预记账。
                     if (original is { } stamp && Matches(stamp, record)) continue;
@@ -302,9 +409,19 @@ public sealed class ModDisableService(string? directory = null, string? applicat
         && !string.IsNullOrWhiteSpace(record.OriginalPath) && Path.IsPathFullyQualified(record.OriginalPath)
         && IsModPath(record.OriginalPath) && record.Size >= 0
         && StringComparer.OrdinalIgnoreCase.Equals(Path.GetFullPath(record.OriginalPath), record.OriginalPath)
+        && (record.Source == DisabledModRecord.SieveSource && record.DisabledSuffix is null
+            || record.IsExternal && record.DisabledSuffix is not null
+                && ExternalSuffixes.Contains(record.DisabledSuffix, StringComparer.OrdinalIgnoreCase)
+                && IsExternalFilePath(record.OriginalPath))
         && (record.RecycleEntry is null || !string.IsNullOrWhiteSpace(record.RecycleEntry.Id)
             && record.RecycleEntry.Item is { AbsolutePidl.Length: >= 2 } item
             && StringComparer.OrdinalIgnoreCase.Equals(item.OriginalPath, record.DisabledPath));
+
+    private static bool IsExternalFilePath(string path) =>
+        !path.StartsWith(@"\\?\", StringComparison.Ordinal) && !path.StartsWith(@"\\.\", StringComparison.Ordinal)
+        && !path[(Path.GetPathRoot(path)?.Length ?? 0)..].Contains(':')
+        && !path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Any(segment => segment.EndsWith('.') || segment.EndsWith(' '));
 
     private void Save(IReadOnlyList<DisabledModRecord> records)
     {
@@ -344,7 +461,21 @@ public sealed class ModDisableService(string? directory = null, string? applicat
     private void RequireStamp(string path, DisabledModRecord record)
     {
         applicationGuard.EnsureAllowed(path);
+        if (record.IsExternal) EnsureExternalPaths(record);
         if (record.Identity is null) throw new IOException("旧禁用记录缺少文件身份，请人工核对文件与记录后处理");
         if (!Matches(ReadStamp(path), record)) throw new IOException("文件发生变化，未改动，请重新核对");
+    }
+
+    private void EnsureExternalPaths(DisabledModRecord record)
+    {
+        applicationGuard.EnsureAllowed(record.OriginalPath);
+        applicationGuard.EnsureAllowed(record.DisabledPath);
+        // 确认父目录可访问且给出的路径仍指向原位置，再把文件缺失视为已移除。
+        for (var parent = Path.GetDirectoryName(record.OriginalPath); parent is not null; parent = Path.GetDirectoryName(parent))
+        {
+            var attributes = File.GetAttributes(parent);
+            if ((attributes & FileAttributes.Directory) == 0 || (attributes & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("外部禁用文件的路径包含目录链接或不可用，已保留记录");
+        }
     }
 }

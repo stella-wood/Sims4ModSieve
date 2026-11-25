@@ -505,14 +505,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         var storage = new WindowsStorageProfile();
+        var modsRoot = ModsRoot;
+        var externalDisabledPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var input = new DuplicateRunInput(
             enabledSources
                 .Select(source => new DuplicateRunSource(source.Path, source.Name))
                 .ToArray(),
-            ModsRoot)
+            modsRoot)
         {
             HashConcurrency = DuplicateHashConcurrency,
             StorageProfile = storage,
+            ObserveFile = modsRoot is null ? null : path => ObserveExternalDisabled(path, modsRoot, externalDisabledPaths),
         };
 
         using var performance = ScanPerformance.Start("重复检测");
@@ -594,6 +597,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     + (firstIssue.Code.EndsWith("-failed", StringComparison.Ordinal) ? "无法读取：" : "未完成检查：")
                     + $"{firstIssue.Path}\n{firstIssue.Message}";
             timingOutcome = "完成";
+            await RegisterExternalDisabledAsync(modsRoot, report.Sources.Select(source => source.Path),
+                externalDisabledPaths, scanCancellation.Token);
             await CommitScanCacheAsync(cache, scanCancellation.Token);
         }
         catch (OperationCanceledException)

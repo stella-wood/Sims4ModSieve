@@ -39,7 +39,7 @@ Sims 4 Mod Sieve 能找出 Mods 文件夹里重复的文件、互相覆盖的 pa
 | 文件之间有没有冲突 | `scan-conflicts --json "<报告文件路径>"`  |
 | 脚本有没有同名模块 | `scan-scripts --json "<报告文件路径>"`    |
 
-三个命令是包含关系：`scan-conflicts` 的结果里已经包含了重复组（`duplicate`）和脚本组（`script_*`），`scan-duplicates`、`scan-scripts` 是它的子集。同一件事只报一次，以 `scan-conflicts` 为准；也不要因为「已经查过重复」就跳过它里面的脚本碰撞。两个例外：读不出来的 package 在冲突报告里只算读取问题，它们之间的完全重复只出现在 `scan-duplicates` 里；`scan-duplicates` 用 `--source` 指定目录又没给 `--extension` 时，不按扩展名过滤，报告里可能出现 `.off`、压缩包等文件，这些不能用 Sieve 处理。
+三个命令是包含关系：`scan-conflicts` 的结果里已经包含了重复组（`duplicate`）和脚本组（`script_*`），`scan-duplicates`、`scan-scripts` 是它的子集。同一件事只报一次，以 `scan-conflicts` 为准；也不要因为「已经查过重复」就跳过它里面的脚本碰撞。两个例外：读不出来的 package 在冲突报告里只算读取问题，它们之间的完全重复只出现在 `scan-duplicates` 里；`scan-duplicates` 用 `--source` 指定目录又没给 `--extension` 时，不按扩展名过滤，报告里可能出现 `.off`、压缩包等文件。可恢复的禁用文件以 `list-disabled` 为准。
 
 建议先查重复，清理完重复副本后，再查冲突，结果更清晰。
 
@@ -121,7 +121,7 @@ Get-Content -LiteralPath "<报告文件路径>" -Encoding utf8 | Select-Object -
 **文件操作准则：**
 
 - 所有文件操作都通过 Sieve 的命令执行，不要直接改名、移动或删除 mod 文件
-- 只处理 `.package` 和 `.ts4script`；已经禁用的 `.off` 文件用 `restore` 恢复
+- `disable` 和 `recycle` 接受 `.package` 和 `.ts4script`。账本里已禁用的文件用 `restore` 恢复
 - 移入回收站（`recycle --apply`）时，每个 `--path` 按顺序配一个 `--expect-sha256`，用最近一次扫描报告里该文件的 `sha256`。Sieve 会重新算一遍，对不上的文件会跳过，防止删错被换过的文件。禁用不需要哈希
 - 两者是按出现顺序一一配对的，错位不会删错文件，但会让对应的文件被悄悄跳过。所以每个 `--path` 后面紧跟它自己的 `--expect-sha256`，成对写；路径和哈希都从报告里同一个文件对象取。执行后核对 `files` 里每个文件的状态，有被跳过的要告诉玩家
 - 距离上次扫描已经隔了一阵，或者玩家说动过文件，先重新扫描，再预览、再问
@@ -130,7 +130,7 @@ Get-Content -LiteralPath "<报告文件路径>" -Encoding utf8 | Select-Object -
 | -------- | ---------------------------------------------------- |
 | 看已禁用的文件  | `list-disabled --json -`（只读）                         |
 | 禁用       | `disable --path "<文件>" --json -`                     |
-| 恢复       | `restore --path "<原路径或 .off 路径>" --json -`，或 `--all` |
+| 恢复       | `restore --path "<原路径或禁用路径>" --json -`，或 `--all` |
 | 移入回收站    | `recycle --path "<文件>" --json -`                     |
 | 撤回最近一批删除 | `undo --json -`                                      |
 
@@ -201,6 +201,7 @@ JSON 顶层始终带 `complete`、`omittedGroupCount`、`omittedIssueCount` 和 
 ### 文件操作细节
 
 - 禁用时在原文件名末尾加 `.off`。
+- 扫描 Mods 会把发现的外部禁用文件写入共享账本。用 `list-disabled --json -` 查看，`files[].source` 为 `sieve` 或 `external`。`restore --all` 包含两种来源。
 - `files` 逐个列出路径、字节大小、状态和失败原因：`preview` 待处理，`completed` 已完成，`failed` 未完成，`listed` 已禁用。
 - `undo` 从共享的回收站记录里选最近一批中仍待恢复的文件，恢复到原路径。原位置有同名文件、文件夹，或回收站已清空时，看每个文件的结果。要处理更早的删除记录，或桌面版移入回收站的 `.off` 文件，用桌面版设置里的删除历史。
 - 每次 `--apply` 的结果都会自动追加到 `%LOCALAPPDATA%\Sims4ModSieve\cli-file-operations.jsonl`，玩家想查做过什么可以看这里。

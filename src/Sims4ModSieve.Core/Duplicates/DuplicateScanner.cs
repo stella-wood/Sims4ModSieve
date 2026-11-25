@@ -56,7 +56,7 @@ public sealed class DuplicateScanner(
                     DuplicateScanPhase.Discovering,
                     message,
                     DiscoveredFileCount: discovered)),
-            cancellationToken, request.Coverage);
+            cancellationToken, request.Coverage, request.ObserveFile);
         var modsRoot = NormalizeOptionalPath(request.ModsRoot, issues);
 
         if (discoveryTiming is not null)

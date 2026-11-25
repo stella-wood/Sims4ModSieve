@@ -72,7 +72,7 @@ public static class InstallerChecks
                 || records.Select(record => record.Id).Distinct(StringComparer.Ordinal).Count() != records.Length)
                 return CannotCheck;
             // 不调用 Load：它会对中断的操作重新记账，卸载检查必须只读。
-            var pending = records.Where(record => !record.Recycled || record.RecyclePending || record.RestorePending).ToArray();
+            var pending = records.Where(record => !record.IsExternal && (!record.Recycled || record.RecyclePending || record.RestorePending)).ToArray();
             if (reportPath is not null)
             {
                 var folders = pending.Select(record => Path.GetDirectoryName(record.DisabledPath)!)

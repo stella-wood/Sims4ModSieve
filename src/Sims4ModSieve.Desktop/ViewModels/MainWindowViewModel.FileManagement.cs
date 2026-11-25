@@ -17,6 +17,7 @@ public sealed partial class MainWindowViewModel
     private readonly Func<IReadOnlyList<string>> pickDisabledFiles;
     private readonly Func<string, bool>? confirmModChange;
     private IReadOnlyList<DisabledModRecord> disabledRecords = [];
+    private IEnumerable<DisabledModRecord> SieveDisabledRecords => disabledRecords.Where(record => !record.IsExternal);
     private IReadOnlyList<IgnoredFileRecord> ignoredRecords = [];
     private string fileManagementFeedback = string.Empty;
     private int duplicateHistoryGeneration = -1;
@@ -239,16 +240,39 @@ public sealed partial class MainWindowViewModel
         new(action, exception => FileManagementFeedback = exception.Message,
             () => !IsBusy && (canExecute?.Invoke() ?? true));
 
+    private static void ObserveExternalDisabled(string path, string modsRoot, HashSet<string> paths)
+    {
+        if (ModDisableService.IsExternalDisabledInMods(path, modsRoot)) paths.Add(path);
+    }
+
+    private async Task RegisterExternalDisabledAsync(string? modsRoot, IEnumerable<string> scanSources, HashSet<string> paths,
+        CancellationToken cancellationToken)
+    {
+        if (modsRoot is null || cancellationToken.IsCancellationRequested || !ModDisableService.ScansMods(modsRoot, scanSources)) return;
+        try
+        {
+            var result = await Task.Run(() => modDisableService.RegisterExternal(paths, cancellationToken), cancellationToken);
+            if (result is not null) PublishDisabledMods(result);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception exception) when (IsManagementException(exception))
+        {
+            FileManagementFeedback = "无法登记外部禁用文件：" + exception.Message;
+        }
+    }
+
     private void PublishDisabledMods(DisabledModsResult result)
     {
         disabledRecords = result.Records;
-        DisabledFiles.Replace(result.Records.OrderByDescending(record => record.DisabledAtUtc).Select(record => new ManagedFileRow
-        {
-            Id = record.Id, Path = record.OriginalPath, SizeText = DuplicateGroupViewModel.FormatBytes(record.Size),
-            TimeText = ManagementTime(record.DisabledAtUtc), TimeTooltip = record.DisabledAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
-            CanRestore = true, RestoreText = "启用", RestoreCommand = ModChangeCommand(() => RestoreDisabledFilesAsync([record.Id])),
-            CanDelete = true, DeleteCommand = ModChangeCommand(() => DeleteDisabledFileAsync(record.Id)),
-        }));
+        DisabledFiles.Replace(result.Records.OrderBy(record => record.IsExternal).ThenByDescending(record => record.DisabledAtUtc)
+            .Select(record => new ManagedFileRow
+            {
+                Id = record.Id, Path = record.OriginalPath, SizeText = DuplicateGroupViewModel.FormatBytes(record.Size),
+                IsExternalDisabled = record.IsExternal,
+                TimeText = ManagementTime(record.DisabledAtUtc), TimeTooltip = record.DisabledAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
+                CanRestore = true, RestoreText = "启用", RestoreCommand = ModChangeCommand(() => RestoreDisabledFilesAsync([record.Id])),
+                CanDelete = true, DeleteCommand = ModChangeCommand(() => DeleteDisabledFileAsync(record.Id)),
+            }));
         if (result.Failures.Count > 0) FileManagementFeedback = string.Join("\n", result.Failures.Select(failure => failure.Message).Distinct());
         if (IsConflictComplete) QueueConflictRowsRefresh();
     }
@@ -305,9 +329,11 @@ public sealed partial class MainWindowViewModel
                 lastDeletePendingPaths.UnionWith(result.CompletedPaths);
                 PublishDisabledMods(new(disabledRecords.Where(record => !result.CompletedPaths.Contains(
                     record.DisabledPath, StringComparer.OrdinalIgnoreCase)).ToArray(), []));
-                if (ReferenceEquals(session, conflictSession) && IsConflictComplete)
-                    await UpdateConflictFilePathsAsync(session, records.Where(record => result.CompletedPaths.Contains(record.DisabledPath, StringComparer.OrdinalIgnoreCase))
-                        .Select(record => record.OriginalPath).ToArray(), restore: false);
+                var removedPaths = records.Where(record => !record.IsExternal
+                    && result.CompletedPaths.Contains(record.DisabledPath, StringComparer.OrdinalIgnoreCase))
+                    .Select(record => record.OriginalPath).ToArray();
+                if (ReferenceEquals(session, conflictSession) && IsConflictComplete && removedPaths.Length > 0)
+                    await UpdateConflictFilePathsAsync(session, removedPaths, restore: false);
                 await RefreshFileManagementAsync();
                 FileManagementFeedback = string.Join("\n", new[] { "已移入回收站", FileManagementFeedback }.Where(text => text.Length > 0));
             }
@@ -327,12 +353,13 @@ public sealed partial class MainWindowViewModel
         try
         {
             var result = await Task.Run(() => modDisableService.Restore(ids));
-            var restored = records.Where(record => result.CompletedPaths.Contains(record.OriginalPath, StringComparer.OrdinalIgnoreCase)).ToArray();
+            var restored = records.Where(record => !record.IsExternal
+                && result.CompletedPaths.Contains(record.OriginalPath, StringComparer.OrdinalIgnoreCase)).ToArray();
             if (generation == resultGeneration)
                 RestoreDuplicateHistory(restored.Where(record => duplicateHistorySnapshot.SelectMany(group => group.Files).Any(file =>
                     PathRulesEqual(file.Path, record.OriginalPath) && file.Size == record.Size && file.LastWriteTimeUtc == record.LastWriteTimeUtc))
                     .Select(record => record.OriginalPath).ToArray());
-            if (ReferenceEquals(session, conflictSession) && IsConflictComplete)
+            if (ReferenceEquals(session, conflictSession) && IsConflictComplete && restored.Length > 0)
                 await UpdateConflictFilePathsAsync(session, restored.Where(record => session.MatchesOriginalFile(
                     record.OriginalPath, record.Size, record.LastWriteTimeUtc)).Select(record => record.OriginalPath).ToArray(), restore: true);
             await FinishModChangeAsync(result, "启用", restore: true);
@@ -370,7 +397,7 @@ public sealed partial class MainWindowViewModel
         {
             PublishDisabledMods(await Task.Run(modDisableService.Load));
             if (IsConflictComplete)
-                await UpdateConflictFilePathsAsync(conflictSession, disabledRecords.Where(record => conflictSession.MatchesOriginalFile(
+                await UpdateConflictFilePathsAsync(conflictSession, SieveDisabledRecords.Where(record => conflictSession.MatchesOriginalFile(
                     record.OriginalPath, record.Size, record.LastWriteTimeUtc)).Select(record => record.OriginalPath).ToArray(), restore: true);
         }
         catch (Exception exception) when (IsManagementException(exception)) { FileManagementFeedback = "无法刷新禁用记录：" + exception.Message; }

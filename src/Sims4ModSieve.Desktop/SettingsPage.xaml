@@ -13,6 +13,11 @@
         <Thickness x:Key="ScanConcurrencyInfoGap">2,0,0,0</Thickness>
         <Thickness x:Key="SettingsSectionGap">0,36,0,0</Thickness>
         <Thickness x:Key="SettingsGroupRowInset">0,16,0,16</Thickness>
+        <Thickness x:Key="ExternalDisabledLabelGap">6,0,0,0</Thickness>
+        <Thickness x:Key="ExternalDisabledLabelPadding">6,0</Thickness>
+        <CornerRadius x:Key="RadiusS">2</CornerRadius>
+        <sys:Double x:Key="ExternalDisabledLabelSize">11</sys:Double>
+        <sys:String x:Key="ExternalDisabledHelp">此文件在 Sieve 之外禁用。这里的时间是首次发现时间。如果是其他 Mod 管理器禁用的，在这里启用后，那个工具的记录可能对不上。</sys:String>
         <SolidColorBrush x:Key="SettingsButtonHoverBrush" Color="#ECEAE7" />
         <CornerRadius x:Key="RadiusM">4</CornerRadius>
         <sys:Double x:Key="CacheClearIconSize">12</sys:Double>
@@ -277,7 +282,28 @@
                     <CheckBox Margin="0,0,14,0" IsChecked="{Binding IsSelected}" AutomationProperties.Name="{Binding Name}"
                         Visibility="{Binding DataContext.IsMultiSelect, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
+                        <Grid>
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsExternalDisabled}" Value="True">
+                                            <Setter Property="HorizontalAlignment" Value="Left" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
+                            <Border Grid.Column="1" Background="{StaticResource AccentSoftBrush}"
+                                CornerRadius="{StaticResource RadiusS}" Padding="{StaticResource ExternalDisabledLabelPadding}"
+                                ToolTip="{StaticResource ExternalDisabledHelp}" VerticalAlignment="Center"
+                                Margin="{StaticResource ExternalDisabledLabelGap}"
+                                Visibility="{Binding IsExternalDisabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock Text="外部禁用" AutomationProperties.Name="外部禁用"
+                                    AutomationProperties.HelpText="{StaticResource ExternalDisabledHelp}"
+                                    Foreground="{StaticResource AccentBrush}" FontSize="{StaticResource ExternalDisabledLabelSize}" />
+                            </Border>
+                        </Grid>
                         <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" />
                     </StackPanel>
                 </Grid>

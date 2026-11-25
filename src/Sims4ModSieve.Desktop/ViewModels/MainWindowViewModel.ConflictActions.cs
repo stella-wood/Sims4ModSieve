@@ -115,7 +115,7 @@ public sealed partial class MainWindowViewModel
         && (ConflictActionAppliesToSelection(row) || row.File is { Stamp: not null });
 
     private DisabledModRecord? DisabledRecordFor(ConflictResultRow row) => row.File is { Stamp: { } stamp } file
-        ? disabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, file.Path)
+        ? SieveDisabledRecords.FirstOrDefault(record => PathRulesEqual(record.OriginalPath, file.Path)
             && record.Size == stamp.Length && record.LastWriteTimeUtc == stamp.LastWriteTimeUtc
             && record.Identity is not null && record.Identity == stamp.Identity) : null;
 
@@ -136,7 +136,7 @@ public sealed partial class MainWindowViewModel
         ConflictFileActionStatusText = FileManagementFeedback;
         if (record is null)
         {
-            var disabledCount = disabledRecords.Count(item => PathRulesEqual(item.OriginalPath, row.File.Path)
+            var disabledCount = SieveDisabledRecords.Count(item => PathRulesEqual(item.OriginalPath, row.File.Path)
                 && item.Size == stamp.Length && item.LastWriteTimeUtc == stamp.LastWriteTimeUtc
                 && item.Identity is not null && item.Identity == stamp.Identity);
             if (disabledCount > 0)

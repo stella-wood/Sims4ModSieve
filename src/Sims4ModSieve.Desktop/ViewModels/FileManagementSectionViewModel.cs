@@ -13,6 +13,7 @@ public sealed class ManagedFileRow : ObservableObject
     public required string SizeText { get; init; }
     public required string TimeText { get; init; }
     public string TimeTooltip { get; init; } = string.Empty;
+    public bool IsExternalDisabled { get; init; }
     public bool CanRestore { get; init; }
     public bool CanRemove { get; init; }
     public bool CanDelete { get; init; }

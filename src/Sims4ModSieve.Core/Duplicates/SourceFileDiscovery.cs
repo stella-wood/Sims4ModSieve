@@ -119,7 +119,8 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
         List<ScanIssue> issues,
         Action<string, int>? reportProgress,
         CancellationToken cancellationToken,
-        ScanCoverage? coverage = null)
+        ScanCoverage? coverage = null,
+        Action<string>? observeFile = null)
     {
         var files = new Dictionary<string, DiscoveredFile>(PathRules.Comparer);
         var explicitRoots = sources.Select(source => source.Path).ToHashSet(PathRules.Comparer);
@@ -202,6 +203,7 @@ internal sealed class SourceFileDiscovery(IFileSystemAccess fileSystem, string? 
                         continue;
                     }
 
+                    observeFile?.Invoke(path);
                     if (extensions is not null && !extensions.Contains(Path.GetExtension(path)))
                     {
                         continue;

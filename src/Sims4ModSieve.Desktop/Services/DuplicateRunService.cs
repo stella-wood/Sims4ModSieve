@@ -12,6 +12,7 @@ public sealed record DuplicateRunInput(
     internal WindowsStorageProfile? StorageProfile { get; init; }
     internal IStableFileHasher? FileHasher { get; init; }
     internal ScanCoverage? Coverage { get; init; }
+    internal Action<string>? ObserveFile { get; init; }
 }
 
 public interface IDuplicateRunService
@@ -49,6 +50,7 @@ public sealed class DuplicateRunService(DuplicateScanner scanner) : IDuplicateRu
                 HashConcurrency = input.HashConcurrency,
                 StorageProfile = input.StorageProfile ?? new WindowsStorageProfile(),
                 Coverage = input.Coverage,
+                ObserveFile = input.ObserveFile,
             },
             progress,
             cancellationToken);

@@ -18,7 +18,7 @@ public sealed partial class MainWindowViewModel
                     .Select(group => group.Model.Files.Select(file =>
                     (file.Path, Size: (long?)file.Size, LastWriteTimeUtc: (DateTime?)file.LastWriteTimeUtc, file.Identity)).ToArray())).ToArray();
         if (groups.Length == 0) return selected;
-        var records = disabledRecords;
+        var records = SieveDisabledRecords.ToArray();
         IsBusy = true;
         try
         {
