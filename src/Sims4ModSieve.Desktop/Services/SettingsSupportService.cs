@@ -54,7 +54,7 @@ public sealed partial class SettingsSupportService
         foreach (var root in new[] { modsRoot, trayRoot, FindDefaultFolder("Mods"), FindDefaultFolder("Tray") }
             .Concat(scanRoots ?? []))
         {
-            if (root is not null && guard.IsLocatedAt(root))
+            if (root is not null && guard.IsLocatedWithin(root))
                 return "建议把 Sims4ModSieve 放进单独的文件夹，避免与 Mod 混放";
         }
         return string.Empty;
