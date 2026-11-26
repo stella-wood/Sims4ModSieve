@@ -95,9 +95,30 @@ public sealed class ApplicationDirectorySafetyTests
         support = new(files.Root, files.Root, tray);
         StringAssert.Contains(support.GetApplicationLocationWarning(null, tray), "单独的文件夹");
         StringAssert.Contains(support.GetApplicationLocationWarning(tray, null), "单独的文件夹");
-        Assert.AreEqual("", new SettingsSupportService(files.Root, files.Root, Path.Combine(tray, "Sieve")).GetApplicationLocationWarning(null, tray));
         support = new(files.Root, files.Root, tray + "-backup");
         Assert.AreEqual("", support.GetApplicationLocationWarning(null, tray));
+    }
+
+    [TestMethod]
+    public void LocationWarningCoversProgramInsideModsTrayAndScanSourceSubfolders()
+    {
+        using var files = new Scenario();
+        var documents = files.Folder("Documents");
+        var mods = files.Folder("Documents", "Electronic Arts", "The Sims 4", "Mods");
+        var tray = files.Folder("Documents", "Electronic Arts", "The Sims 4", "Tray");
+        var customMods = files.Folder("Games", "Mods");
+        var source = files.Folder("Downloads", "Mods");
+        string Warning(string app, string? modsRoot = null, string? trayRoot = null, params string[] sources) =>
+            new SettingsSupportService(files.Root, documents, app).GetApplicationLocationWarning(modsRoot, trayRoot, sources);
+
+        StringAssert.Contains(Warning(mods), "单独的文件夹");
+        StringAssert.Contains(Warning(Path.Combine(mods, "Sims4ModSieve")), "单独的文件夹");
+        StringAssert.Contains(Warning(Path.Combine(mods, "Tools", "Sims4ModSieve")), "单独的文件夹");
+        StringAssert.Contains(Warning(Path.Combine(customMods, "Sims4ModSieve"), customMods), "单独的文件夹");
+        StringAssert.Contains(Warning(Path.Combine(tray, "Sims4ModSieve")), "单独的文件夹");
+        StringAssert.Contains(Warning(Path.Combine(source, "Sims4ModSieve"), null, null, source), "单独的文件夹");
+        Assert.AreEqual("", Warning(files.Folder("Programs", "Sims4ModSieve"), customMods, tray, source));
+        Assert.AreEqual("", Warning(Path.Combine(mods + "2", "Sims4ModSieve"), mods, tray));
     }
 
     [TestMethod]

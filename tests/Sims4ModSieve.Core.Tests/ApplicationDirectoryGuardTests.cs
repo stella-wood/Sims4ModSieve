@@ -25,6 +25,24 @@ public sealed class ApplicationDirectoryGuardTests
     }
 
     [TestMethod]
+    public void LocatedWithinCoversRootAndSubfoldersButNotSiblingsWithSamePrefix()
+    {
+        using var temp = new TempDirectory();
+        var mods = temp.CreateDirectory("Mods");
+        Assert.IsTrue(new ApplicationDirectoryGuard(mods).IsLocatedWithin(mods));
+        Assert.IsTrue(new ApplicationDirectoryGuard(mods).IsLocatedWithin(mods + Path.DirectorySeparatorChar));
+        Assert.IsTrue(new ApplicationDirectoryGuard(Path.Combine(mods, "Sims4ModSieve")).IsLocatedWithin(mods));
+        Assert.IsTrue(new ApplicationDirectoryGuard(Path.Combine(mods, "Tools", "Sims4ModSieve") + Path.DirectorySeparatorChar).IsLocatedWithin(mods));
+        Assert.IsTrue(new ApplicationDirectoryGuard(Path.Combine(mods, "..Sieve")).IsLocatedWithin(mods));
+        Assert.IsFalse(new ApplicationDirectoryGuard(Path.Combine(mods + "2", "Sims4ModSieve")).IsLocatedWithin(mods));
+        Assert.IsFalse(new ApplicationDirectoryGuard(mods + "-backup").IsLocatedWithin(mods));
+        Assert.IsFalse(new ApplicationDirectoryGuard(Path.GetDirectoryName(mods)).IsLocatedWithin(mods));
+        Assert.IsFalse(new ApplicationDirectoryGuard(Path.Combine(mods, "..", "Sims4ModSieve")).IsLocatedWithin(mods));
+        if (OperatingSystem.IsWindows())
+            Assert.IsTrue(new ApplicationDirectoryGuard(Path.Combine(mods.ToUpperInvariant(), "Sims4ModSieve")).IsLocatedWithin(mods));
+    }
+
+    [TestMethod]
     [DataRow("Sims4ModSieve.exe", true)]
     [DataRow("Sims4ModSieve.Cli.exe", true)]
     [DataRow("AI-GUIDE.md", true)]
