@@ -195,7 +195,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Data.Sqlite": "[10.0.15, )",
-          "Sims4ModSieve.Core": "[0.2.0, )"
+          "Sims4ModSieve.Core": "[0.2.1, )"
         }
       },
       "sims4modsieve.core": {

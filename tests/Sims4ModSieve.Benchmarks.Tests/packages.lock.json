@@ -308,16 +308,16 @@
       "sims4modsieve.benchmarks": {
         "type": "Project",
         "dependencies": {
-          "Sims4ModSieve.Caching": "[0.2.0, )",
-          "Sims4ModSieve.Core": "[0.2.0, )",
-          "Sims4ModSieve.Packages": "[0.2.0, )"
+          "Sims4ModSieve.Caching": "[0.2.1, )",
+          "Sims4ModSieve.Core": "[0.2.1, )",
+          "Sims4ModSieve.Packages": "[0.2.1, )"
         }
       },
       "sims4modsieve.caching": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Data.Sqlite": "[10.0.15, )",
-          "Sims4ModSieve.Core": "[0.2.0, )"
+          "Sims4ModSieve.Core": "[0.2.1, )"
         }
       },
       "sims4modsieve.core": {
@@ -331,7 +331,7 @@
         "dependencies": {
           "LlamaLogic.Packages": "[4.9.0, )",
           "SharpZipLib": "[1.4.2, )",
-          "Sims4ModSieve.Core": "[0.2.0, )"
+          "Sims4ModSieve.Core": "[0.2.1, )"
         }
       }
     }
